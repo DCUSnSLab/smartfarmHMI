@@ -1,6 +1,6 @@
 # 웹앱 기반 스마트팜 HMI — 요구사항 명세서
 
-RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중, 웹앱 기반 스마트팜 HMI 개발(프론트엔드 웹앱 + 서버 + 통신 규격)의 요구사항·설계 문서 모음이다.
+RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중, 웹앱 기반 스마트팜 HMI 개발(프론트엔드 웹앱 + 애플리케이션 서버 + 미들웨어 서버 + 통신 규격)의 요구사항·설계 문서 모음이다.
 
 ## 문서 진입 순서
 
@@ -9,8 +9,10 @@ RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중,
 3. [01-requirements/non-functional.md](./01-requirements/non-functional.md) — 품질 속성
 4. [02-domain/data-model.md](./02-domain/data-model.md) — 데이터 엔터티
 5. [03-architecture/system-architecture.md](./03-architecture/system-architecture.md) — 시스템 구성
-6. [03-architecture/communication-interface.md](./03-architecture/communication-interface.md) — 통신 규격
-7. [04-roadmap/phase2-scope.md](./04-roadmap/phase2-scope.md) — 2차년도 로드맵과 현재 개발 범위
+6. [03-architecture/component-mapping.md](./03-architecture/component-mapping.md) — 기능별 컴포넌트(웹앱/애플리케이션 서버/미들웨어 서버) 책임
+7. [03-architecture/component-internals.md](./03-architecture/component-internals.md) — 각 컴포넌트 내부 모듈 구성
+8. [03-architecture/communication-interface.md](./03-architecture/communication-interface.md) — 통신 규격
+9. [04-roadmap/phase2-scope.md](./04-roadmap/phase2-scope.md) — 2차년도 로드맵과 현재 개발 범위
 
 ## 디렉토리 구조
 
@@ -24,6 +26,8 @@ RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중,
 │  └─ data-model.md
 ├─ 03-architecture/
 │  ├─ system-architecture.md
+│  ├─ component-mapping.md
+│  ├─ component-internals.md
 │  └─ communication-interface.md
 └─ 04-roadmap/
    └─ phase2-scope.md
@@ -35,7 +39,7 @@ RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중,
 
 | ID | 내용 | 관련 문서 |
 |---|---|---|
-| OPN-01 | 서버-엣지 통신 프로토콜 확정 (WebSocket, ROS2 등 검토 중) | 03-architecture/communication-interface.md, 03-architecture/system-architecture.md |
+| OPN-01 | 미들웨어 서버-엣지 통신 프로토콜 확정 (WebSocket, ROS2 등 검토 중) | 03-architecture/communication-interface.md, 03-architecture/system-architecture.md |
 | OPN-02 | 실제 엣지 연동 시점 및 방식 | 00-overview.md, 03-architecture/system-architecture.md |
 | OPN-03 | DB 기술 스택 (RDB / 시계열DB / 하이브리드) | 02-domain/data-model.md |
 | OPN-04 | 실시간성 목표 수치 (응답/화면 반영 지연 등) | 01-requirements/non-functional.md |
@@ -46,6 +50,10 @@ RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중,
 | OPN-09 | 데이터 엔터티 필드·타입 정의 (통신 규격 확정 후 진행) | 02-domain/data-model.md |
 | OPN-10 | 통신 메시지 스키마 필드 리뷰 | 03-architecture/communication-interface.md |
 | OPN-11 | 2차년도 데모 상세 시나리오 확정 | 00-overview.md, 04-roadmap/phase2-scope.md |
+| OPN-12 | 애플리케이션 서버 ↔ 미들웨어 서버 내부 통신 방식 확정 | 03-architecture/system-architecture.md, 03-architecture/communication-interface.md |
+| OPN-13 | 다중 로봇 제어(FR-02) 담당 여부 (우리 팀 vs 엣지팀) | 01-requirements/functional.md, 03-architecture/system-architecture.md |
+| OPN-14 | LED 파레트별 개별 제어 필요성 및 방식 (2차년도는 그룹/전체 제어로 진행) | 01-requirements/functional.md, 01-requirements/non-functional.md |
+| OPN-15 | 애플리케이션 서버 자체 저장소와 미들웨어 서버 DB를 물리적으로 분리할지, 스키마만 나눌지 | 03-architecture/component-internals.md |
 
 ## 변경 이력
 

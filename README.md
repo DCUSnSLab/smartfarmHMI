@@ -41,7 +41,7 @@ RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 중,
 |---|---|---|
 | OPN-01 | 미들웨어 서버-엣지 통신 프로토콜 확정 (WebSocket, ROS2 등 검토 중) | 03-architecture/communication-interface.md, 03-architecture/system-architecture.md |
 | OPN-02 | 실제 엣지 연동 시점 및 방식 | 00-overview.md, 03-architecture/system-architecture.md |
-| OPN-03 | DB 기술 스택 (RDB / 시계열DB / 하이브리드) | 02-domain/data-model.md |
+| OPN-03 | DB 기술 스택 (RDB / 시계열DB / 하이브리드) | 02-domain/data-model.md, 03-architecture/component-internals.md |
 | OPN-04 | 실시간성 목표 수치 (응답/화면 반영 지연 등) | 01-requirements/non-functional.md |
 | OPN-05 | 동시 접속자 수 목표 | 01-requirements/non-functional.md |
 | OPN-06 | 데이터 보존 기간·백업 정책 | 01-requirements/non-functional.md |

@@ -17,7 +17,7 @@
 | DeviceControlSetting | 생육기 환경(온도·습도·조도/LED) 제어 설정값 (수동/자동 구분) | FR-10, FR-11, FR-12 |
 | Pallet | 재배 트레이(파레트). 현재 위치(랙 슬롯/이동중/작업장소) 상태 포함 | FR-03, FR-19~26 |
 | RackSlot | 파레트가 보관되는 랙의 슬롯 위치 | FR-03 |
-| WorkStation | 양액·급수·방재(·3차년도 수확) 작업이 실제 수행되는 장소. 탱크 수위 센서도 여기 소속 | FR-03, FR-08, FR-21~26 |
+| WorkStation | 양액·급수·방재 작업이 실제 수행되는 장소 (3차년도부터 수확 작업도 포함) | FR-03, FR-21~26 |
 | PalletTask | 파레트 반출→작업장소 이동→작업 수행→반납의 임무 실행 기록. 작업유형(양액/급수/방재)·파라미터(양·농도) 포함 | FR-03, FR-19~26 |
 | DataStatistics | 기간별 집계 결과 | FR-14 |
 | FarmLog | 자동 생성 리포트 + 관리자 메모(사진/동영상 첨부) | FR-17, FR-18 |
@@ -41,8 +41,6 @@ DeviceMeta(로봇) ──┬── RobotStatus
 
 DeviceMeta(생육기) ──┬── EnvironmentReading
                      └── DeviceControlSetting
-
-WorkStation ──── EnvironmentReading (탱크 수위)
 
 User ──┬── FarmLog (작성)
         └── PalletTask / DeviceControlSetting (제어 요청)

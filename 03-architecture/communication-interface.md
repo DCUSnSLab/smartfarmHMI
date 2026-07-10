@@ -15,7 +15,7 @@
 
 프로토콜이 확정되기 전이라도 메시지 내용 자체는 아래와 같은 형태를 참고 초안으로 둔다. 모든 메시지는 `type`, `version`, `timestamp` 필드를 포함하고, `payload`는 자유 형식 JSON으로 확장 가능하게 둔다.
 
-### 엣지 → 미들웨어 서버: 센서 데이터
+### 엣지 → 미들웨어 서버: 센서 데이터 (FR-08)
 ```json
 {
   "type": "sensor_reading",
@@ -28,7 +28,7 @@
 }
 ```
 
-### 엣지 → 미들웨어 서버: 로봇 상태
+### 엣지 → 미들웨어 서버: 로봇 상태 (FR-04)
 ```json
 {
   "type": "robot_status",
@@ -39,19 +39,6 @@
   "battery_pct": 82,
   "error": null,
   "timestamp": "2026-07-07T10:00:00+09:00"
-}
-```
-
-### 엣지 → 미들웨어 서버: 탱크 수위 (FR-08)
-```json
-{
-  "type": "sensor_reading",
-  "version": "0.1",
-  "device_id": "nutrient-tank-01",
-  "sensor_type": "tank_level",
-  "value": 62,
-  "unit": "percent",
-  "timestamp": "2026-07-08T10:00:00+09:00"
 }
 ```
 
@@ -70,7 +57,7 @@
 }
 ```
 
-### 미들웨어 서버 → 엣지: 생육기 환경 제어 명령
+### 미들웨어 서버 → 엣지: 생육기 환경 제어 명령 (FR-10 수동설정 예시. FR-11 자동모드는 "auto_mode: true" 같은 모드 전환 명령이라 형태가 다름)
 ```json
 {
   "type": "control_command",
@@ -83,7 +70,7 @@
 }
 ```
 
-### 애플리케이션 서버 → 웹앱: 실시간 푸시
+### 애플리케이션 서버 → 웹앱: 실시간 푸시 (FR-04, FR-08 등)
 ```json
 {
   "channel": "growbed-01/environment",

@@ -1,0 +1,33 @@
+# smartfarmHMI — DEV overlay (develop 브랜치 → smartfarmhmi-dev 네임스페이스)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: smartfarmhmi-dev
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: smartfarmhmi
+      app.kubernetes.io/managed-by: kustomize
+      env: dev
+
+configMapGenerator:
+  - name: smartfarmhmi-config
+    envs: [config.env]
+
+images:
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/api
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
+    newTag: latest
+
+# nginx 만 외부 노출 (NodePort 30480)
+patches:
+  - path: nginx-nodeport.yaml
+    target: { kind: Service, name: smartfarmhmi-nginx }

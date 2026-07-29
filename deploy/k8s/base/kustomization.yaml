@@ -1,0 +1,38 @@
+# smartfarmHMI K8s 매니페스트 — Base (AIBootcamp deploy/k8s 패턴 미러)
+# 환경별 차이(namespace·이미지 태그·노출)는 overlays/{dev,main} 에서 patch.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - timescaledb.yaml
+  - redis.yaml
+  - minio.yaml
+  - mosquitto.yaml
+  - api.yaml
+  - api-migrate.yaml
+  - middleware.yaml
+  - edge-sim.yaml
+  - web.yaml
+  - nginx.yaml
+
+# conf 파일 → ConfigMap (hash suffix → conf 변경 시 자동 롤링)
+# 주의: mosquitto.conf / db-init 스크립트의 원본은 deploy/mosquitto·deploy/timescaledb.
+#       kustomize 의 로드 제한 때문에 base/ 에 사본을 둔다 — 변경 시 양쪽 동기화할 것.
+configMapGenerator:
+  - name: smartfarmhmi-nginx-conf
+    files: [nginx.conf]
+  - name: smartfarmhmi-mosquitto-conf
+    files: [mosquitto.conf]
+  - name: smartfarmhmi-db-init
+    files: [01-schemas.sh=db-init-01-schemas.sh]
+
+# 이미지 placeholder — overlay/Jenkins 가 newTag 치환 (IMAGE_TAG=BUILD_NUMBER-GIT_SHA)
+images:
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/api
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
+    newTag: latest

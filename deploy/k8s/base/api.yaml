@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: smartfarmhmi-api }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-api }
+    spec:
+      containers:
+        - name: api
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/api
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: django-secret, key: SECRET_KEY } }
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: APP_DB_PASSWORD } }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartfarmhmi-api
+spec:
+  selector: { app: smartfarmhmi-api }
+  ports: [{ port: 8000, targetPort: 8000 }]

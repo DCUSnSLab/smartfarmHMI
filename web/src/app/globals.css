@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 접근성 기준 (non-functional.md §5): 본문 13px 이상 — 기본 폰트 크기의 하한 */
+html {
+  font-size: 16px;
+}

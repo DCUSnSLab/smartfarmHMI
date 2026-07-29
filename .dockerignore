@@ -1,0 +1,13 @@
+# 루트 컨텍스트 빌드(middleware·edge-sim)에서 불필요한 것 제외
+.git
+docs
+deploy/k8s
+web/node_modules
+web/.next
+api/__pycache__
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.env
+*.md

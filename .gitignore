@@ -1,0 +1,23 @@
+# env
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# node
+node_modules/
+.next/
+out/
+
+# tooling
+.idea/
+.vscode/
+*.log
+
+# docker volumes (로컬 바인드 시)
+volumes/

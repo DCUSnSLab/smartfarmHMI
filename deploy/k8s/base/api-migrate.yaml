@@ -1,0 +1,24 @@
+# 배포 전 1회 실행 Job — Django 마이그레이션 (증분 1부터 의미 있음).
+# Jenkins 가 apply 전에 기존 Job 을 delete 후 재생성한다 (Job 은 immutable).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smartfarmhmi-api-migrate
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-api-migrate }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/api
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: django-secret, key: SECRET_KEY } }
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: APP_DB_PASSWORD } }

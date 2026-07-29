@@ -78,7 +78,13 @@
 
 좌표계 정의는 엣지팀 협의가 필요하다 (OPN-21). 협의 전까지는 논리 배치(구역·슬롯 단위)로만 표현한다. 로봇 위치는 정적 배치가 아니라 `RobotStatus`의 실시간 좌표를 쓴다.
 
-### 1.8 계정
+### 1.8 명령 추적 (신설)
+
+| 엔터티 | 내용 | 관련 기능 |
+|---|---|---|
+| CommandLog | 발행 명령 추적. `command_id`(멱등성 키)·명령 유형·상태(발행/접수/완료/실패/타임아웃)·ACK 이력. "보낸 것"과 "실행된 것"의 구분 표시 근거 | FR-10, FR-35, FR-39, 통신 규격 §4.8 |
+
+### 1.9 계정
 
 | 엔터티 | 내용 | 관련 기능 |
 |---|---|---|
@@ -130,7 +136,7 @@ EnvironmentReading, DeviceConnectionState, Tank ──> Alert (AlertRule 대조�
 (`../../README.md` 참고)
 
 - ~~DB 기술 스택~~ — **OPN-03 해소: PostgreSQL 16 + TimescaleDB 확장** (`../03-architecture/tech-stack.md`). `EnvironmentReading`·`RobotStatus` 등 고빈도 시계열 테이블만 하이퍼테이블화한다
-- 각 엔터티의 정확한 필드·타입 정의 — OPN-09. 통신 규격(MQTT 스키마 0.2)이 확정되었으므로 착수 가능하다
+- ~~각 엔터티의 정확한 필드·타입 정의~~ — **OPN-09 해소: [db-schema.md](./db-schema.md)에서 정의 완료** (app/mw 스키마 분리, 테이블 31개, 하이퍼테이블 3종). `FarmLog`는 저장 위치 원칙에 따라 `mw.farm_report`(자동 리포트)와 `app.farm_memo`(관리자 메모)로 분리됐다
 - 애플리케이션 서버 자체 저장소와 미들웨어 서버 DB의 분리 수준 — OPN-15
 - 배치도 좌표계 원점·축·단위·스케일 — OPN-21
 - 알림 임계값 기본값 (`AlertRule` 초기값) — OPN-20
@@ -138,3 +144,4 @@ EnvironmentReading, DeviceConnectionState, Tank ──> Alert (AlertRule 대조�
 ## 변경 이력
 - 2026-07-07 · 최초 작성
 - 2026-07-29 · 엔터티를 성격별로 재분류. 신규 12종 추가 — Farm, Sensor, SensorCalibration, Tank, DeviceConnectionState, WeatherReading, Alert, AlertRule, StopEvent, FarmLayout, LayoutElement. 기존 보강 — 전 엔터티 `farm_id`, DeviceMeta 대상 확대, RobotTaskLog 재시도 횟수, RobotStatus 충전·임무 상태, FarmLog 년간 리포트. 관계 개요를 Farm 루트로 재작성
+- 2026-07-29 · CommandLog 신설, OPN-09 해소 (필드·타입은 `db-schema.md`)

@@ -1,7 +1,7 @@
 """임의 데이터 생성기 (2차년도 한정 엣지 대역) — component-internals.md §4.
 
-증분 2: birth 발행 + 센서값·로봇 상태 주기 발행 (QoS1, retain — 통신 규격 §3).
-증분 4 에서 command 구독·ack 응답이 추가된다.
+- birth 발행 + 센서값·로봇 상태 주기 발행 (QoS1, retain — 통신 규격 §3)
+- command 구독 → command_id 멱등 처리 → ack(accepted→completed) 응답 (비기능 §4)
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import aiomqtt
 
 from shared.schemas import topics
-from sim.devices import GROWBED_ID, ROBOTS, SENSORS, robot_state, sensor_value
+from sim.devices import GROWBED_ID, ROBOTS, SENSORS, apply_command, robot_state, sensor_value
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("edge-sim")
@@ -89,6 +89,61 @@ async def publish_cycle(client: aiomqtt.Client) -> None:
         )
 
 
+# 처리한 command_id — QoS1 중복 배달 시 재실행 방지 (멱등, 비기능 §4)
+_seen_commands: set[str] = set()
+
+
+async def _ack(client: aiomqtt.Client, device_type: str, device_id: str,
+               command_id: str, result: str, detail: dict | None = None) -> None:
+    payload = {"type": "ack", "version": "0.2", "farm_id": FARM_ID, "command_id": command_id,
+               "device_id": device_id, "result": result, "detail": detail, "timestamp": _now()}
+    await client.publish(
+        topics.topic(FARM_ID, device_type, device_id, "ack"), _dump(payload), qos=1,
+    )
+
+
+async def handle_commands(client: aiomqtt.Client) -> None:
+    """command 토픽 구독 — 접수(accepted) → 적용 → 완료(completed) 2단 응답."""
+    async for message in client.messages:
+        parsed = topics.parse_topic(str(message.topic))
+        if parsed is None or parsed.message_type != "command" or not message.payload:
+            continue
+        try:
+            body = json.loads(message.payload)
+        except ValueError:
+            continue
+        command_id = body.get("command_id")
+        if not command_id:
+            continue
+        if command_id in _seen_commands:
+            # 중복 배달 — 재실행 없이 completed 만 재응답 (ack 유실 대비)
+            log.info("duplicate command ignored: %s", command_id)
+            await _ack(client, parsed.device_type, parsed.device_id, command_id, "completed")
+            continue
+        _seen_commands.add(command_id)
+
+        if body.get("type") != "control_command":
+            await _ack(client, parsed.device_type, parsed.device_id, command_id,
+                       "rejected", {"reason": f"unsupported type: {body.get('type')}"})
+            continue
+
+        await _ack(client, parsed.device_type, parsed.device_id, command_id, "accepted")
+        ok = apply_command(body.get("command", ""), body.get("params", {}))
+        await asyncio.sleep(1)  # 실행 시간 모사
+        if ok:
+            log.info("command applied: %s %s %s", command_id, body["command"], body["params"])
+            await _ack(client, parsed.device_type, parsed.device_id, command_id, "completed")
+        else:
+            await _ack(client, parsed.device_type, parsed.device_id, command_id,
+                       "failed", {"reason": f"unknown command: {body.get('command')}"})
+
+
+async def publish_loop(client: aiomqtt.Client) -> None:
+    while True:
+        await publish_cycle(client)
+        await asyncio.sleep(PUBLISH_INTERVAL)
+
+
 async def run() -> None:
     will = aiomqtt.Will(topic=DEATH_TOPIC, payload=death_payload(), qos=1, retain=True)
     while True:
@@ -100,12 +155,13 @@ async def run() -> None:
                 # LWT death 의 timestamp 는 접속 시점 생성이라 birth 와 선후 비교가
                 # 불가능하므로, 수신 측 가드 대신 발행 측에서 정리한다.
                 await client.publish(DEATH_TOPIC, payload=b"", qos=1, retain=True)
+                await client.subscribe(f"{topics.PREFIX}/{FARM_ID}/+/+/command", qos=1)
                 await publish_births(client)
-                while True:
-                    await publish_cycle(client)
-                    await asyncio.sleep(PUBLISH_INTERVAL)
-        except aiomqtt.MqttError as e:
-            log.warning("mqtt disconnected (%s) — 5s 후 재접속", e)
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(publish_loop(client))
+                    tg.create_task(handle_commands(client))
+        except* aiomqtt.MqttError as e:
+            log.warning("mqtt disconnected (%s) — 5s 후 재접속", e.exceptions[0])
             await asyncio.sleep(5)
 
 

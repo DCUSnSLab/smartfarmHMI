@@ -44,11 +44,21 @@ export interface FarmSummary {
   devices_online: number;
 }
 
+export interface CommandState {
+  command_id: string;
+  device_id: string;
+  command?: string;
+  params?: Record<string, unknown>;
+  status: "issued" | "accepted" | "completed" | "failed" | "rejected" | "timeout";
+  issued_at?: string;
+}
+
 export function useMonitor(scope: string) {
   const [farms, setFarms] = useState<FarmSummary[]>([]);
   const [sensors, setSensors] = useState<Record<string, SensorValue>>({});
   const [robots, setRobots] = useState<Record<string, RobotValue>>({});
   const [conns, setConns] = useState<Record<string, ConnState>>({});
+  const [commands, setCommands] = useState<Record<string, CommandState>>({});
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -66,7 +76,14 @@ export function useMonitor(scope: string) {
 
   useEffect(() => {
     fetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
-    if (scope !== "all") void loadSnapshot(scope);
+    if (scope !== "all") {
+      void loadSnapshot(scope);
+      fetch(`/api/farms/${scope}/commands`).then(async (r) => {
+        if (!r.ok) return;
+        const list: CommandState[] = await r.json();
+        setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
+      });
+    }
   }, [scope, loadSnapshot]);
 
   // ── 실시간 (WebSocket) ──
@@ -99,6 +116,12 @@ export function useMonitor(scope: string) {
           ...prev,
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
         }));
+      } else if (msg.stream === "command") {
+        // 접수(accepted)/완료(completed) 구분 표시의 근거 (FR-10, 비기능 §4)
+        setCommands((prev) => ({
+          ...prev,
+          [d.command_id]: { issued_at: msg.timestamp, ...prev[d.command_id], ...d },
+        }));
       } else if (msg.stream === "connection") {
         setConns((prev) => {
           if (d.cascade) {
@@ -114,7 +137,20 @@ export function useMonitor(scope: string) {
     return () => ws.close();
   }, [scope]);
 
-  return { farms, farmName, sensors, robots, conns, wsOpen };
+  return { farms, farmName, sensors, robots, conns, commands, wsOpen };
+}
+
+/** 제어 명령 발행 (FR-10) — command_id 를 반환한다. */
+export async function postControl(
+  farmId: string, deviceId: string, command: string, target: number,
+): Promise<string | null> {
+  const res = await fetch(`/api/farms/${farmId}/devices/${deviceId}/control`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command, params: { target } }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()).command_id;
 }
 
 export function timeAgo(iso: string | null): string {

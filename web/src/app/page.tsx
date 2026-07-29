@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { ControlPanel } from "@/components/ControlPanel";
 import { timeAgo, useMonitor } from "@/lib/monitor";
 
 const SENSOR_LABEL: Record<string, { name: string; unit: string }> = {
@@ -40,7 +41,7 @@ function ConnBadge({ state }: { state?: string }) {
 
 export default function Dashboard() {
   const [scope, setScope] = useState<string>("seongju"); // 2차년도 기본: 농장 1개
-  const { farms, farmName, sensors, robots, conns, wsOpen } = useMonitor(scope);
+  const { farms, farmName, sensors, robots, conns, commands, wsOpen } = useMonitor(scope);
 
   const edgeConn = conns["edge-01"];
   const farmOnline = edgeConn?.state === "online";
@@ -139,6 +140,9 @@ export default function Dashboard() {
               })}
             </div>
           </section>
+
+          {/* ── 환경 제어 (FR-10) ── */}
+          <ControlPanel farmId={scope} deviceId="growbed-01" commands={commands} disabled={!farmOnline} />
 
           {/* ── 로봇 상태 (FR-04) ── */}
           <section className="mb-6">

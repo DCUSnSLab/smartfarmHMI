@@ -36,14 +36,40 @@ ROBOTS = ["robot-01", "robot-02"]
 
 ANOMALY = os.environ.get("EDGE_SIM_ANOMALY", "0") == "1"
 
+# 제어 명령이 적용한 목표값 — sensor_type → base 대체값 (FR-10 피드백 가시화)
+TARGETS: dict[str, float] = {}
+
+# command → 대상 sensor_type (set_led 는 % → klx 환산)
+COMMAND_SENSOR = {
+    "set_temperature": "temperature",
+    "set_humidity": "humidity",
+    "set_ec": "ec",
+    "set_led": "illuminance",
+}
+
+
+def apply_command(command: str, params: dict) -> bool:
+    """control_command 적용 — 이후 생성값의 base 가 목표값으로 이동한다."""
+    stype = COMMAND_SENSOR.get(command)
+    if stype is None:
+        return False
+    target = params.get("target")
+    if target is None:
+        return False
+    if command == "set_led":  # LED 밝기 % → 조도 klx (시뮬레이션 환산)
+        target = float(target) / 100.0 * 25.0
+    TARGETS[stype] = float(target)
+    return True
+
 
 def sensor_value(spec: SensorSpec, t_sec: float) -> float:
     """일변화(86400s 주기) 사인 + 노이즈. 데모가 지루하지 않게 10분 주기 성분도 섞는다."""
+    base = TARGETS.get(spec.sensor_type, spec.base)
     daily = math.sin(t_sec / 86400.0 * 2 * math.pi)
     short = 0.3 * math.sin(t_sec / 600.0 * 2 * math.pi)
-    value = spec.base + spec.amplitude * (daily + short) / 1.3 + random.gauss(0, spec.noise)
+    value = base + spec.amplitude * (daily + short) / 1.3 + random.gauss(0, spec.noise)
     if ANOMALY and random.random() < 0.02:  # 2% 확률 이상값
-        value = spec.base + spec.amplitude * 3
+        value = base + spec.amplitude * 3
     return round(value, 2)
 
 

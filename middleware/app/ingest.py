@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from middleware.app import models as m
 from middleware.app.config import settings
 from shared.schemas import (
+    Ack,
     Birth,
     Death,
     RobotStatusMsg,
@@ -181,7 +182,10 @@ async def handle_message(
                     "cascade": parsed.device_type == "edge",
                     "last_received_at": received_at.isoformat(),
                 })
-        # ack 는 증분 4(커맨드 변환기), estop_state 는 증분 7 에서 처리
+        elif isinstance(msg, Ack):
+            from middleware.app.commands import handle_ack  # 순환 import 회피
+            await handle_ack(conn, msg, received_at, publisher)
+        # estop_state 는 증분 7 에서 처리
 
 
 async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:

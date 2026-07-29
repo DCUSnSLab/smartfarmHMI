@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { ControlPanel } from "@/components/ControlPanel";
+import { ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { timeAgo, useMonitor } from "@/lib/monitor";
 
 const SENSOR_LABEL: Record<string, { name: string; unit: string }> = {
@@ -42,6 +43,7 @@ function ConnBadge({ state }: { state?: string }) {
 export default function Dashboard() {
   const [scope, setScope] = useState<string>("seongju"); // 2차년도 기본: 농장 1개
   const { farms, farmName, sensors, robots, conns, commands, wsOpen } = useMonitor(scope);
+  const user = useUser();
 
   const edgeConn = conns["edge-01"];
   const farmOnline = edgeConn?.state === "online";
@@ -76,6 +78,19 @@ export default function Dashboard() {
           <span className={`h-2 w-2 rounded-full ${wsOpen ? "bg-status-ok" : "bg-status-warning"}`} />
           {wsOpen ? "실시간 연결됨" : "실시간 연결 끊김"}
         </span>
+        {user && (
+          <span className="flex items-center gap-2">
+            <span className="rounded-xl bg-white px-3 py-1.5 text-[13px] font-bold shadow-sm">
+              {user.name}
+              <span className="ml-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-extrabold text-primary-dark">
+                {ROLE_LABEL[user.role]}
+              </span>
+            </span>
+            <button onClick={logout} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-bold text-gray-500">
+              로그아웃
+            </button>
+          </span>
+        )}
       </div>
 
       {scope === "all" ? (
@@ -141,8 +156,12 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* ── 환경 제어 (FR-10) ── */}
-          <ControlPanel farmId={scope} deviceId="growbed-01" commands={commands} disabled={!farmOnline} />
+          {/* ── 환경 제어 (FR-10) — viewer 는 조회 전용 ── */}
+          <ControlPanel
+            farmId={scope} deviceId="growbed-01" commands={commands}
+            disabled={!farmOnline || !canControl(user)}
+            disabledReason={!farmOnline ? "통신 단절 — 제어를 사용할 수 없습니다" : !canControl(user) ? "조회 전용 계정 — 제어 권한이 없습니다" : undefined}
+          />
 
           {/* ── 로봇 상태 (FR-04) ── */}
           <section className="mb-6">

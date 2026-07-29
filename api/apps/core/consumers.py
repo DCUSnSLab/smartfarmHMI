@@ -9,10 +9,29 @@
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from apps.accounts.auth import ACCESS_COOKIE, user_from_token
+
+
+def _cookie(scope, name: str) -> str | None:
+    for key, value in scope.get("headers", []):
+        if key == b"cookie":
+            for part in value.decode().split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == name:
+                    return v
+    return None
+
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        # TODO(증분 5): HttpOnly 쿠키 JWT 검증 + 농장 접근 권한 검사 (FR-31)
+        # 관문(①): 쿠키 JWT 검증 — 미인증 소켓은 데이터 수신 불가 (FR-31)
+        # WS 핸드셰이크는 브라우저가 same-origin 쿠키를 자동 첨부한다
+        raw = _cookie(self.scope, ACCESS_COOKIE)
+        self.user = user_from_token(raw) if raw else None
+        if self.user is None:
+            await self.close(code=4401)  # 미인증
+            return
+        # 농장별 접근 권한 분리는 OPN-07 확정 시 여기서 검사
         self._group: str | None = None
         await self.accept()
 

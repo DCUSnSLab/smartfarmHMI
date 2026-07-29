@@ -112,8 +112,8 @@ services:
 
   middleware:
     build:
-      context: ./middleware
-      dockerfile: Dockerfile
+      context: .                      # shared/ 포함 필요 → 루트 컨텍스트
+      dockerfile: middleware/Dockerfile
       target: dev
     env_file: .env
     environment:
@@ -138,8 +138,8 @@ services:
 
   edge-sim:
     build:
-      context: ./edge-sim
-      dockerfile: Dockerfile
+      context: .                      # shared/ 포함 필요 → 루트 컨텍스트
+      dockerfile: edge-sim/Dockerfile
     env_file: .env
     environment:
       MQTT_HOST: mosquitto

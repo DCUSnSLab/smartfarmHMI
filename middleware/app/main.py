@@ -1,10 +1,10 @@
 """미들웨어 서버 엔트리포인트.
 
-증분 0(스캐폴딩): /health 만 제공한다.
-증분 2 부터 lifespan 에 MQTT 구독 태스크(수집기)·내부 재발행기가 붙는다
-— component-internals.md §3.
+lifespan 에서 수집기(ingest_loop)·통신 상태 감시(connection_monitor)를 기동한다.
+내부 재발행기는 증분 3, 커맨드 변환기는 증분 4 — component-internals.md §3.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import aiomqtt
@@ -13,14 +13,21 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from middleware.app.config import settings
+from middleware.app.ingest import connection_monitor, ingest_loop
 
 engine = create_async_engine(settings.database_url, pool_size=5)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 증분 2: 여기서 MQTT 구독 태스크 기동 (asyncio.TaskGroup)
+    tasks = [
+        asyncio.create_task(ingest_loop(engine), name="ingest"),
+        asyncio.create_task(connection_monitor(engine), name="conn-monitor"),
+    ]
     yield
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
     await engine.dispose()
 
 

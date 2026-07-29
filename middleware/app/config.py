@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     mqtt_host: str = "mosquitto"
     mqtt_port: int = 1883
 
+    # 통신 상태 판정 주기 (통신 규격 §5)
+    conn_check_interval_sec: int = 10
+
     @property
     def database_url(self) -> str:
         return (

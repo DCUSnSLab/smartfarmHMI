@@ -128,7 +128,9 @@ async def _handle_death(conn, msg: Death, device_type: str, received_at: datetim
     )
 
 
-async def handle_message(engine: AsyncEngine, topic_str: str, payload: bytes) -> None:
+async def handle_message(
+    engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None
+) -> None:
     parsed = topics.parse_topic(topic_str)
     if parsed is None:
         return
@@ -145,17 +147,44 @@ async def handle_message(engine: AsyncEngine, topic_str: str, payload: bytes) ->
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "environment", {
+                    "device_id": msg.device_id, "sensor_id": msg.sensor_id,
+                    "sensor_type": msg.sensor_type, "value": msg.value, "unit": msg.unit,
+                    "sensor_state": msg.sensor_state, "ts": msg.timestamp.isoformat(),
+                })
         elif isinstance(msg, RobotStatusMsg):
             await _handle_robot_status(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "robot", {
+                    "device_id": msg.device_id,
+                    "pos_x": msg.position.x if msg.position else None,
+                    "pos_y": msg.position.y if msg.position else None,
+                    "speed": msg.speed, "battery_pct": msg.battery_pct,
+                    "charging": msg.charging, "mission_state": msg.mission_state,
+                    "ts": msg.timestamp.isoformat(),
+                })
         elif isinstance(msg, Birth):
             await _handle_birth(conn, msg, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "connection", {
+                    "device_id": msg.device_id, "state": "online",
+                    "last_received_at": received_at.isoformat(),
+                })
         elif isinstance(msg, Death):
             await _handle_death(conn, msg, parsed.device_type, received_at)
+            if publisher:
+                # 엣지 death 는 농장 전체 cascade — 화면은 farm 단위 오프라인 표시
+                publisher.publish(msg.farm_id, "connection", {
+                    "device_id": msg.device_id, "state": "offline",
+                    "cascade": parsed.device_type == "edge",
+                    "last_received_at": received_at.isoformat(),
+                })
         # ack 는 증분 4(커맨드 변환기), estop_state 는 증분 7 에서 처리
 
 
-async def ingest_loop(engine: AsyncEngine) -> None:
+async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:
     """엣지 토픽 구독 루프 — 재접속 포함."""
     while True:
         try:
@@ -167,7 +196,7 @@ async def ingest_loop(engine: AsyncEngine) -> None:
                 log.info("ingest: subscribed %s/# @ %s", topics.PREFIX, settings.mqtt_host)
                 async for message in client.messages:
                     try:
-                        await handle_message(engine, str(message.topic), message.payload)
+                        await handle_message(engine, str(message.topic), message.payload, publisher)
                     except Exception:  # 메시지 1건 실패가 루프를 죽이지 않게
                         log.exception("ingest: handler error on %s", message.topic)
         except aiomqtt.MqttError as e:
@@ -175,7 +204,7 @@ async def ingest_loop(engine: AsyncEngine) -> None:
             await asyncio.sleep(5)
 
 
-async def connection_monitor(engine: AsyncEngine) -> None:
+async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
     """주기 판정 — 수신 공백이 주기의 3배면 degraded, 10배면 offline (§5)."""
     while True:
         await asyncio.sleep(settings.conn_check_interval_sec)
@@ -205,5 +234,10 @@ async def connection_monitor(engine: AsyncEngine) -> None:
                         )
                         log.info("connection: %s/%s %s → %s (gap=%.0fs)",
                                  row["farm_id"], row["device_id"], row["state"], new_state, gap)
+                        if publisher:
+                            publisher.publish(row["farm_id"], "connection", {
+                                "device_id": row["device_id"], "state": new_state,
+                                "last_received_at": last.isoformat(),
+                            })
         except Exception:
             log.exception("connection_monitor error")

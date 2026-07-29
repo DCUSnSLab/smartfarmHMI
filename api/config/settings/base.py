@@ -60,6 +60,11 @@ DATABASES = {
     }
 }
 
+# ── 미들웨어 내부 REST / 내부 MQTT ──
+MIDDLEWARE_URL = env("MIDDLEWARE_URL", default="http://middleware:8001")
+MQTT_HOST = env("MQTT_HOST", default="mosquitto")
+MQTT_PORT = env.int("MQTT_PORT", default=1883)
+
 # ── Channels — Redis 채널 레이어 ──
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 CHANNEL_LAYERS = {

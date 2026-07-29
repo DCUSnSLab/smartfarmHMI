@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo',sans-serif;background:#F2F4F6;color:#191F28}
+.scr[data-hidden]{display:none}
+a{color:#00A05A;text-decoration:none}a:hover{color:#007A44}
+#__tip{position:fixed;z-index:12000;background:#191F28;color:#fff;font-size:12.5px;font-weight:600;padding:7px 11px;border-radius:9px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none;max-width:260px}
+[data-nav],[data-tab],[data-farm],[data-estop],[data-assistant],[data-notif],[data-bigfont],[data-toggle],[data-seg-item],[data-close]{cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#D1D6DB;border-radius:6px}
+</style>
+</helmet>
+<div data-app="" data-fs="0" style="min-height:100vh;letter-spacing:-0.2px">
+
+  <!-- ===== 비상정지 배너 (발동 시) ===== -->
+  <div data-estop-banner="" style="display:none;position:sticky;top:0;z-index:9000;background:linear-gradient(90deg,#D32030,#F04452);color:#fff;padding:14px 32px;align-items:center;gap:16px;box-shadow:0 4px 16px rgba(240,68,82,.4)">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 2 2 20h20L12 2z" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"></path><path d="M12 9v5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"></path><circle cx="12" cy="17.4" r="1.4" fill="#fff"></circle></svg>
+    <div style="flex:1"><div style="font-size:17px;font-weight:800">비상정지 발동됨 — 전 농장의 모든 로봇·설비 작동이 중단되었습니다</div><div style="font-size:13.5px;opacity:.92;margin-top:2px;font-weight:600">안전이 확인되면 관리자 권한으로 해제하세요. 해제 전까지 자동 스케줄과 원격 제어가 차단됩니다.</div></div>
+    <span data-estop-release="" style="background:#fff;color:#D32030;border-radius:12px;padding:11px 22px;font-size:15px;font-weight:800">비상정지 해제</span>
+  </div>
+
+  <!-- ===== 전역 상단 네비게이션 (모든 화면 고정) ===== -->
+  <div style="background:#fff;border-bottom:1px solid #EDF0F3;height:66px;display:flex;align-items:center;padding:0 28px;gap:22px;position:relative;z-index:60">
+    <div style="display:flex;align-items:center;gap:9px;flex:none" data-nav="dashboard">
+      <div style="width:34px;height:34px;border-radius:11px;background:#00A05A;display:flex;align-items:center;justify-content:center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 21v-8" stroke="#fff" stroke-width="2" stroke-linecap="round"></path><path d="M12 13c0-4.5 3.2-7.5 7.5-7.5 0 4.5-3.2 7.5-7.5 7.5z" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path><path d="M12 13c0-3.4-2.4-5.6-6-5.6 0 3.4 2.4 5.6 6 5.6z" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path></svg>
+      </div>
+      <div style="font-size:18px;font-weight:800;white-space:nowrap">팜온</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;flex:1" data-mainnav="">
+      <span data-mainnav-item="dashboard" style="padding:10px 17px;border-radius:11px;background:#E7F7EF;color:#007A44;font-size:15px;font-weight:700;white-space:nowrap" data-nav="dashboard">통합 대시보드</span>
+      <span data-mainnav-item="stats" style="padding:10px 17px;border-radius:11px;color:#4E5968;font-size:15px;font-weight:600;white-space:nowrap" data-nav="stats">통계·분석</span>
+      <span data-mainnav-item="journal" style="padding:10px 17px;border-radius:11px;color:#4E5968;font-size:15px;font-weight:600;white-space:nowrap" data-nav="journal">농업일지</span>
+      <span data-mainnav-item="settings" style="padding:10px 17px;border-radius:11px;color:#4E5968;font-size:15px;font-weight:600;white-space:nowrap" data-nav="settings">설정</span>
+      <span data-mainnav-item="support" style="padding:10px 17px;border-radius:11px;color:#4E5968;font-size:15px;font-weight:600;white-space:nowrap" data-nav="support">지원</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px">
+      <!-- 가 큰글씨 (전역 고정, 2단계) -->
+      <div style="display:flex;align-items:center;gap:3px;background:#F2F4F6;border-radius:999px;padding:4px">
+        <span data-bigfont-dec="" data-tip="글자·버튼 작게" style="width:32px;height:32px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#4E5968;box-shadow:0 1px 3px rgba(0,0,0,.08)">−</span>
+        <span style="display:flex;align-items:center;gap:5px;padding:0 6px"><span style="font-size:11px;font-weight:700;color:#8B95A1">가</span><span style="font-size:16px;font-weight:800;color:#333D4B">가</span><span data-bigfont-label="" style="font-size:13px;font-weight:800;color:#4E5968;min-width:52px;text-align:center">표준</span></span>
+        <span data-bigfont-inc="" data-tip="글자·버튼 크게" style="width:32px;height:32px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#00A05A;box-shadow:0 1px 3px rgba(0,0,0,.08)">+</span>
+      </div>
+      <!-- 알림 -->
+      <div style="position:relative">
+        <div data-notif="" style="position:relative;width:42px;height:42px;border-radius:50%;background:#F2F4F6;display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 1 1 12 0v3.8l1.4 2.7H4.6L6 12.8V9z" stroke="#4E5968" stroke-width="2" stroke-linejoin="round"></path><path d="M10 19a2 2 0 0 0 4 0" stroke="#4E5968" stroke-width="2" stroke-linecap="round"></path></svg>
+          <span style="position:absolute;top:-1px;right:-1px;background:#F04452;color:#fff;font-size:11px;font-weight:800;border-radius:999px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 4px">3</span>
+        </div>
+        <div data-notif-panel="" style="display:none;position:absolute;top:52px;right:0;width:340px;background:#fff;border:1px solid #EDF0F3;border-radius:18px;box-shadow:0 14px 40px rgba(25,31,40,.16);padding:14px;z-index:200">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:15px;font-weight:800">알림 3건</span><span data-nav="alerts" style="font-size:12.5px;font-weight:700;color:#00A05A">전체 보기</span></div>
+          <div data-nav="farm-alerts" data-farm="pyeongtaek" style="display:flex;gap:10px;padding:11px;border-radius:12px;background:#FDEBEE;margin-bottom:6px"><span style="width:8px;height:8px;border-radius:50%;background:#F04452;margin-top:5px;flex:none"></span><div><div style="font-size:13.5px;font-weight:800">평택 상추 식물공장 · 양액 부족</div><div style="font-size:12px;color:#8B95A1;font-weight:600;margin-top:2px">양액 탱크 잔량 15% · 3분 전</div></div></div>
+          <div data-nav="farm-alerts" data-farm="hwaseong" style="display:flex;gap:10px;padding:11px;border-radius:12px;background:#FFF6E9;margin-bottom:6px"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623;margin-top:5px;flex:none"></span><div><div style="font-size:13.5px;font-weight:800">화성 딸기 · 센서 응답 지연</div><div style="font-size:12px;color:#8B95A1;font-weight:600;margin-top:2px">2번 베드 습도센서 · 12분 전</div></div></div>
+          <div data-nav="farm-alerts" data-farm="seongju" style="display:flex;gap:10px;padding:11px;border-radius:12px;background:#F2F4F6"><span style="width:8px;height:8px;border-radius:50%;background:#00A05A;margin-top:5px;flex:none"></span><div><div style="font-size:13.5px;font-weight:800">성주 참외 · 방제 작업 완료</div><div style="font-size:12px;color:#8B95A1;font-weight:600;margin-top:2px">로봇 R-2 · 26분 전</div></div></div>
+        </div>
+      </div>
+      <!-- 사용자·롤 -->
+      <div style="position:relative">
+        <div data-usermenu="" style="display:flex;align-items:center;gap:9px;background:#F2F4F6;border-radius:999px;padding:5px 14px 5px 5px">
+          <div style="width:32px;height:32px;border-radius:50%;background:#E7F7EF;color:#00A05A;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">최</div>
+          <div style="display:flex;flex-direction:column;line-height:1.1"><span style="font-size:14px;font-weight:800">최대농</span><span style="font-size:11px;font-weight:700;color:#8B95A1">관리자</span></div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#8B95A1" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div data-usermenu-panel="" style="display:none;position:absolute;top:52px;right:0;width:220px;background:#fff;border:1px solid #EDF0F3;border-radius:16px;box-shadow:0 14px 40px rgba(25,31,40,.16);padding:8px;z-index:200">
+          <div style="padding:10px 12px;border-bottom:1px solid #F2F4F6;margin-bottom:4px"><div style="font-size:14px;font-weight:800">최대농</div><div style="font-size:12px;color:#8B95A1;font-weight:600">manager@farmon.kr · 관리자</div></div>
+          <div data-nav="settings" style="padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:700;color:#4E5968">계정·권한 설정</div>
+          <div data-nav="support" style="padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:700;color:#4E5968">지원 센터</div>
+          <div style="padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:700;color:#F04452">로그아웃</div>
+        </div>
+      </div>
+      <!-- 비상정지 -->
+      <span data-estop="" data-tip="전 농장 로봇·설비를 즉시 정지합니다" style="display:flex;align-items:center;gap:8px;background:#FDEBEE;color:#E01F35;border:1.5px solid #F7B9C0;border-radius:12px;padding:10px 16px;font-size:14.5px;font-weight:800">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#E01F35" stroke-width="2.2"></circle><rect x="8.5" y="8.5" width="7" height="7" rx="1.2" fill="#E01F35"></rect></svg>
+        비상정지
+      </span>
+    </div>
+  </div>
+
+  <!-- ===== 스코프 스위처 (통합 대시보드 진입 시) ===== -->
+  <div data-scopebar="" style="background:#fff;border-bottom:1px solid #EDF0F3;padding:12px 28px;display:flex;align-items:center;gap:10px;position:relative;z-index:50">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1">
+      <span data-scope-pill="all" data-nav="dashboard" style="background:#00A05A;color:#fff;border-radius:999px;padding:9px 18px;font-size:14.5px;font-weight:700;white-space:nowrap">전체</span>
+      <span data-scope-pill="seongju" data-nav="farm-status" data-farm="seongju" style="background:#fff;border:1px solid #E5E8EB;border-radius:999px;padding:9px 16px;font-size:14.5px;font-weight:600;color:#4E5968;display:flex;align-items:center;gap:7px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span>성주 참외 온실</span>
+      <span data-scope-pill="hwaseong" data-nav="farm-status" data-farm="hwaseong" style="background:#fff;border:1px solid #E5E8EB;border-radius:999px;padding:9px 16px;font-size:14.5px;font-weight:600;color:#4E5968;display:flex;align-items:center;gap:7px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:50%;background:#FF8A00"></span>화성 딸기 스마트팜</span>
+      <span data-scope-pill="pyeongtaek" data-nav="farm-status" data-farm="pyeongtaek" style="background:#fff;border:1px solid #E5E8EB;border-radius:999px;padding:9px 16px;font-size:14.5px;font-weight:600;color:#4E5968;display:flex;align-items:center;gap:7px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:50%;background:#F04452"></span>평택 상추 식물공장</span>
+      <span data-scope-pill="gimje" data-nav="farm-status" data-farm="gimje" style="background:#fff;border:1px solid #E5E8EB;border-radius:999px;padding:9px 16px;font-size:14.5px;font-weight:600;color:#4E5968;display:flex;align-items:center;gap:7px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span>김제 벼 논<span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:5px;padding:1px 6px">실외</span></span>
+    </div>
+  </div>
+
+  <!-- ===== 농장 서브 탭 바 (농장 선택 시) ===== -->
+  <div data-farmtabs="" style="display:none;background:#fff;border-bottom:1px solid #EDF0F3;padding:0 28px;flex-direction:row;align-items:center;gap:16px;position:relative;z-index:40">
+    
+    <div style="display:flex;gap:0" data-farmtabrow="">
+      <span data-tab="farm-status" style="padding:13px 20px;font-size:16px;font-weight:800;color:#007A44;border-bottom:3px solid #00A05A">상태</span>
+      <span data-tab="farm-env" style="padding:13px 20px;font-size:16px;font-weight:600;color:#6B7684;border-bottom:3px solid transparent">생육기·센서</span>
+      <span data-tab="farm-robot" style="padding:13px 20px;font-size:16px;font-weight:600;color:#6B7684;border-bottom:3px solid transparent">로봇</span>
+      <span data-tab="farm-supply" style="padding:13px 20px;font-size:16px;font-weight:600;color:#6B7684;border-bottom:3px solid transparent">작업·공급</span>
+      <span data-tab="farm-alerts" style="padding:13px 20px;font-size:16px;font-weight:600;color:#6B7684;border-bottom:3px solid transparent">알림</span>
+    </div>
+    <span style="flex:1"></span>
+    <span data-farmtype="" style="font-size:12.5px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:4px 11px;flex:none">온실 · 참외</span>
+    <span data-farmstatus="" style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 13px;display:flex;align-items:center;gap:6px;flex:none"><span style="width:7px;height:7px;border-radius:50%;background:#00C271"></span>정상 가동</span>
+    <span data-farmwx="" style="font-size:13.5px;color:#4E5968;font-weight:700;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.5" stroke="#F5A623" stroke-width="2"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" stroke="#F5A623" stroke-width="2" stroke-linecap="round"></path></svg>성주 구름많음 30.2℃</span>
+  </div>
+
+  <!-- ============ 화면들 ============ -->
+
+  <!-- 통합 대시보드 A (전체) -->
+  <div class="scr" data-screen="dashboard">
+    <div data-screen-label="통합 대시보드 · 전체" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between">
+        <div><div style="font-size:22px;font-weight:800">전체 현황 <span style="color:#8B95A1;font-size:15px;font-weight:700">스마트팜 4곳</span></div><div style="font-size:14px;color:#8B95A1;font-weight:600;margin-top:4px">2026년 7월 21일 화요일 오후 3:49</div></div>
+        <span style="font-size:13px;color:#8B95A1;font-weight:600;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#00C271"></span>실시간 연결됨 · 방금 업데이트</span>
+      </div>
+
+      <!-- Fleet KPI -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+        <div style="background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 2px 8px rgba(25,31,40,.05)"><div style="font-size:13.5px;color:#8B95A1;font-weight:700">운영 농장</div><div style="font-size:30px;font-weight:800;margin-top:4px">4<span style="font-size:15px;color:#8B95A1"> 곳</span></div><div style="font-size:12.5px;font-weight:700;color:#00A05A;margin-top:2px">정상 2 · 주의 1 · 경고 1</div></div>
+        <div style="background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 2px 8px rgba(25,31,40,.05)"><div style="font-size:13.5px;color:#8B95A1;font-weight:700">가동 로봇</div><div style="font-size:30px;font-weight:800;margin-top:4px">7<span style="font-size:15px;color:#8B95A1"> / 9대</span></div><div style="font-size:12.5px;font-weight:700;color:#8B95A1;margin-top:2px">충전 중 2 · 이상 0</div></div>
+        <div style="background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 2px 8px rgba(25,31,40,.05)"><div style="font-size:13.5px;color:#8B95A1;font-weight:700">오늘 작업</div><div style="font-size:30px;font-weight:800;margin-top:4px">18<span style="font-size:15px;color:#8B95A1"> 건</span></div><div style="font-size:12.5px;font-weight:700;color:#8B95A1;margin-top:2px">완료 11 · 예정 7</div></div>
+        <div data-nav="alerts" style="background:#fff;border-radius:18px;padding:18px 20px;box-shadow:0 2px 8px rgba(25,31,40,.05)"><div style="font-size:13.5px;color:#8B95A1;font-weight:700">미확인 알림</div><div style="font-size:30px;font-weight:800;margin-top:4px;color:#F04452">3<span style="font-size:15px;color:#8B95A1"> 건</span></div><div style="font-size:12.5px;font-weight:700;color:#F04452;margin-top:2px">경고 1 · 주의 2<br></div></div>
+      </div>
+
+      <!-- 농장 요약 카드 (클릭 → 딥링크) -->
+      <div>
+        <div style="font-size: 18px; font-weight: 800; margin-bottom: 10px; position: relative">농장별 현황 </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px" data-farmcards="">
+          <div data-nav="farm-status" data-farm="seongju" style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="width:9px;height:9px;border-radius:50%;background:#00C271"></span><span style="font-size:18px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">성주 참외 온실</span><span data-tip="성주 · 구름많음 · 강수 0mm · 차광 권장" style="flex:none;display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;color:#4E5968;background:#F2F4F6;border-radius:8px;padding:4px 9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M7 17a4 4 0 0 1 .5-7.94A5 5 0 0 1 17 10a3.5 3.5 0 0 1 0 7H7z" stroke="#8B95A1" stroke-width="1.8" stroke-linejoin="round"></path></svg>30.2°</span><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            <div style="display:flex;justify-content:space-between;text-align:center;padding-bottom:14px;border-bottom:1px solid #F2F4F6"><div style="flex:1"><div style="font-size:22px;font-weight:800">24.8<span style="font-size:12px;color:#8B95A1">℃</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">내부온도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">58<span style="font-size:12px;color:#8B95A1">%</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">습도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">512<span style="font-size:11px;color:#8B95A1">ppm</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">CO₂</div></div></div>
+            <div style="display:flex;justify-content:space-around;padding-top:14px">
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="118 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">82%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">급수</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#F5A623" stroke-width="6" stroke-linecap="round" stroke-dasharray="92 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">64%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">양액</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="118 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">82%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">방제액</div></div>
+            </div>
+          </div>
+          <div data-nav="farm-status" data-farm="hwaseong" style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="width:9px;height:9px;border-radius:50%;background:#FF8A00"></span><span style="font-size:18px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">화성 딸기 스마트팜</span><span data-tip="화성 · 맑음 · 강수 0mm · 환기 양호" style="flex:none;display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;color:#4E5968;background:#F2F4F6;border-radius:8px;padding:4px 9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.5" stroke="#F5A623" stroke-width="2"></circle><path d="M12 4v1.5M12 18.5V20M4 12h1.5M18.5 12H20M6.3 6.3l1 1M16.7 16.7l1 1M17.7 6.3l-1 1M7.3 16.7l-1 1" stroke="#F5A623" stroke-width="2" stroke-linecap="round"></path></svg>29.1°</span><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            <div style="display:flex;justify-content:space-between;text-align:center;padding-bottom:14px;border-bottom:1px solid #F2F4F6"><div style="flex:1"><div style="font-size:22px;font-weight:800">22.1<span style="font-size:12px;color:#8B95A1">℃</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">내부온도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">65<span style="font-size:12px;color:#8B95A1">%</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">습도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">646<span style="font-size:11px;color:#8B95A1">ppm</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">CO₂</div></div></div>
+            <div style="display:flex;justify-content:space-around;padding-top:14px">
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="127 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">88%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">급수</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#F04452" stroke-width="6" stroke-linecap="round" stroke-dasharray="22 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="14" font-weight="800" fill="#F04452">15%</text></svg><div style="font-size:12px;color:#F04452;font-weight:700">양액 부족</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="75 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">52%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">방제액</div></div>
+            </div>
+          </div>
+          <div data-nav="farm-status" data-farm="pyeongtaek" style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.05);border:1.5px solid #FADBDF">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="width:9px;height:9px;border-radius:50%;background:#F04452"></span><span style="font-size:18px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">평택 상추 식물공장</span><span data-tip="평택 · 흐림 · 강수 0mm" style="flex:none;display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;color:#4E5968;background:#F2F4F6;border-radius:8px;padding:4px 9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M7 17a4 4 0 0 1 .5-7.94A5 5 0 0 1 17 10a3.5 3.5 0 0 1 0 7H7z" stroke="#8B95A1" stroke-width="1.8" stroke-linejoin="round"></path></svg>28.4°</span><span style="font-size:11px;font-weight:800;color:#fff;background:#F04452;border-radius:6px;padding:2px 8px">경고</span><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            <div style="display:flex;justify-content:space-between;text-align:center;padding-bottom:14px;border-bottom:1px solid #F2F4F6"><div style="flex:1"><div style="font-size:22px;font-weight:800;color:#F04452">28.7<span style="font-size:12px;color:#8B95A1">℃</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">내부온도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">80<span style="font-size:12px;color:#8B95A1">%</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">습도</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">590<span style="font-size:11px;color:#8B95A1">ppm</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">CO₂</div></div></div>
+            <div style="display:flex;justify-content:space-around;padding-top:14px">
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="131 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">91%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">급수</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#F5A623" stroke-width="6" stroke-linecap="round" stroke-dasharray="68 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">47%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">양액</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="95 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">66%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">세정액</div></div>
+            </div>
+          </div>
+          <div data-nav="farm-status" data-farm="gimje" style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="width:9px;height:9px;border-radius:50%;background:#00C271"></span><span style="font-size:18px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">김제 벼 논</span><span data-tip="김제 · 구름조금 · 강수 0mm · 관수 확인 권장" style="flex:none;display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;color:#4E5968;background:#F2F4F6;border-radius:8px;padding:4px 9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="10" r="3.5" stroke="#F5A623" stroke-width="1.8"></circle><path d="M8 17a3.5 3.5 0 0 1 .4-7A4.5 4.5 0 0 1 18 10.5a3 3 0 0 1 0 6.5H8z" stroke="#8B95A1" stroke-width="1.8" stroke-linejoin="round" fill="#fff"></path></svg>31.5°</span><span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:5px;padding:1px 6px">실외</span><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
+            <div style="display:flex;justify-content:space-between;text-align:center;padding-bottom:14px;border-bottom:1px solid #F2F4F6"><div style="flex:1"><div style="font-size:22px;font-weight:800">27.4<span style="font-size:12px;color:#8B95A1">℃</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">기온</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">61<span style="font-size:12px;color:#8B95A1">%</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">토양수분</div></div><div style="flex:1"><div style="font-size:22px;font-weight:800">2.1<span style="font-size:11px;color:#8B95A1">㎧</span></div><div style="font-size:12px;color:#8B95A1;font-weight:600">풍속</div></div></div>
+            <div style="display:flex;justify-content:space-around;padding-top:14px">
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="110 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">76%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">용수</div></div>
+              <div style="text-align:center"><svg width="52" height="52" viewBox="0 0 56 56"><circle cx="28" cy="28" r="23" fill="none" stroke="#F2F4F6" stroke-width="6"></circle><circle cx="28" cy="28" r="23" fill="none" stroke="#00A05A" stroke-width="6" stroke-linecap="round" stroke-dasharray="84 144.5" transform="rotate(-90 28 28)"></circle><text x="28" y="33" text-anchor="middle" font-size="15" font-weight="800" fill="#191F28">58%</text></svg><div style="font-size:12px;color:#6B7684;font-weight:600">방제액</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 알림 + 오늘 작업 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:17px;font-weight:800">전체 알림</span><span data-nav="alerts" style="font-size:13px;font-weight:700;color:#00A05A">모두 보기</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div data-nav="farm-supply" data-farm="pyeongtaek" style="display:flex;gap:11px;align-items:center;padding:13px 14px;border-radius:13px;background:#FDEBEE"><span style="width:9px;height:9px;border-radius:50%;background:#F04452;flex:none"></span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">평택 상추 · 양액 탱크 잔량 15%</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">보충 필요 · 3분 전</div></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+            <div data-nav="farm-env" data-farm="hwaseong" style="display:flex;gap:11px;align-items:center;padding:13px 14px;border-radius:13px;background:#FFF6E9"><span style="width:9px;height:9px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">화성 딸기 · 2번 베드 습도센서 응답 지연</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">점검 권장 · 12분 전</div></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+            <div data-nav="farm-status" data-farm="pyeongtaek" style="display:flex;gap:11px;align-items:center;padding:13px 14px;border-radius:13px;background:#FFF6E9"><span style="width:9px;height:9px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">평택 상추 · 내부온도 28.7℃ 상한 근접</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">환기 가동 중 · 21분 전</div></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+          </div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:17px;font-weight:800">오늘 예정 작업</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div data-nav="farm-supply" data-farm="seongju" style="display:flex;gap:12px;align-items:center;padding:13px 14px;border-radius:13px;background:#F2F4F6"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">16:00</span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">성주 참외 · 양액 공급 (A동 12트레이)</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">로봇 R-1 · 워크스테이션 2</div></div></div>
+            <div data-nav="farm-supply" data-farm="hwaseong" style="display:flex;gap:12px;align-items:center;padding:13px 14px;border-radius:13px;background:#F2F4F6"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">17:30</span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">화성 딸기 · 급수 (전체 베드)</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">로봇 R-3 · 자동 스케줄</div></div></div>
+            <div data-nav="farm-supply" data-farm="pyeongtaek" style="display:flex;gap:12px;align-items:center;padding:13px 14px;border-radius:13px;background:#F2F4F6"><span style="font-size:13px;font-weight:800;color:#E07800;background:#FFF3E0;border-radius:8px;padding:5px 9px">18:00</span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">평택 상추 · 방제 (2·3번 랙)</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">양액 보충 후 진행</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 농장 상세: 상태 -->
+  <div class="scr" data-screen="farm-status" data-hidden="1">
+    <div data-screen-label="농장 상세 · 상태" style="padding:22px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <!-- 상단: AI 상태요약·긴급알림(좌) + 지역 날씨(우) -->
+      <div style="display:grid;grid-template-columns:7fr 5fr;gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.05)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+            <span style="width:32px;height:32px;border-radius:10px;background:#E7F7EF;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3l1.9 4.6L18.5 9l-3.6 3.1L16 17l-4-2.6L8 17l1.1-4.9L5.5 9l4.6-1.4L12 3z" fill="#00A05A"></path></svg></span>
+            <span style="font-size:16px;font-weight:800">AI 상태 요약</span>
+            <span style="margin-left:auto;font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 13px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#00C271"></span>정상 가동</span>
+          </div>
+          <div style="font-size:14.5px;font-weight:700;color:#333D4B;line-height:1.6;background:#F7F9FA;border-radius:14px;padding:14px 16px">내부 환경 <b style="color:#00A05A">적정</b> · 외기 30.2℃로 <b style="color:#E07800">차광 40% 자동 적용</b> · C동 조도센서 <b style="color:#E07800">응답 지연</b> · 16:00 양액 공급 예정</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <span data-tab="farm-env" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;background:#FFF6E9"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623;flex:none"></span><span style="font-size:13px;font-weight:800;flex:1">조도센서 점검</span><span style="font-size:11.5px;font-weight:800;color:#E07800">주의</span></span>
+            <span data-tab="farm-status" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;background:#E7F7EF"><span style="width:8px;height:8px;border-radius:50%;background:#00C271;flex:none"></span><span style="font-size:13px;font-weight:800;flex:1">차광 40% 적용</span><span style="font-size:11.5px;font-weight:800;color:#00A05A">완료</span></span>
+          </div>
+        </div>
+        <div style="background:linear-gradient(135deg,#D2E6FF,#EAF4FF);border-radius:20px;padding:22px;border:1px solid #B9D5F8">
+          <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:16px;font-weight:800;color:#0B3D91" data-farmwxregion="">성주 지역 날씨</div><span style="font-size:12px;font-weight:700;color:#1B64DA;background:#fff;border-radius:7px;padding:3px 10px">외부 기상 연동</span></div>
+          <div style="display:flex;align-items:center;gap:16px;margin-top:14px"><svg width="56" height="56" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="9" r="4" stroke="#F5A623" stroke-width="2"></circle><path d="M8 16a4 4 0 0 1 .4-8A5 5 0 0 1 19 9.5a3.5 3.5 0 0 1-.4 6.5H8z" stroke="#5B7BAA" stroke-width="1.9" stroke-linejoin="round" fill="#fff"></path></svg><div><div style="font-size:34px;font-weight:800;color:#0B3D91">30.2℃</div><div style="font-size:13.5px;color:#3A5A86;font-weight:700">구름많음 · 습도 55% · 강수 0mm</div></div></div>
+          <div style="display:flex;gap:8px;margin-top:14px"><div style="flex:1;background:#fff;border-radius:12px;padding:11px 13px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">바람</div><div style="font-size:16px;font-weight:800">남 2.4㎧</div></div><div style="flex:1;background:#fff;border-radius:12px;padding:11px 13px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">일사량</div><div style="font-size:16px;font-weight:800;color:#E07800">높음</div></div></div>
+          <div style="font-size:13px;color:#fff;font-weight:800;background:#1B64DA;border-radius:11px;padding:11px 13px;margin-top:12px;line-height:1.5">외기 30℃·강한 일사 → <b>차광 40% + 천창 개방</b> 권장 · 자동 환기 조건 충족</div>
+        </div>
+      </div>
+
+      <!-- 스마트팜 배치도(설계도) + 하드웨어 리스트 -->
+      <div style="display:grid;grid-template-columns:8fr 4fr;gap:14px">
+        
+        <!-- 하드웨어 리스트 -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+            <div><div style="font-size:16px;font-weight:800">실시간 배치도</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600;margin-top:3px">요소를 누르면 센서·로봇·설비 상세로 이동해요</div></div>
+            <div style="display:flex;gap:14px;flex:none">
+              <span style="font-size:12px;font-weight:700;color:#6B7684;display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#00A05A"></span>로봇</span>
+              <span style="font-size:12px;font-weight:700;color:#6B7684;display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#3182F6"></span>센서</span>
+              <span style="font-size:12px;font-weight:700;color:#6B7684;display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#E07800"></span>탱크</span>
+              <span style="font-size:12px;font-weight:700;color:#6B7684;display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:#7C4DCC"></span>워크스테이션</span>
+            </div>
+          </div>
+          
+          <div style="position:relative;border-radius:16px;overflow:hidden;height:360px;background:#F2F6F3;border:1px solid #E5E8EB">
+            <svg width="100%" height="100%" viewBox="0 0 760 360" preserveAspectRatio="none" style="display:block;position:absolute;inset:0">
+              <rect x="14" y="14" width="732" height="332" rx="14" fill="#FBFDFC" stroke="#CBD6CE" stroke-width="2"></rect>
+              <rect x="14" y="150" width="10" height="70" fill="#00A05A"></rect>
+              <g fill="#E7EFE9" stroke="#CBD6CE" stroke-width="1.5">
+                <rect x="60" y="50" width="150" height="110" rx="8"></rect>
+                <rect x="60" y="200" width="150" height="110" rx="8"></rect>
+                <rect x="250" y="50" width="150" height="110" rx="8"></rect>
+                <rect x="250" y="200" width="150" height="110" rx="8"></rect>
+              </g>
+              <g stroke="#D6DED7" stroke-width="1"><path d="M60 85h150M60 120h150M60 235h150M60 270h150M250 85h150M250 120h150M250 235h150M250 270h150"></path></g>
+              <path d="M225 40 V320" stroke="#DDE3DE" stroke-width="2" stroke-dasharray="4 6"></path>
+              <path d="M225 180 H470" stroke="#9FDDBE" stroke-width="2.5" stroke-dasharray="3 7"></path>
+              <rect x="430" y="44" width="150" height="272" rx="12" fill="#F3EFFB" stroke="#D9CBF2" stroke-width="1.5" stroke-dasharray="5 5"></rect>
+              <rect x="612" y="44" width="122" height="272" rx="12" fill="#FDF2E4" stroke="#F1D3A8" stroke-width="1.5" stroke-dasharray="5 5"></rect>
+            </svg>
+            <div style="position:absolute;left:8%;top:10%;font-size:11px;font-weight:800;color:#8B95A1">A동 랙</div>
+            <div style="position:absolute;left:8%;top:52%;font-size:11px;font-weight:800;color:#8B95A1">B동 랙</div>
+            <div style="position:absolute;left:33%;top:10%;font-size:11px;font-weight:800;color:#8B95A1">C동 랙</div>
+            <div style="position:absolute;left:1%;top:33%;font-size:10.5px;font-weight:800;color:#00A05A;writing-mode:vertical-rl">입구</div>
+            <div style="position:absolute;left:58.5%;top:6.5%;transform:translateX(-50%);font-size:10.5px;font-weight:800;color:#7C4DCC">작업 위치</div>
+            <div style="position:absolute;left:88.5%;top:6.5%;transform:translateX(-50%);font-size:10.5px;font-weight:800;color:#E07800">탱크</div>
+            <!-- 워크스테이션 (로봇이 트레이를 운반해 작업하는 위치) -->
+            <span data-tab="farm-supply" data-tip="WS2 양액 스테이션 · 트레이 작업 위치 · 가동 중 (R-1)" style="position:absolute;left:58.5%;top:22%;transform:translate(-50%,-50%);background:#7C4DCC;color:#fff;font-size:11.5px;font-weight:800;border-radius:8px;padding:6px 10px;box-shadow:0 3px 8px rgba(124,77,204,.35)">WS2 양액</span>
+            <span data-tab="farm-supply" data-tip="WS1 급수 스테이션 · 트레이 작업 위치 · 대기" style="position:absolute;left:58.5%;top:50%;transform:translate(-50%,-50%);background:#EEE9F8;color:#5B33A6;font-size:11.5px;font-weight:800;border-radius:8px;padding:6px 10px;border:1.5px solid #C9B6EC">WS1 급수</span>
+            <span data-tab="farm-supply" data-tip="WS3 방제 스테이션 · 트레이 작업 위치 · 대기" style="position:absolute;left:58.5%;top:78%;transform:translate(-50%,-50%);background:#EEE9F8;color:#5B33A6;font-size:11.5px;font-weight:800;border-radius:8px;padding:6px 10px;border:1.5px solid #C9B6EC">WS3 방제</span>
+            <!-- 탱크 3기 (양액·급수·방제) -->
+            <span data-tab="farm-supply" data-tip="양액 탱크 · 잔량 64%" style="position:absolute;left:88.5%;top:22%;transform:translate(-50%,-50%);background:#E07800;color:#fff;font-size:11px;font-weight:800;border-radius:7px;padding:6px 10px;box-shadow:0 3px 8px rgba(224,120,0,.3)">양액 64%</span>
+            <span data-tab="farm-supply" data-tip="급수 탱크 · 잔량 82%" style="position:absolute;left:88.5%;top:50%;transform:translate(-50%,-50%);background:#3182F6;color:#fff;font-size:11px;font-weight:800;border-radius:7px;padding:6px 10px;box-shadow:0 3px 8px rgba(49,130,246,.3)">급수 82%</span>
+            <span data-tab="farm-supply" data-tip="방제액 탱크 · 잔량 82%" style="position:absolute;left:88.5%;top:78%;transform:translate(-50%,-50%);background:#00A05A;color:#fff;font-size:11px;font-weight:800;border-radius:7px;padding:6px 10px;box-shadow:0 3px 8px rgba(0,160,90,.3)">방제 82%</span>
+            <!-- 센서 -->
+            <span data-tab="farm-env" data-tip="온도센서 A · 24.8℃ · 정상" style="position:absolute;left:16%;top:22%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#3182F6;box-shadow:0 2px 6px rgba(49,130,246,.4);border:2px solid #fff"></span>
+            <span data-tab="farm-env" data-tip="습도센서 A · 58% · 정상" style="position:absolute;left:24%;top:40%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#3182F6;box-shadow:0 2px 6px rgba(49,130,246,.4);border:2px solid #fff"></span>
+            <span data-tab="farm-env" data-tip="CO₂센서 · 512ppm · 정상" style="position:absolute;left:16%;top:70%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#3182F6;box-shadow:0 2px 6px rgba(49,130,246,.4);border:2px solid #fff"></span>
+            <span data-tab="farm-env" data-tip="조도센서 C · 응답 지연 · 점검 필요" style="position:absolute;left:33%;top:26%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#F5A623;box-shadow:0 0 0 4px rgba(245,166,35,.25);border:2px solid #fff"></span>
+            <span data-tab="farm-env" data-tip="토양센서 C · 22.4℃ · 정상" style="position:absolute;left:41%;top:66%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#3182F6;box-shadow:0 2px 6px rgba(49,130,246,.4);border:2px solid #fff"></span>
+            <!-- 로봇 -->
+            <span data-tab="farm-robot" data-tip="R-1 운반로봇 · 작업 중 (A동 → WS2) · 배터리 78%" style="position:absolute;left:48%;top:30%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;background:#00A05A;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:5px 11px;box-shadow:0 4px 10px rgba(0,160,90,.4)"><span style="width:7px;height:7px;border-radius:50%;background:#fff"></span>R-1</span>
+            <span data-tab="farm-robot" data-tip="R-2 방제로봇 · 대기 (기계실) · 배터리 94%" style="position:absolute;left:44%;top:88%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;background:#00A05A;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:5px 11px;box-shadow:0 4px 10px rgba(0,160,90,.4)"><span style="width:7px;height:7px;border-radius:50%;background:#fff"></span>R-2</span>
+            <span data-tab="farm-robot" data-tip="R-3 운반로봇 · 자동 충전 중 (충전 스테이션) · 배터리 32%" style="position:absolute;left:9%;top:88%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;background:#E07800;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:5px 11px;box-shadow:0 4px 10px rgba(224,120,0,.35)"><span style="width:7px;height:7px;border-radius:50%;background:#fff"></span>R-3</span>
+          </div>
+        </div><div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><span style="font-size:16px;font-weight:800">하드웨어</span><span style="font-size:12.5px;color:#8B95A1;font-weight:700">12대</span></div>
+          
+          <div style="display:flex;flex-direction:column;gap:7px;overflow:auto;max-height:344px;padding-right:4px">
+            <div style="font-size:11.5px;font-weight:800;color:#B0B8C1;padding:2px 2px 0">로봇 3</div>
+            <div data-tab="farm-robot" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">R-1 운반로봇</span><span style="font-size:12px;color:#00A05A;font-weight:700">작업 중</span></div>
+            <div data-tab="farm-robot" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">R-2 방제로봇</span><span style="font-size:12px;color:#8B95A1;font-weight:700">대기</span></div>
+            <div data-tab="farm-robot" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623"></span><span style="flex:1;font-size:13.5px;font-weight:700">R-3 운반로봇</span><span style="font-size:12px;color:#E07800;font-weight:700">충전</span></div>
+            <div style="font-size:11.5px;font-weight:800;color:#B0B8C1;padding:6px 2px 0">센서 5</div>
+            <div data-tab="farm-env" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">온도센서 A</span><span style="font-size:12px;color:#4E5968;font-weight:700">24.8℃</span></div>
+            <div data-tab="farm-env" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">습도센서 A</span><span style="font-size:12px;color:#4E5968;font-weight:700">58%</span></div>
+            <div data-tab="farm-env" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#FFF6E9"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623"></span><span style="flex:1;font-size:13.5px;font-weight:700">조도센서 C</span><span style="font-size:12px;color:#E07800;font-weight:700">지연</span></div>
+            <div data-tab="farm-env" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">CO₂센서</span><span style="font-size:12px;color:#4E5968;font-weight:700">512ppm</span></div>
+            <div data-tab="farm-env" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">토양센서 C</span><span style="font-size:12px;color:#4E5968;font-weight:700">22.4℃</span></div>
+            <div style="font-size:11.5px;font-weight:800;color:#B0B8C1;padding:6px 2px 0">탱크 3 · 워크스테이션 3</div>
+            <div data-tab="farm-supply" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623"></span><span style="flex:1;font-size:13.5px;font-weight:700">양액 탱크</span><span style="font-size:12px;color:#E07800;font-weight:700">64%</span></div>
+            <div data-tab="farm-supply" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:11px;background:#F7F9FA"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:13.5px;font-weight:700">WS2 양액 스테이션</span><span style="font-size:12px;color:#00A05A;font-weight:700">가동</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 환경 상태 (적정범위 게이지) -->
+      <div data-tab="farm-env" style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="font-size:16px;font-weight:800">환경 상태 <span style="font-size:13px;color:#8B95A1;font-weight:600">· 적정 범위 대비 현재 값</span></div><span style="font-size:12.5px;font-weight:700;color:#00A05A;display:flex;align-items:center;gap:5px">센서 상세 보기<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#00A05A" stroke-width="2.4" stroke-linecap="round"></path></svg></span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px 32px">
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">내부온도</span><span style="font-size:22px;font-weight:800">24.8<span style="font-size:12px;color:#8B95A1">℃</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:28%;right:22%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:56%;top:-3px;width:16px;height:16px;border-radius:50%;background:#00A05A;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#8B95A1;font-weight:700;margin-top:7px">적정 18~28℃</div></div>
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">외부온도</span><span style="font-size:22px;font-weight:800;color:#E07800">30.2<span style="font-size:12px;color:#8B95A1">℃</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:10%;right:35%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:78%;top:-3px;width:16px;height:16px;border-radius:50%;background:#F5A623;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#E07800;font-weight:700;margin-top:7px">상한 초과 · 차광 권장</div></div>
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">토양온도</span><span style="font-size:22px;font-weight:800">22.4<span style="font-size:12px;color:#8B95A1">℃</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:18%;right:28%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:48%;top:-3px;width:16px;height:16px;border-radius:50%;background:#00A05A;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#8B95A1;font-weight:700;margin-top:7px">적정 16~26℃</div></div>
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">습도</span><span style="font-size:22px;font-weight:800">58<span style="font-size:12px;color:#8B95A1">%</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:30%;right:20%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:54%;top:-3px;width:16px;height:16px;border-radius:50%;background:#00A05A;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#8B95A1;font-weight:700;margin-top:7px">적정 50~70%</div></div>
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">CO₂</span><span style="font-size:22px;font-weight:800">512<span style="font-size:12px;color:#8B95A1">ppm</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:20%;right:24%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:40%;top:-3px;width:16px;height:16px;border-radius:50%;background:#00A05A;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#8B95A1;font-weight:700;margin-top:7px">적정 400~800ppm</div></div>
+          <div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><span style="font-size:14px;font-weight:700;color:#4E5968">조도</span><span style="font-size:22px;font-weight:800">18.4<span style="font-size:12px;color:#8B95A1">klx</span></span></div><div style="position:relative;height:10px;border-radius:999px;background:#EDF0F3"><span style="position:absolute;left:25%;right:20%;top:0;bottom:0;border-radius:999px;background:#8BE3B4"></span><span style="position:absolute;left:52%;top:-3px;width:16px;height:16px;border-radius:50%;background:#00A05A;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transform:translateX(-50%)"></span></div><div style="font-size:11.5px;color:#8B95A1;font-weight:700;margin-top:7px">적정 12~25klx</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 농장 상세: 생육기·센서 -->
+  <div class="scr" data-screen="farm-env" data-hidden="1">
+    <div data-screen-label="농장 상세 · 생육기·센서" style="padding:22px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:19px;font-weight:800">생육기 · 재배공간 <span style="font-size:13px;color:#8B95A1;font-weight:600">· 온·습도·양분·조도·전력 모니터링 및 제어</span></div>
+      </div>
+
+      <!-- 공간 환경 요약 (센서 집계) -->
+      <div style="font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px">실시간 환경값 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">6개 항목 · 아래 센서 8대의 측정값을 집계</span></div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">온도</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">24.8<span style="font-size:13px;color:#8B95A1">℃</span></div><div style="font-size:11.5px;color:#00A05A;font-weight:800;background:#E7F7EF;border-radius:6px;padding:3px 7px;display:inline-block">적정</div></div>
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">습도</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">58<span style="font-size:13px;color:#8B95A1">%</span></div><div style="font-size:11.5px;color:#00A05A;font-weight:800;background:#E7F7EF;border-radius:6px;padding:3px 7px;display:inline-block">적정</div></div>
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">양분(EC)</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">1.8</div><div style="font-size:11.5px;color:#00A05A;font-weight:800;background:#E7F7EF;border-radius:6px;padding:3px 7px;display:inline-block">적정</div></div>
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">조도</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">18.4<span style="font-size:12px;color:#8B95A1">klx</span></div><div style="font-size:11.5px;color:#00A05A;font-weight:800;background:#E7F7EF;border-radius:6px;padding:3px 7px;display:inline-block">적정</div></div>
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">CO₂</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">512<span style="font-size:12px;color:#8B95A1">ppm</span></div><div style="font-size:11.5px;color:#00A05A;font-weight:800;background:#E7F7EF;border-radius:6px;padding:3px 7px;display:inline-block">적정</div></div>
+        <div style="background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="font-size:13px;font-weight:700;color:#8B95A1">소모전력</div><div style="font-size:24px;font-weight:800;margin:5px 0 6px">4.2<span style="font-size:12px;color:#8B95A1">kW</span></div><div style="font-size:11.5px;color:#6B7684;font-weight:800;background:#F2F4F6;border-radius:6px;padding:3px 7px;display:inline-block">평시</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:5fr 7fr;gap:14px">
+        <!-- 환경 제어 (공간 단위) -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><span style="font-size:16px;font-weight:800">환경 제어</span><div style="display:flex;align-items:center;gap:9px"><span data-statetext="" data-on-text="자동" data-off-text="수동" style="font-size:13px;font-weight:800;color:#00A05A">자동</span><span data-toggle="on" data-on-color="#00A05A" data-tx="18" style="width:44px;height:26px;border-radius:999px;background:#00A05A;position:relative;display:inline-block"><span data-knob="" style="position:absolute;top:2.5px;left:2.5px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(18px)"></span></span></div></div>
+          <div style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:14px;font-weight:700">목표 온도</span><span data-out="temp" style="font-size:15px;font-weight:800;color:#00A05A">25℃</span></div><input type="range" min="15" max="35" value="25" data-slider="temp" data-unit="℃" style="width:100%;accent-color:#00A05A"></div>
+          <div style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:14px;font-weight:700">목표 습도</span><span data-out="hum" style="font-size:15px;font-weight:800;color:#00A05A">60%</span></div><input type="range" min="30" max="90" value="60" data-slider="hum" data-unit="%" style="width:100%;accent-color:#00A05A"></div>
+          <div style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:14px;font-weight:700">LED 밝기</span><span data-out="led" style="font-size:15px;font-weight:800;color:#00A05A">70%</span></div><input type="range" min="0" max="100" value="70" data-slider="led" data-unit="%" style="width:100%;accent-color:#00A05A"></div>
+          <span style="display:block;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">설정 적용</span>
+        </div>
+        <!-- 생육 상태 (영상 AI, FR-09) -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:16px;font-weight:800">생육 상태 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">· 로봇 카메라 영상 AI 분석</span></div><span style="font-size:11.5px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:3px 8px">외부 AI 연동</span></div>
+          <div style="font-size:12px;color:#8B95A1;font-weight:600;margin-bottom:12px">로봇이 촬영한 작물 영상에서 착과·병해를 자동으로 인식해요 (아래 초록 사각형 = 인식된 착과)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+            <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:12.5px;color:#8B95A1;font-weight:700">성장률</div><div style="font-size:24px;font-weight:800;color:#00A05A;margin-top:4px">+4.2%<span style="font-size:12px;color:#8B95A1">/주</span></div><div style="font-size:12px;color:#6B7684;font-weight:600;margin-top:2px">표준 대비 양호</div></div>
+            <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:12.5px;color:#8B95A1;font-weight:700">병충해</div><div style="font-size:24px;font-weight:800;margin-top:4px">이상 없음</div><div style="font-size:12px;color:#6B7684;font-weight:600;margin-top:2px">최근 스캔 26분 전</div></div>
+            <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:12.5px;color:#8B95A1;font-weight:700">예상 수확</div><div style="font-size:24px;font-weight:800;margin-top:4px">D-12</div><div style="font-size:12px;color:#6B7684;font-weight:600;margin-top:2px">8월 2일 전후</div></div>
+          </div>
+          <div style="position:relative;border-radius:14px;overflow:hidden;height:132px;background:linear-gradient(120deg,#2E4328,#233A1D)">
+            <svg width="100%" height="100%" viewBox="0 0 600 132" preserveAspectRatio="xMidYMid slice"><rect width="600" height="132" fill="#233A1D"></rect><g fill="#4E9838"><ellipse cx="120" cy="80" rx="60" ry="24"></ellipse><ellipse cx="320" cy="90" rx="70" ry="28"></ellipse><ellipse cx="500" cy="78" rx="58" ry="22"></ellipse></g><rect x="250" y="34" width="80" height="52" rx="6" fill="none" stroke="#5FE08A" stroke-width="2.5"></rect><text x="256" y="28" font-size="12" font-weight="800" fill="#5FE08A" font-family="'Pretendard Variable',sans-serif">착과 인식 92%</text></svg>
+            <div style="position:absolute;bottom:10px;left:12px;color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.6)">로봇 R-1 영상 · 자동 분석</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 센서 목록 (공간 내 분산 배치) -->
+      <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:16px;font-weight:800">센서 목록 <span style="font-size:13px;color:#8B95A1;font-weight:600">· 재배공간 곳곳에 분산 배치 · 8개</span></div><span style="font-size:12.5px;font-weight:700;color:#00A05A;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#00C271"></span>정상 7 · 점검 1</span></div>
+        <div style="font-size:12px;color:#8B95A1;font-weight:600;margin-bottom:14px">센서는 베드가 아닌 공간 전체에 흩어져 있어요. 각 행을 누르면 상세·보정으로 이동해요</div>
+        <div style="display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;gap:0;font-size:12px;font-weight:800;color:#B0B8C1;padding:0 12px 8px;border-bottom:1px solid #F2F4F6"><span>센서</span><span>위치</span><span>현재값</span><span>상태</span><span style="text-align:right">수신</span></div>
+        <div style="display:flex;flex-direction:column">
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>온도센서 A</span><span style="font-size:13px;color:#6B7684;font-weight:600">입구 측 상단</span><span style="font-size:14px;font-weight:800">24.8℃</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>습도센서 A</span><span style="font-size:13px;color:#6B7684;font-weight:600">중앙 통로</span><span style="font-size:14px;font-weight:800">58%</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>양분(EC)센서</span><span style="font-size:13px;color:#6B7684;font-weight:600">공급 라인</span><span style="font-size:14px;font-weight:800">1.8</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">1분 전</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>CO₂센서</span><span style="font-size:13px;color:#6B7684;font-weight:600">천장 중앙</span><span style="font-size:14px;font-weight:800">512ppm</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA;background:#FFFBF3"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#F5A623"></span>조도센서 C</span><span style="font-size:13px;color:#6B7684;font-weight:600">안쪽 구역</span><span style="font-size:14px;font-weight:800;color:#E07800">—</span><span style="font-size:12px;font-weight:800;color:#E07800">응답 지연</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">14분 전</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>토양센서 C</span><span style="font-size:13px;color:#6B7684;font-weight:600">안쪽 트레이존</span><span style="font-size:14px;font-weight:800">22.4℃</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px;border-bottom:1px solid #F7F9FA"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>조도센서 A</span><span style="font-size:13px;color:#6B7684;font-weight:600">입구 측</span><span style="font-size:14px;font-weight:800">18.4klx</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+          <div data-sensor-row="" style="cursor:pointer;display:grid;grid-template-columns:2.2fr 2fr 1.4fr 1.2fr 1fr;align-items:center;padding:13px 12px"><span style="font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#3182F6"></span>전력계</span><span style="font-size:13px;color:#6B7684;font-weight:600">배전반</span><span style="font-size:14px;font-weight:800">4.2kW</span><span style="font-size:12px;font-weight:800;color:#00A05A">정상</span><span style="font-size:12px;color:#8B95A1;font-weight:600;text-align:right">방금</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 농장 상세: 로봇 -->
+  <div class="scr" data-screen="farm-robot" data-hidden="1">
+    <div data-screen-label="농장 상세 · 로봇" style="padding:22px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:19px;font-weight:800">로봇 3대 <span style="font-size:13px;color:#8B95A1;font-weight:600">· 위치·속도·전원·이상 실시간</span></div>
+        <div style="display:flex;gap:8px"><span data-modal-open="mission" style="background:#00A05A;color:#fff;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"></path></svg>임무 추가</span><span data-nav="settings" style="background:#fff;border:1px solid #E5E8EB;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:700;color:#4E5968">로봇 관리(설정)</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><div style="width:40px;height:40px;border-radius:12px;background:#E7F7EF;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="5" y="8" width="14" height="10" rx="3" stroke="#00A05A" stroke-width="2"></rect><path d="M12 8V5M9 13h.01M15 13h.01" stroke="#00A05A" stroke-width="2" stroke-linecap="round"></path></svg></div><div style="flex:1"><div style="font-size:16px;font-weight:800">R-1 운반로봇</div><div style="font-size:12px;color:#00A05A;font-weight:700">작업 중 · A동 → WS2</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:3px 10px">정상</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">배터리</div><div style="font-size:17px;font-weight:800">78%</div></div>
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">속도</div><div style="font-size:17px;font-weight:800">0.6㎧</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px"><span data-modal-open="manual" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">수동 제어</span><span style="flex:1;text-align:center;background:#E7F7EF;color:#007A44;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">영상</span></div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><div style="width:40px;height:40px;border-radius:12px;background:#E7F7EF;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="5" y="8" width="14" height="10" rx="3" stroke="#00A05A" stroke-width="2"></rect><path d="M12 8V5M9 13h.01M15 13h.01" stroke="#00A05A" stroke-width="2" stroke-linecap="round"></path></svg></div><div style="flex:1"><div style="font-size:16px;font-weight:800">R-2 방제로봇</div><div style="font-size:12px;color:#8B95A1;font-weight:700">대기 · 기계실</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:3px 10px">정상</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">배터리</div><div style="font-size:17px;font-weight:800">94%</div></div>
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">속도</div><div style="font-size:17px;font-weight:800">0㎧</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px"><span data-modal-open="manual" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">수동 제어</span><span style="flex:1;text-align:center;background:#E7F7EF;color:#007A44;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">영상</span></div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><div style="width:40px;height:40px;border-radius:12px;background:#FFF6E9;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M13 3l-2 8h5l-3 10" stroke="#E07800" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path></svg></div><div style="flex:1"><div style="font-size:16px;font-weight:800">R-3 운반로봇</div><div style="font-size:12px;color:#E07800;font-weight:700">자동 충전 중</div></div><span style="font-size:12px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:999px;padding:3px 10px">충전</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">배터리</div><div style="font-size:17px;font-weight:800;color:#E07800">32% ↑</div></div>
+            <div style="background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">완충 예상</div><div style="font-size:17px;font-weight:800">42분</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1;text-align:center;background:#F2F4F6;color:#B0B8C1;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">충전 중</span><span style="flex:1;text-align:center;background:#E7F7EF;color:#007A44;border-radius:10px;padding:9px 0;font-size:13px;font-weight:700">영상</span></div>
+        </div>
+      </div>
+      <!-- 임무 스케줄 + 작업 로그 -->
+      <div style="display:grid;grid-template-columns:6fr 6fr;gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="font-size:16px;font-weight:800">임무 스케줄 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">· 운반 경로</span></div></div>
+          <div style="display:flex;gap:6px;margin-bottom:14px" data-robotfilter="sched"><span data-rf="all" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:700">전체</span><span data-rf="R-1" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-1</span><span data-rf="R-2" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-2</span><span data-rf="R-3" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-3</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px" data-schedule-list="">
+            <div data-robot="R-1" style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">16:00</span><div style="flex:1"><div style="font-size:14px;font-weight:800">R-1 · 양액 공급</div><div style="font-size:12px;color:#8B95A1;font-weight:600">A-12 반출 → WS2 작업 → A-12 반납</div></div></div>
+            <div data-robot="R-2" style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">18:00</span><div style="flex:1"><div style="font-size:14px;font-weight:800">R-2 · 방제</div><div style="font-size:12px;color:#8B95A1;font-weight:600">B-03 반출 → WS3 작업 → B-03 반납</div></div></div>
+          </div>
+          <div data-schedule-empty="" style="display:none;font-size:13px;color:#8B95A1;font-weight:600;text-align:center;padding:18px 0">예약된 임무가 없어요</div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="font-size:16px;font-weight:800;margin-bottom:12px">작업 로그 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">· 단위작업 성공/작업량</span></div>
+          <div style="display:flex;gap:6px;margin-bottom:14px" data-robotfilter="log"><span data-rf="all" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:700">전체</span><span data-rf="R-1" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-1</span><span data-rf="R-2" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-2</span><span data-rf="R-3" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600">R-3</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px" data-log-list="">
+            <div data-robot="R-1" style="display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #F2F4F6"><span style="width:9px;height:9px;border-radius:50%;background:#00C271"></span><div style="flex:1"><div style="font-size:13.5px;font-weight:800">적엽 완료 · A동 12트레이</div><div style="font-size:12px;color:#8B95A1;font-weight:600">R-1 · 15:22 · 성공</div></div></div>
+            <div data-robot="R-2" style="display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #F2F4F6"><span style="width:9px;height:9px;border-radius:50%;background:#00C271"></span><div style="flex:1"><div style="font-size:13.5px;font-weight:800">트레이 반납 · B-03</div><div style="font-size:12px;color:#8B95A1;font-weight:600">R-2 · 14:48 · 성공</div></div></div>
+            <div data-robot="R-2" style="display:flex;gap:11px;align-items:center;padding:11px 0"><span style="width:9px;height:9px;border-radius:50%;background:#F5A623"></span><div style="flex:1"><div style="font-size:13.5px;font-weight:800">방제 재시도 · C-07</div><div style="font-size:12px;color:#8B95A1;font-weight:600">R-2 · 14:10 · 1회 재시도 후 성공</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 농장 상세: 작업·공급 -->
+  <div class="scr" data-screen="farm-supply" data-hidden="1">
+    <div data-screen-label="농장 상세 · 작업·공급" style="padding:22px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <!-- 탱크 수위 -->
+      <div>
+        <div style="font-size: 19px; font-weight: 800; margin-bottom: 10px">탱크 수위 <span style="font-size:13px;color:#8B95A1;font-weight:600">· 농장 공용</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          <div style="background:#fff;border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04);display:flex;align-items:center;gap:16px"><svg width="52" height="66" viewBox="0 0 52 66"><rect x="6" y="4" width="40" height="58" rx="10" fill="none" stroke="#E5E8EB" stroke-width="3"></rect><rect x="9" y="30" width="34" height="29" rx="7" fill="#F5A623"></rect></svg><div><div style="font-size:14px;font-weight:800">양액 탱크</div><div style="font-size:28px;font-weight:800;color:#E07800">64%</div><div style="font-size:12px;color:#8B95A1;font-weight:600">약 320L · 2일분</div></div></div>
+          <div style="background:#fff;border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04);display:flex;align-items:center;gap:16px"><svg width="52" height="66" viewBox="0 0 52 66"><rect x="6" y="4" width="40" height="58" rx="10" fill="none" stroke="#E5E8EB" stroke-width="3"></rect><rect x="9" y="16" width="34" height="43" rx="7" fill="#3182F6"></rect></svg><div><div style="font-size:14px;font-weight:800">급수 탱크</div><div style="font-size:28px;font-weight:800;color:#1B64DA">82%</div><div style="font-size:12px;color:#8B95A1;font-weight:600">약 410L · 4일분</div></div></div>
+          <div style="background:#fff;border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(25,31,40,.04);display:flex;align-items:center;gap:16px"><svg width="52" height="66" viewBox="0 0 52 66"><rect x="6" y="4" width="40" height="58" rx="10" fill="none" stroke="#E5E8EB" stroke-width="3"></rect><rect x="9" y="16" width="34" height="43" rx="7" fill="#00A05A"></rect></svg><div><div style="font-size:14px;font-weight:800">방제액 탱크</div><div style="font-size:28px;font-weight:800;color:#00A05A">82%</div><div style="font-size:12px;color:#8B95A1;font-weight:600">약 205L · 5회분</div></div></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:6fr 6fr;gap:14px">
+        <!-- 워크스테이션 + 파레트 흐름 -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="font-size:16px;font-weight:800;margin-bottom:4px">워크스테이션 · 파레트 흐름</div>
+          
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:6px 10px">WS1</span><div style="flex:1"><div style="font-size:14px;font-weight:800">급수 스테이션</div><div style="font-size:12px;color:#8B95A1;font-weight:600">대기 중 · 다음 17:30</div></div><span style="font-size:12px;font-weight:800;color:#8B95A1;background:#EEF1F4;border-radius:999px;padding:4px 11px">대기</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:#E7F7EF"><span style="font-size:13px;font-weight:800;background:#fff;border:1px solid #9FDDBE;border-radius:8px;padding:6px 10px">WS2</span><div style="flex:1"><div style="font-size:14px;font-weight:800">양액 스테이션</div><div style="font-size:12px;color:#007A44;font-weight:700">작업 중 · A-12 트레이 · R-1</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#fff;border-radius:999px;padding:4px 11px">가동</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:6px 10px">WS3</span><div style="flex:1"><div style="font-size:14px;font-weight:800">방제 스테이션</div><div style="font-size:12px;color:#8B95A1;font-weight:600">대기 중 · 다음 18:00</div></div><span style="font-size:12px;font-weight:800;color:#8B95A1;background:#EEF1F4;border-radius:999px;padding:4px 11px">대기</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;border-radius:12px;background:#F7F9FA;font-size:12.5px;font-weight:700;color:#4E5968">랙 슬롯 48칸 · 사용 42 · 이동중 2 · 작업중 1</div>
+        </div>
+        <!-- 작업 스케줄 + 양·농도 설정 -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:16px;font-weight:800">작업 스케줄 · 설정</div>
+            <div data-seg="" style="display:flex;background:#F2F4F6;border-radius:11px;padding:3px"><span data-seg-item="" style="padding:7px 14px;border-radius:9px;font-size:13px;font-weight:700;background:#fff;color:#191F28;box-shadow:0 1px 4px rgba(0,0,0,.12)">수동</span><span data-seg-item="" style="padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;color:#8B95A1">자동</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+            <div style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">1일 3회</span><div style="flex:1"><div style="font-size:14px;font-weight:800">양액 공급</div><div style="font-size:12px;color:#8B95A1;font-weight:600">08:00 · 13:00 · 16:00</div></div></div>
+            <div style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:8px;padding:5px 9px">1일 2회</span><div style="flex:1"><div style="font-size:14px;font-weight:800">급수</div><div style="font-size:12px;color:#8B95A1;font-weight:600">09:00 · 17:30</div></div></div>
+          </div>
+          <div style="border-top:1px solid #F2F4F6;padding-top:16px">
+            <div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:14px;font-weight:700">양액량 (회당)</span><span data-out="ny" style="font-size:15px;font-weight:800;color:#00A05A">1.2L</span></div><input type="range" min="0.2" max="3" step="0.1" value="1.2" data-slider="ny" data-unit="L" style="width:100%;accent-color:#00A05A"></div>
+            <div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-size:14px;font-weight:700">양액 농도 (EC)</span><span data-out="ec" style="font-size:15px;font-weight:800;color:#00A05A">1.8</span></div><input type="range" min="0.5" max="3" step="0.1" value="1.8" data-slider="ec" data-unit="" style="width:100%;accent-color:#00A05A"></div>
+            <span style="display:block;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">설정 저장</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 농장 상세: 알림 -->
+  <div class="scr" data-screen="farm-alerts" data-hidden="1">
+    <div data-screen-label="농장 상세 · 알림" style="padding:22px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:19px;font-weight:800">알림 <span data-farmnamealert="" style="font-size:13px;color:#8B95A1;font-weight:600">· 성주 참외 온실</span></div><span style="background:#fff;border:1px solid #E5E8EB;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:700;color:#4E5968">알림 설정</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:12px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04)"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">외부온도 30.2℃ · 차광 권장</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">한낮 고온 · 자동 차광 40% 적용됨 · 15:30</div></div><span style="font-size:12px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:999px;padding:5px 12px">주의</span></div>
+        <div style="display:flex;gap:12px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04)"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">C동 조도센서 응답 지연</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">점검 권장 · 14:52</div></div><span style="font-size:12px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:999px;padding:5px 12px">주의</span></div>
+        <div style="display:flex;gap:12px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04)"><span style="width:10px;height:10px;border-radius:50%;background:#00C271;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">방제 작업 완료 · C-07</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">로봇 R-2 · 1회 재시도 후 성공 · 14:10</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 12px">완료</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 통계·분석 -->
+  <div class="scr" data-screen="stats" data-hidden="1">
+    <div data-screen-label="통계·분석" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:24px;font-weight:800">통계·분석</div><div style="font-size:13.5px;color:#8B95A1;font-weight:600;margin-top:3px">전 농장 대상 · 생육환경·생육상태 집계 및 조회</div></div>
+        <div data-seg="" style="display:flex;background:#F2F4F6;border-radius:12px;padding:3px"><span data-seg-item="" style="padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:600;color:#8B95A1">시간</span><span data-seg-item="" style="padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:700;background:#fff;color:#191F28;box-shadow:0 1px 4px rgba(0,0,0,.12)">일</span><span data-seg-item="" style="padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:600;color:#8B95A1">주</span><span data-seg-item="" style="padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:600;color:#8B95A1">월</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" data-chip-group="statsfarm">
+        <span data-chip-radio="전체 농장" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:700">전체</span>
+        <span data-chip-radio="성주 참외 온실" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">성주 참외 온실</span>
+        <span data-chip-radio="화성 딸기 스마트팜" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">화성 딸기</span>
+        <span data-chip-radio="평택 상추 식물공장" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">평택 상추</span>
+        <span data-chip-radio="김제 벼 논" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">김제 벼</span>
+      </div>
+      <div style="display:grid;grid-template-columns:8fr 4fr;gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="font-size:16px;font-weight:800;margin-bottom:16px">온·습도 추이 (오늘) <span data-statsfarm-label="" style="font-size:13px;font-weight:700;color:#00A05A">· 전체 농장</span></div>
+          <svg width="100%" viewBox="0 0 640 240" style="display:block"><g stroke="#F2F4F6" stroke-width="1"><line x1="40" y1="40" x2="620" y2="40"></line><line x1="40" y1="100" x2="620" y2="100"></line><line x1="40" y1="160" x2="620" y2="160"></line><line x1="40" y1="210" x2="620" y2="210"></line></g><polyline fill="none" stroke="#00A05A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="40,170 130,150 220,120 310,95 400,90 490,110 580,135"></polyline><polyline fill="none" stroke="#3182F6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 7" points="40,150 130,140 220,150 310,120 400,110 490,130 580,120"></polyline><g font-size="11" fill="#B0B8C1" font-family="'Pretendard Variable',sans-serif"><text x="34" y="214" text-anchor="end">0</text><text x="34" y="104" text-anchor="end">30</text><text x="40" y="232">06시</text><text x="300" y="232">12시</text><text x="560" y="232">18시</text></g></svg>
+          <div style="display:flex;gap:18px;margin-top:8px"><span style="font-size:12.5px;font-weight:700;color:#4E5968;display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#00A05A;border-radius:2px"></span>온도</span><span style="font-size:12.5px;font-weight:700;color:#4E5968;display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#3182F6;border-radius:2px"></span>습도</span></div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="font-size:16px;font-weight:800;margin-bottom:16px">양액·급수 사용량</div>
+          <svg width="100%" viewBox="0 0 300 240" style="display:block"><g font-family="'Pretendard Variable',sans-serif"><rect x="40" y="70" width="42" height="140" rx="7" fill="#00A05A"></rect><rect x="130" y="110" width="42" height="100" rx="7" fill="#9FDDBE"></rect><rect x="220" y="140" width="42" height="70" rx="7" fill="#BFE6D2"></rect><text x="61" y="230" text-anchor="middle" font-size="12" fill="#8B95A1">양액</text><text x="151" y="230" text-anchor="middle" font-size="12" fill="#8B95A1">급수</text><text x="241" y="230" text-anchor="middle" font-size="12" fill="#8B95A1">방제</text></g></svg>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="font-size:16px;font-weight:800;margin-bottom:14px">생육기별 요약 (오늘)</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:13px;color:#8B95A1;font-weight:700">평균 온도</div><div style="font-size:22px;font-weight:800;margin-top:4px">24.6℃</div></div>
+          <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:13px;color:#8B95A1;font-weight:700">평균 습도</div><div style="font-size:22px;font-weight:800;margin-top:4px">59%</div></div>
+          <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:13px;color:#8B95A1;font-weight:700">누적 전력</div><div style="font-size:22px;font-weight:800;margin-top:4px">38.2kWh</div></div>
+          <div style="background:#F7F9FA;border-radius:14px;padding:16px"><div style="font-size:13px;color:#8B95A1;font-weight:700">성장률</div><div style="font-size:22px;font-weight:800;margin-top:4px;color:#00A05A">+4.2%</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 농업일지 -->
+  <div class="scr" data-screen="journal" data-hidden="1">
+    <div data-screen-label="농업일지" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:24px;font-weight:800">농업일지</div><div style="font-size:13.5px;color:#8B95A1;font-weight:600;margin-top:3px">달력에서 날짜를 선택해 메모를 작성하고, 자동 리포트와 함께 확인해요</div></div>
+        <span data-journal-new="" style="background:#00A05A;color:#fff;border-radius:12px;padding:11px 18px;font-size:14.5px;font-weight:800;display:flex;align-items:center;gap:7px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"></path></svg>오늘 메모 작성</span>
+      </div>
+      <!-- 1. 자동 리포트 (가로 full, 세로 짧게) -->
+      <div style="background:#fff;border-radius:20px;padding:20px 22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:16px;font-weight:800">자동 리포트 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">· 통계 기반</span></span><div data-seg="" style="display:flex;background:#F2F4F6;border-radius:10px;padding:3px"><span data-seg-item="" style="padding:6px 13px;border-radius:8px;font-size:12.5px;font-weight:700;background:#fff;color:#191F28;box-shadow:0 1px 4px rgba(0,0,0,.12)">일간</span><span data-seg-item="" style="padding:6px 13px;border-radius:8px;font-size:12.5px;font-weight:600;color:#8B95A1">주간</span><span data-seg-item="" style="padding:6px 13px;border-radius:8px;font-size:12.5px;font-weight:600;color:#8B95A1">월간</span></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <div style="background:#F7F9FA;border-radius:14px;padding:15px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:2px 8px">오늘</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600">07-21 일간</span></div><div style="font-size:12.5px;color:#4E5968;font-weight:600;line-height:1.5">평균 24.6℃·습도 59%. 양액 3회·급수 2회. 성주 성장률 +4.2%, 병충해 0.</div></div>
+          <div style="background:#F7F9FA;border-radius:14px;padding:15px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:2px 8px">어제</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600">07-20 일간</span></div><div style="font-size:12.5px;color:#4E5968;font-weight:600;line-height:1.5">전 농장 정상 가동. 로봇 작업 22건 성공. 화성 습도센서 1건 재보정.</div></div>
+          <div style="background:#F7F9FA;border-radius:14px;padding:15px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:6px;padding:2px 8px">주간</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600">07-14~20</span></div><div style="font-size:12.5px;color:#4E5968;font-weight:600;line-height:1.5">누적 전력 262kWh. 평균 성장률 +3.9%. 알림 총 12건(경고 1).</div></div>
+        </div>
+      </div>
+      <!-- 2. 2열: 달력 | 선택일 일지 -->
+      <div style="display:grid;grid-template-columns:6fr 6fr;gap:14px;align-items:start">
+        <!-- 달력 -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><span style="width:34px;height:34px;border-radius:10px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#4E5968" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span style="font-size:17px;font-weight:800">2026년 7월</span><span style="width:34px;height:34px;border-radius:10px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#4E5968" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">
+            <span style="text-align:center;font-size:12px;font-weight:800;color:#F04452">일</span><span style="text-align:center;font-size:12px;font-weight:800;color:#8B95A1">월</span><span style="text-align:center;font-size:12px;font-weight:800;color:#8B95A1">화</span><span style="text-align:center;font-size:12px;font-weight:800;color:#8B95A1">수</span><span style="text-align:center;font-size:12px;font-weight:800;color:#8B95A1">목</span><span style="text-align:center;font-size:12px;font-weight:800;color:#8B95A1">금</span><span style="text-align:center;font-size:12px;font-weight:800;color:#1B64DA">토</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px" data-calendar=""></div>
+          <div style="display:flex;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid #F2F4F6"><span style="font-size:12px;color:#6B7684;font-weight:700;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#00A05A"></span>메모 있음</span><span style="font-size:12px;color:#6B7684;font-weight:700;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#1B64DA"></span>자동 리포트</span></div>
+        </div>
+        <!-- 선택일 일지 -->
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:16px;font-weight:800"><span data-detail-date="">7월 21일</span> 일지</span><span data-detail-count="" style="font-size:12.5px;color:#8B95A1;font-weight:700"></span></div>
+          <div data-detail-body="" style="display:flex;flex-direction:column;gap:10px;max-height:360px;overflow:auto"></div>
+        </div>
+      </div>
+      <!-- 하단 반응형 메모 작성 -->
+      <!-- 3. 메모 작성 (가로 full, 상시 노출) -->
+      <div data-journal-composer="" style="display:block;background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04);border:1.5px solid #9FDDBE">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-size:16px;font-weight:800"><span data-composer-date="">7월 21일</span> 메모 작성</div><span style="font-size:12.5px;color:#8B95A1;font-weight:600">달력에서 날짜를 선택하면 해당 날짜로 작성돼요</span></div>
+        <div style="margin-bottom:12px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">대상 농장</div><div style="display:flex;gap:8px;flex-wrap:wrap"><span data-chip-toggle="on" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700">성주 참외 온실</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600">화성 딸기</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600">평택 상추</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600">김제 벼</span></div></div>
+        <div style="border:1px solid #E5E8EB;border-radius:14px;padding:16px;min-height:100px;font-size:14px;color:#8B95A1;font-weight:600;position:relative;margin-bottom:12px">메모를 입력하거나 음성으로 작성하세요…<span data-assistant="" style="position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:7px;background:#E7F7EF;color:#007A44;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:800"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="#007A44" stroke-width="2"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#007A44" stroke-width="2" stroke-linecap="round"></path></svg>음성으로 작성</span></div>
+        <div style="display:flex;align-items:center;gap:12px"><div style="width:72px;height:72px;border-radius:12px;border:2px dashed #D1D6DB;display:flex;align-items:center;justify-content:center;color:#B0B8C1;flex:none"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="#B0B8C1" stroke-width="2.2" stroke-linecap="round"></path></svg></div><span style="flex:1"></span><span style="background:#F2F4F6;color:#4E5968;border-radius:12px;padding:13px 24px;font-size:15px;font-weight:800">초기화</span><span style="background:#00A05A;color:#fff;border-radius:12px;padding:13px 32px;font-size:15px;font-weight:800">저장</span></div>
+      </div>
+      <!-- 4. 전체 일지 보기 -->
+      <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:16px;font-weight:800">전체 일지 <span style="font-size:12.5px;color:#8B95A1;font-weight:600">· 작성된 모든 메모</span></span><div data-seg="" style="display:flex;background:#F2F4F6;border-radius:10px;padding:3px"><span data-seg-item="" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;background:#fff;color:#191F28;box-shadow:0 1px 4px rgba(0,0,0,.12)">전체</span><span data-seg-item="" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;color:#8B95A1">성주</span><span data-seg-item="" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;color:#8B95A1">화성</span><span data-seg-item="" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;color:#8B95A1">평택</span></div></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:12px;font-weight:800;color:#4E5968;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:5px 9px;flex:none">07-21</span><span style="font-size:11.5px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:6px;padding:3px 8px;flex:none">성주 참외</span><span style="flex:1;font-size:13.5px;font-weight:600;color:#333D4B">A동 착과 상태 양호. 다음 주 수확 준비 필요.</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600;flex:none">최대농</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:12px;font-weight:800;color:#4E5968;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:5px 9px;flex:none">07-20</span><span style="font-size:11.5px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:6px;padding:3px 8px;flex:none">평택 상추</span><span style="flex:1;font-size:13.5px;font-weight:600;color:#333D4B">양액 농도 조정. 3번 랙 생육 지연 관찰 지속.</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600;flex:none">최대농</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:12px;font-weight:800;color:#4E5968;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:5px 9px;flex:none">07-19</span><span style="font-size:11.5px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:3px 8px;flex:none">화성 딸기</span><span style="flex:1;font-size:13.5px;font-weight:600;color:#333D4B">방제 작업 후 잎 상태 확인. 이상 없음.</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600;flex:none">김농부</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:12px;font-weight:800;color:#4E5968;background:#fff;border:1px solid #E5E8EB;border-radius:8px;padding:5px 9px;flex:none">07-15</span><span style="font-size:11.5px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:6px;padding:3px 8px;flex:none">성주 참외</span><span style="flex:1;font-size:13.5px;font-weight:600;color:#333D4B">2번 베드 적엽 완료. 생육 균일.</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600;flex:none">최대농</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 일지 작성 -->
+  <div class="scr" data-screen="journal-write" data-hidden="1">
+    <div data-screen-label="일지 작성" style="padding:24px 28px 90px;max-width:820px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:12px"><span data-nav="journal" style="width:38px;height:38px;border-radius:11px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.05);display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#4E5968" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><div style="font-size:22px;font-weight:800">관리자 메모 작성</div></div>
+      <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 2px 8px rgba(25,31,40,.04);display:flex;flex-direction:column;gap:18px">
+        <div><div style="font-size:14px;font-weight:700;margin-bottom:8px">대상 농장</div><div style="display:flex;gap:8px;flex-wrap:wrap"><span data-chip-toggle="on" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:700">성주 참외 온실</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:600">화성 딸기</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:600">평택 상추</span></div></div>
+        <div><div style="font-size:14px;font-weight:700;margin-bottom:8px">내용</div><div style="border:1px solid #E5E8EB;border-radius:14px;padding:16px;min-height:130px;font-size:14px;color:#8B95A1;font-weight:600;position:relative">메모를 입력하거나 음성으로 작성하세요…<span data-assistant="" style="position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:7px;background:#E7F7EF;color:#007A44;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:800"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="#007A44" stroke-width="2"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#007A44" stroke-width="2" stroke-linecap="round"></path></svg>음성으로 작성</span></div></div>
+        <div><div style="font-size:14px;font-weight:700;margin-bottom:8px">사진·동영상 첨부</div><div style="display:flex;gap:10px"><div style="width:96px;height:96px;border-radius:14px;border:2px dashed #D1D6DB;display:flex;align-items:center;justify-content:center;color:#B0B8C1"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="#B0B8C1" stroke-width="2.2" stroke-linecap="round"></path></svg></div></div></div>
+        <div style="display:flex;gap:10px"><span data-nav="journal" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:12px;padding:14px 0;font-size:15px;font-weight:800">취소</span><span data-nav="journal" style="flex:2;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:14px 0;font-size:15px;font-weight:800">저장</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 설정 -->
+  <div class="scr" data-screen="settings" data-hidden="1">
+    <div data-screen-label="설정" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div><div style="font-size:24px;font-weight:800">설정</div><div style="font-size:13.5px;color:#8B95A1;font-weight:600;margin-top:3px">전 농장 대상 · 계정·권한 / 농장·설비 관리 / 알림 / 원격 접근</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="font-size:16px;font-weight:800;margin-bottom:14px">계정 · 권한</div>
+          <div style="display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid #F2F4F6"><div style="width:46px;height:46px;border-radius:50%;background:#E7F7EF;color:#00A05A;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800">최</div><div style="flex:1"><div style="font-size:15px;font-weight:800">최대농</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">manager@farmon.kr</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 12px">관리자</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid #F2F4F6"><span style="font-size:14px;font-weight:700">2단계 인증</span><span data-toggle="on" data-on-color="#00A05A" data-tx="18" style="width:42px;height:24px;border-radius:999px;background:#00A05A;position:relative;display:inline-block"><span data-knob="" style="position:absolute;top:2.5px;left:2.5px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(18px)"></span></span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0"><span style="font-size:14px;font-weight:700">웹·앱 원격 접근 허용</span><span data-toggle="on" data-on-color="#00A05A" data-tx="18" style="width:42px;height:24px;border-radius:999px;background:#00A05A;position:relative;display:inline-block"><span data-knob="" style="position:absolute;top:2.5px;left:2.5px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(18px)"></span></span></div>
+        </div>
+        <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-size:16px;font-weight:800">농장·설비 관리</span><span style="font-size:12.5px;font-weight:700;color:#00A05A">추가/삭제</span></div>
+          <div style="font-size:12.5px;color:#8B95A1;font-weight:600;margin:-6px 0 12px">각 농장의 생육기·로봇·탱크·워크스테이션을 여기서 추가·삭제해요</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="padding:13px 14px;border-radius:12px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:14px;font-weight:800">성주 참외 온실</span><span style="font-size:12px;color:#8B95A1;font-weight:600">생육기 3 · 로봇 3 · 탱크 3</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 생육기</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 로봇</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 탱크</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 워크스테이션</span></div></div>
+            <div style="padding:13px 14px;border-radius:12px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:8px;height:8px;border-radius:50%;background:#FF8A00"></span><span style="flex:1;font-size:14px;font-weight:800">화성 딸기 스마트팜</span><span style="font-size:12px;color:#8B95A1;font-weight:600">생육기 4 · 로봇 2 · 탱크 3</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 생육기</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 로봇</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 탱크</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 워크스테이션</span></div></div>
+            <div style="padding:13px 14px;border-radius:12px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:8px;height:8px;border-radius:50%;background:#F04452"></span><span style="flex:1;font-size:14px;font-weight:800">평택 상추 식물공장</span><span style="font-size:12px;color:#8B95A1;font-weight:600">생육기 6 · 로봇 2 · 탱크 3</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 생육기</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 로봇</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 탱크</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 워크스테이션</span></div></div>
+            <div style="padding:13px 14px;border-radius:12px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:8px;height:8px;border-radius:50%;background:#00C271"></span><span style="flex:1;font-size:14px;font-weight:800">김제 벼 논 <span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:5px;padding:1px 6px">실외</span></span><span style="font-size:12px;color:#8B95A1;font-weight:600">로봇 2 · 탱크 2</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 로봇</span><span data-add-equip="" style="font-size:12px;font-weight:800;color:#007A44;background:#E7F7EF;border-radius:8px;padding:6px 11px">+ 탱크</span></div></div>
+            <span style="display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 0;border-radius:12px;border:1.5px dashed #D1D6DB;color:#8B95A1;font-size:13.5px;font-weight:800"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#8B95A1" stroke-width="2.2" stroke-linecap="round"></path></svg>스마트팜 추가</span>
+          </div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="font-size:16px;font-weight:800;margin-bottom:14px">알림 설정</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #F2F4F6"><span style="font-size:14px;font-weight:700">경고 알림 (즉시)</span><span data-toggle="on" data-on-color="#00A05A" data-tx="18" style="width:42px;height:24px;border-radius:999px;background:#00A05A;position:relative;display:inline-block"><span data-knob="" style="position:absolute;top:2.5px;left:2.5px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(18px)"></span></span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #F2F4F6"><span style="font-size:14px;font-weight:700">작업 완료 알림</span><span data-toggle="off" data-on-color="#00A05A" data-tx="18" style="width:42px;height:24px;border-radius:999px;background:#D1D6DB;position:relative;display:inline-block"><span data-knob="" style="position:absolute;top:2.5px;left:2.5px;width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 지원 -->
+  <div class="scr" data-screen="support" data-hidden="1">
+    <div data-screen-label="지원" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div><div style="font-size:24px;font-weight:800">지원</div><div style="font-size:13.5px;color:#8B95A1;font-weight:600;margin-top:3px">도움말 · 문의 · 대화형 도움(AI)</div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        <div data-assistant="" style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="width:48px;height:48px;border-radius:14px;background:#E7F7EF;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4V6z" stroke="#00A05A" stroke-width="2" stroke-linejoin="round"></path></svg></div><div style="font-size:16px;font-weight:800">대화형 도움말</div><div style="font-size:13px;color:#8B95A1;font-weight:600;margin-top:6px;line-height:1.5">음성·문자로 기능을 물어보세요. 미연동 시 안내 답변으로 폴백해요.</div></div>
+        <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="width:48px;height:48px;border-radius:14px;background:#EAF2FE;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke="#1B64DA" stroke-width="2"></path><path d="M9.5 9.5a2.5 2.5 0 0 1 4 2c0 1.5-2 1.8-2 3M12 17h.01" stroke="#1B64DA" stroke-width="2" stroke-linecap="round"></path></svg></div><div style="font-size:16px;font-weight:800">사용 가이드</div><div style="font-size:13px;color:#8B95A1;font-weight:600;margin-top:6px;line-height:1.5">대시보드·로봇·작업 스케줄 설정 방법을 단계별로 안내합니다.</div></div>
+        <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 2px 8px rgba(25,31,40,.04)"><div style="width:48px;height:48px;border-radius:14px;background:#FFF6E9;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v11H7l-3 3V5z" stroke="#E07800" stroke-width="2" stroke-linejoin="round"></path></svg></div><div style="font-size:16px;font-weight:800">1:1 문의</div><div style="font-size:13px;color:#8B95A1;font-weight:600;margin-top:6px;line-height:1.5">기술 지원팀에 직접 문의하세요. 평일 09~18시 응답.</div></div>
+      </div>
+      <div style="background:#fff;border-radius:20px;padding:22px;box-shadow:0 2px 8px rgba(25,31,40,.04)">
+        <div style="font-size:16px;font-weight:800;margin-bottom:14px">자주 묻는 질문</div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="padding:14px 0;border-bottom:1px solid #F2F4F6;font-size:14.5px;font-weight:700;display:flex;justify-content:space-between">비상정지는 어떻게 해제하나요?<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#B0B8C1" stroke-width="2.2" stroke-linecap="round"></path></svg></div>
+          <div style="padding:14px 0;border-bottom:1px solid #F2F4F6;font-size:14.5px;font-weight:700;display:flex;justify-content:space-between">자동/수동 제어는 어떻게 전환하나요?<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#B0B8C1" stroke-width="2.2" stroke-linecap="round"></path></svg></div>
+          <div style="padding:14px 0;font-size:14.5px;font-weight:700;display:flex;justify-content:space-between">글자 크기를 더 키우고 싶어요<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#B0B8C1" stroke-width="2.2" stroke-linecap="round"></path></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전역: 알림 (전체 농장) -->
+  <div class="scr" data-screen="alerts" data-hidden="1">
+    <div data-screen-label="전체 알림" style="padding:24px 28px 90px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:22px;font-weight:800">알림 <span style="font-size:14px;color:#8B95A1;font-weight:700">미확인 3건</span></div><div style="font-size:13.5px;color:#8B95A1;font-weight:600;margin-top:3px">전 농장 대상 · 각 알림을 누르면 관련 화면으로 이동해요</div></div>
+        <span style="background:#fff;border:1px solid #E5E8EB;border-radius:10px;padding:9px 15px;font-size:13.5px;font-weight:700;color:#4E5968">모두 읽음</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" data-chip-group="alertfilter">
+        <span data-chip-radio="전체" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:700">전체</span>
+        <span data-chip-radio="경고" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">경고</span>
+        <span data-chip-radio="주의" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">주의</span>
+        <span data-chip-radio="완료" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:999px;padding:8px 15px;font-size:13.5px;font-weight:600">완료</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div data-nav="farm-supply" data-farm="pyeongtaek" style="display:flex;gap:13px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04);border-left:4px solid #F04452"><span style="width:10px;height:10px;border-radius:50%;background:#F04452;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">평택 상추 식물공장 · 양액 탱크 잔량 15%</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">보충 필요 · 작업·공급 화면에서 확인 · 3분 전</div></div><span style="font-size:12px;font-weight:800;color:#F04452;background:#FDEBEE;border-radius:999px;padding:5px 12px">경고</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+        <div data-nav="farm-env" data-farm="hwaseong" style="display:flex;gap:13px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04);border-left:4px solid #F5A623"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">화성 딸기 스마트팜 · 습도센서 응답 지연</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">센서 점검 권장 · 12분 전</div></div><span style="font-size:12px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:999px;padding:5px 12px">주의</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+        <div data-nav="farm-status" data-farm="pyeongtaek" style="display:flex;gap:13px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04);border-left:4px solid #F5A623"><span style="width:10px;height:10px;border-radius:50%;background:#F5A623;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">평택 상추 식물공장 · 내부온도 28.7℃ 상한 근접</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">환기 가동 중 · 21분 전</div></div><span style="font-size:12px;font-weight:800;color:#E07800;background:#FFF6E9;border-radius:999px;padding:5px 12px">주의</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+        <div data-nav="farm-status" data-farm="seongju" style="display:flex;gap:13px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04);border-left:4px solid #00C271"><span style="width:10px;height:10px;border-radius:50%;background:#00C271;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">성주 참외 온실 · 방제 작업 완료</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">로봇 R-2 · 1회 재시도 후 성공 · 26분 전</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 12px">완료</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+        <div data-nav="farm-status" data-farm="seongju" style="display:flex;gap:13px;align-items:center;padding:16px 18px;border-radius:15px;background:#fff;box-shadow:0 2px 8px rgba(25,31,40,.04);border-left:4px solid #00C271"><span style="width:10px;height:10px;border-radius:50%;background:#00C271;flex:none"></span><div style="flex:1"><div style="font-size:15px;font-weight:800">성주 참외 온실 · 외기 고온으로 차광 40% 자동 적용</div><div style="font-size:12.5px;color:#8B95A1;font-weight:600">지역 날씨 연동 · 42분 전</div></div><span style="font-size:12px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:999px;padding:5px 12px">완료</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#B0B8C1" stroke-width="2.4" stroke-linecap="round"></path></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 좌하단 음성·도움 어시스턴트 (전역 고정) ===== -->
+  <div data-assistant-panel="" style="display:none;position:fixed;right:24px;bottom:96px;width:360px;max-height:70vh;background:#fff;border-radius:22px;box-shadow:0 20px 60px rgba(25,31,40,.25);z-index:8000;overflow:hidden;flex-direction:column">
+    <div style="background:#00A05A;color:#fff;padding:16px 18px;display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="#fff" stroke-width="2"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"></path></svg></div><div style="flex:1"><div style="font-size:15px;font-weight:800">음성·도움 어시스턴트</div><div style="font-size:11.5px;opacity:.9;font-weight:600">음성 미연동 · 텍스트로 진행</div></div><span data-close="assistant" style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#fff" stroke-width="2.2" stroke-linecap="round"></path></svg></span></div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto">
+      <div style="align-self:flex-start;max-width:80%;background:#F2F4F6;border-radius:14px 14px 14px 4px;padding:11px 13px;font-size:13.5px;font-weight:600;color:#333D4B;line-height:1.5">안녕하세요, 팜온 도우미예요. "성주 온도 알려줘", "R-1 충전해줘" 처럼 말하거나 입력해 보세요.</div>
+      <div style="align-self:flex-end;max-width:80%;background:#E7F7EF;color:#0A5A34;border-radius:14px 14px 4px 14px;padding:11px 13px;font-size:13.5px;font-weight:700">성주 참외 오늘 상태 알려줘</div>
+      <div style="align-self:flex-start;max-width:85%;background:#F2F4F6;border-radius:14px 14px 14px 4px;padding:11px 13px;font-size:13.5px;font-weight:600;color:#333D4B;line-height:1.5">성주 참외 온실은 <b>정상 가동</b> 중이에요. 내부 24.8℃·습도 58%. 외기 30.2℃로 차광 40%가 적용됐어요. 16:00 양액 공급이 예정돼 있어요.</div>
+    </div>
+    <div style="border-top:1px solid #EDF0F3;padding:12px;display:flex;align-items:center;gap:8px">
+      <div style="flex:1;background:#F2F4F6;border-radius:12px;padding:11px 14px;font-size:13.5px;color:#8B95A1;font-weight:600">메시지 입력…</div>
+      <span data-tip="음성 미연동 시 텍스트로 대체됩니다" style="width:40px;height:40px;border-radius:12px;background:#E7F7EF;display:flex;align-items:center;justify-content:center;flex:none"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="#007A44" stroke-width="2"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#007A44" stroke-width="2" stroke-linecap="round"></path></svg></span>
+      <span style="width:40px;height:40px;border-radius:12px;background:#00A05A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12l16-8-6 16-3-6-7-2z" fill="#fff"></path></svg></span>
+    </div>
+  </div>
+  <div data-assistant="" style="position:fixed;right:24px;bottom:24px;width:60px;height:60px;border-radius:50%;background:#00A05A;box-shadow:0 8px 24px rgba(0,160,90,.4);display:flex;align-items:center;justify-content:center;z-index:8000" data-tip="음성·도움 어시스턴트 (텍스트 폴백)">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="#fff" stroke-width="2"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"></path></svg>
+  </div>
+
+  <!-- ===== 센서 상세 모달 ===== -->
+  <div data-modal="sensor" style="display:none;position:fixed;inset:0;background:rgba(15,20,28,.5);z-index:11000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:22px;padding:26px;width:440px;max-width:100%;box-shadow:0 30px 80px rgba(0,0,0,.35)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="font-size:19px;font-weight:800" data-sensor-title="">센서 상세</div><span data-close="sensor" style="width:30px;height:30px;border-radius:9px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#4E5968" stroke-width="2.2" stroke-linecap="round"></path></svg></span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div style="background:#F7F9FA;border-radius:13px;padding:14px"><div style="font-size:12px;color:#8B95A1;font-weight:700">현재값</div><div style="font-size:24px;font-weight:800;margin-top:3px" data-sensor-val="">—</div></div>
+        <div style="background:#F7F9FA;border-radius:13px;padding:14px"><div style="font-size:12px;color:#8B95A1;font-weight:700">상태</div><div style="font-size:24px;font-weight:800;margin-top:3px" data-sensor-status="">—</div></div>
+        <div style="background:#F7F9FA;border-radius:13px;padding:14px"><div style="font-size:12px;color:#8B95A1;font-weight:700">설치 위치</div><div style="font-size:16px;font-weight:800;margin-top:3px" data-sensor-loc="">—</div></div>
+        <div style="background:#F7F9FA;border-radius:13px;padding:14px"><div style="font-size:12px;color:#8B95A1;font-weight:700">마지막 수신</div><div style="font-size:16px;font-weight:800;margin-top:3px" data-sensor-recv="">—</div></div>
+      </div>
+      <div style="height:80px;border-radius:12px;background:#F7F9FA;margin-bottom:16px;position:relative;overflow:hidden"><svg width="100%" height="80" viewBox="0 0 400 80" preserveAspectRatio="none"><polyline fill="none" stroke="#00A05A" stroke-width="2.5" points="0,55 60,48 120,52 180,38 240,42 300,30 360,36 400,32"></polyline></svg><span style="position:absolute;left:12px;top:10px;font-size:11.5px;color:#8B95A1;font-weight:700">최근 24시간 추이</span></div>
+      <div style="display:flex;gap:10px"><span data-close="sensor" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:12px;padding:13px 0;font-size:14.5px;font-weight:800">닫기</span><span data-close="sensor" style="flex:1;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:14.5px;font-weight:800">영점 보정</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 수동 제어 모달 ===== -->
+  <div data-modal="manual" style="display:none;position:fixed;inset:0;background:rgba(15,20,28,.5);z-index:11000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:22px;padding:26px;width:460px;max-width:100%;box-shadow:0 30px 80px rgba(0,0,0,.35)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:19px;font-weight:800"><span data-manual-robot="">R-1 운반로봇</span> 수동 제어</div><span data-close="manual" style="width:30px;height:30px;border-radius:9px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#4E5968" stroke-width="2.2" stroke-linecap="round"></path></svg></span></div>
+      <div style="font-size:12.5px;color:#E07800;font-weight:700;background:#FFF6E9;border-radius:10px;padding:9px 12px;margin-bottom:16px">수동 제어 중에는 자동 스케줄이 일시 중지돼요</div>
+      <div style="display:flex;gap:18px">
+        <div style="flex:none">
+          <div style="display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:8px">
+            <span></span><span data-jog="" style="background:#F2F4F6;border-radius:12px;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 5l-6 7h12l-6-7z" fill="#4E5968"></path></svg></span><span></span>
+            <span data-jog="" style="background:#F2F4F6;border-radius:12px;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 12l7-6v12l-7-6z" fill="#4E5968"></path></svg></span>
+            <span data-jog="stop" style="background:#FDEBEE;border-radius:12px;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" fill="#E01F35"></rect></svg></span>
+            <span data-jog="" style="background:#F2F4F6;border-radius:12px;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12l-7-6v12l7-6z" fill="#4E5968"></path></svg></span>
+            <span></span><span data-jog="" style="background:#F2F4F6;border-radius:12px;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 19l6-7H6l6 7z" fill="#4E5968"></path></svg></span><span></span>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:14px">
+          <div><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:13.5px;font-weight:700">이동 속도</span><span data-out="mspd" style="font-size:14px;font-weight:800;color:#00A05A">0.4㎧</span></div><input type="range" min="0.1" max="1" step="0.1" value="0.4" data-slider="mspd" data-unit="㎧" style="width:100%;accent-color:#00A05A"></div>
+          <div style="display:flex;gap:8px"><div style="flex:1;background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">배터리</div><div style="font-size:16px;font-weight:800">78%</div></div><div style="flex:1;background:#F7F9FA;border-radius:11px;padding:10px 12px"><div style="font-size:11.5px;color:#8B95A1;font-weight:700">현재 위치</div><div style="font-size:16px;font-weight:800">A동 통로</div></div></div>
+          <span style="text-align:center;background:#F2F4F6;color:#4E5968;border-radius:11px;padding:11px 0;font-size:13.5px;font-weight:800">충전 스테이션 복귀</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px"><span data-close="manual" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:12px;padding:13px 0;font-size:14.5px;font-weight:800">닫기</span><span data-close="manual" style="flex:1;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:14.5px;font-weight:800">자동 모드로 복귀</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 임무 추가 모달 ===== -->
+  <div data-modal="mission" style="display:none;position:fixed;inset:0;background:rgba(15,20,28,.5);z-index:11000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:22px;padding:26px;width:520px;max-width:100%;max-height:88vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.35)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:19px;font-weight:800">로봇 임무 추가</div><span data-close="mission" style="width:30px;height:30px;border-radius:9px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#4E5968" stroke-width="2.2" stroke-linecap="round"></path></svg></span></div>
+      <div style="font-size:12.5px;color:#8B95A1;font-weight:600;margin-bottom:16px">현재 예약된 임무와 시간이 겹치면 추가할 수 없어요. 겹칠 경우 기존 임무를 삭제하거나 그 뒤로 예약하세요.</div>
+      <div style="font-size:13px;font-weight:800;color:#4E5968;margin-bottom:8px">현재 예약된 임무</div>
+      <div data-mission-current="" style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">로봇</div><select data-mf="robot" style="width:100%;padding:11px 12px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;font-weight:600;font-family:inherit"><option>R-1 운반로봇</option><option>R-2 방제로봇</option><option>R-3 운반로봇</option></select></div>
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">작업</div><select data-mf="task" style="width:100%;padding:11px 12px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;font-weight:600;font-family:inherit"><option>양액 공급</option><option>급수</option><option>방제</option><option>적엽</option><option>트레이 운반</option></select></div>
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">시작 시간</div><select data-mf="start" style="width:100%;padding:11px 12px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;font-weight:600;font-family:inherit"></select></div>
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">소요 시간</div><select data-mf="dur" style="width:100%;padding:11px 12px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;font-weight:600;font-family:inherit"><option value="20">20분</option><option value="30" selected="">30분</option><option value="40">40분</option><option value="60">60분</option></select></div>
+      </div>
+      <div data-mission-warn="" style="display:none;background:#FDEBEE;border:1px solid #F7B9C0;border-radius:13px;padding:14px;margin-bottom:14px">
+        <div style="font-size:13.5px;font-weight:800;color:#D32030;margin-bottom:4px" data-mission-warn-text="">시간이 겹칩니다</div>
+        <div style="display:flex;gap:8px;margin-top:10px"><span data-mission-resolve="delete" style="flex:1;text-align:center;background:#fff;color:#D32030;border:1px solid #F7B9C0;border-radius:10px;padding:9px 0;font-size:12.5px;font-weight:800">기존 삭제 후 추가</span><span data-mission-resolve="after" style="flex:1;text-align:center;background:#fff;color:#4E5968;border:1px solid #E5E8EB;border-radius:10px;padding:9px 0;font-size:12.5px;font-weight:800">기존 종료 후로 예약</span></div>
+      </div>
+      <div style="display:flex;gap:10px"><span data-close="mission" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">취소</span><span data-mission-add="" style="flex:2;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">임무 추가</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 설비 추가 모달 (UI) ===== -->
+  <div data-modal="equip" style="display:none;position:fixed;inset:0;background:rgba(15,20,28,.5);z-index:11000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:22px;padding:26px;width:480px;max-width:100%;box-shadow:0 30px 80px rgba(0,0,0,.35)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:19px;font-weight:800"><span data-equip-title="">생육기</span> 추가</div><span data-close="equip" style="width:30px;height:30px;border-radius:9px;background:#F2F4F6;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="#4E5968" stroke-width="2.2" stroke-linecap="round"></path></svg></span></div>
+      <div style="font-size:12.5px;color:#8B95A1;font-weight:600;margin-bottom:18px"><span data-equip-farm="">성주 참외 온실</span>에 새 <span data-equip-title2="">생육기</span>를 등록해요</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">이름</div><div style="width:100%;padding:12px 14px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;color:#8B95A1;font-weight:600" data-equip-name-ph="">예: A동 베드 4</div></div>
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">유형</div><select data-equip-type="" style="width:100%;padding:12px 14px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;font-weight:600;font-family:inherit"></select></div>
+        <div><div style="font-size:13px;font-weight:700;margin-bottom:6px">설치·배치 위치</div><div style="width:100%;padding:12px 14px;border:1px solid #E5E8EB;border-radius:11px;font-size:14px;color:#8B95A1;font-weight:600">예: A동 랙 3열 / 중앙 통로 / 기계실</div></div>
+        <div data-equip-extra=""><div style="font-size:13px;font-weight:700;margin-bottom:6px">연결 센서 (선택)</div><div style="display:flex;gap:7px;flex-wrap:wrap"><span data-chip-toggle="on" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:700">온도</span><span data-chip-toggle="on" style="background:#E7F7EF;color:#007A44;border:1px solid #9FDDBE;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:700">습도</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600">CO₂</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600">조도</span><span data-chip-toggle="off" style="background:#fff;color:#8B95A1;border:1px solid #E5E8EB;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600">토양</span></div></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px"><span data-close="equip" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">취소</span><span data-close="equip" style="flex:2;text-align:center;background:#00A05A;color:#fff;border-radius:12px;padding:13px 0;font-size:15px;font-weight:800">추가</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 비상정지 확인 모달 ===== -->
+  <div data-estop-modal="" style="display:none;position:fixed;inset:0;background:rgba(15,20,28,.55);z-index:11000;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:24px;padding:32px;width:440px;max-width:100%;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.35)">
+      <div style="width:68px;height:68px;border-radius:20px;background:#FDEBEE;display:flex;align-items:center;justify-content:center;margin:0 auto 18px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M12 2 2 20h20L12 2z" stroke="#E01F35" stroke-width="2.2" stroke-linejoin="round"></path><path d="M12 9v5" stroke="#E01F35" stroke-width="2.6" stroke-linecap="round"></path><circle cx="12" cy="17.4" r="1.5" fill="#E01F35"></circle></svg></div>
+      <div style="font-size:22px;font-weight:800;margin-bottom:8px">비상정지를 실행할까요?</div>
+      <div style="font-size:14.5px;color:#4E5968;font-weight:600;line-height:1.6;margin-bottom:24px">전 농장의 <b>모든 로봇·설비 작동이 즉시 중단</b>됩니다.<br>자동 스케줄과 원격 제어도 해제 전까지 차단돼요.</div>
+      <div style="display:flex;gap:10px"><span data-close="estop-modal" style="flex:1;text-align:center;background:#F2F4F6;color:#4E5968;border-radius:14px;padding:15px 0;font-size:16px;font-weight:800">취소</span><span data-estop-confirm="" style="flex:1;text-align:center;background:#E01F35;color:#fff;border-radius:14px;padding:15px 0;font-size:16px;font-weight:800">비상정지 실행</span></div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 1280, &quot;height&quot;: 820},
+  &quot;accent&quot;: {&quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#00A05A&quot;, &quot;options&quot;: [&quot;#00A05A&quot;, &quot;#0E9AA0&quot;, &quot;#4C6EF5&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;테마&quot;, &quot;label&quot;: &quot;강조 색상&quot;},
+  &quot;visibility&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;실내 표준&quot;, &quot;options&quot;: [&quot;실내 표준&quot;, &quot;야외 고대비&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;테마&quot;, &quot;label&quot;: &quot;가시성 모드&quot;},
+  &quot;surface&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;부드럽게&quot;, &quot;options&quot;: [&quot;부드럽게&quot;, &quot;또렷하게&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;테마&quot;, &quot;label&quot;: &quot;카드 질감&quot;}
+}">
+class Component extends DCLogic {
+  componentDidUpdate(){ this._applyProps(); }
+  _applyProps(){
+    var root=this._root; if(!root) return;
+    var p=this.props||{};
+    var accent=p.accent||'#00A05A';
+    var vis=p.visibility||'실내 표준';
+    var surface=p.surface||'부드럽게';
+    var ACCENTS={
+      '#0E9AA0':{'#00A05A':'#0E9AA0','#007A44':'#0A7278','#00C271':'#12C2C8','#0A5A34':'#0A4A4E','#E7F7EF':'#E1F5F6','#9FDDBE':'#9BD6D9','#BFE6D2':'#BFE6E8','#8BE3B4':'#8BE0E3'},
+      '#4C6EF5':{'#00A05A':'#4C6EF5','#007A44':'#3B54C4','#00C271':'#5C7CFA','#0A5A34':'#26307A','#E7F7EF':'#ECEFFF','#9FDDBE':'#BAC6F6','#BFE6D2':'#CDD6FA','#8BE3B4':'#AEBEF8'}
+    };
+    var map=ACCENTS[accent];
+    root.querySelectorAll('[style]').forEach(function(el){
+      if(el.hasAttribute('data-app')) return;
+      if(el.matches('[data-scopebar],[data-farmtabs],.scr,[data-modal],[data-notif-panel],[data-usermenu-panel],[data-assistant-panel],[data-journal-composer],[data-day-detail],[data-estop-banner],[data-estop-modal]')) return;
+      if(el._os===undefined) el._os=el.getAttribute('style');
+      var s=el._os;
+      if(map){ for(var k in map){ s=s.split(k).join(map[k]); } }
+      if(surface==='또렷하게'){
+        s=s.split('box-shadow:0 2px 8px rgba(25,31,40,.05)').join('border:1px solid #E4E8EC');
+        s=s.split('box-shadow:0 2px 8px rgba(25,31,40,.04)').join('border:1px solid #E4E8EC');
+        s=s.split('border-radius:20px').join('border-radius:10px');
+        s=s.split('border-radius:18px').join('border-radius:10px');
+        s=s.split('border-radius:16px').join('border-radius:10px');
+      }
+      if(s!==el.getAttribute('style')) el.setAttribute('style',s);
+    });
+    root.style.filter = (vis==='야외 고대비') ? 'contrast(1.14) saturate(1.1) brightness(1.02)' : 'none';
+  }
+  componentDidMount(){
+    this._root=document.querySelector('[data-app]');
+    this._applyProps();
+    if(window.__pmv3) return; window.__pmv3=true;
+    var root=this._root;
+    var farms={
+      seongju:{name:'성주 참외 온실',type:'온실 · 참외',status:'정상 가동',dot:'#00C271',sc:'#00A05A',bg:'#E7F7EF',wx:'성주 구름많음 30.2℃'},
+      hwaseong:{name:'화성 딸기 스마트팜',type:'스마트팜 · 딸기',status:'주의',dot:'#FF8A00',sc:'#E07800',bg:'#FFF6E9',wx:'화성 맑음 29.1℃'},
+      pyeongtaek:{name:'평택 상추 식물공장',type:'식물공장 · 상추',status:'경고',dot:'#F04452',sc:'#F04452',bg:'#FDEBEE',wx:'평택 흐림 28.4℃'},
+      gimje:{name:'김제 벼 논',type:'노지 · 벼 · 실외',status:'정상 가동',dot:'#00C271',sc:'#00A05A',bg:'#E7F7EF',wx:'김제 구름조금 31.5℃'}
+    };
+    var globalPages=['stats','journal','journal-write','settings','support','alerts'];
+    var scopePages=['dashboard','farm-status','farm-env','farm-robot','farm-supply','farm-alerts'];
+    var farmPages=['farm-status','farm-env','farm-robot','farm-supply','farm-alerts'];
+    var st={screen:'dashboard',farm:'seongju',tab:'farm-status'};
+    var scopebar=root.querySelector('[data-scopebar]');
+    var farmtabs=root.querySelector('[data-farmtabs]');
+    var tip=document.createElement('div'); tip.id='__tip'; document.body.appendChild(tip);
+
+    function setMainNav(id){
+      var active = (scopePages.indexOf(id)>=0)?'dashboard':id;
+      root.querySelectorAll('[data-mainnav-item]').forEach(function(el){
+        var on=el.getAttribute('data-mainnav-item')===active;
+        el.style.background=on?'#E7F7EF':'transparent';
+        el.style.color=on?'#007A44':'#4E5968';
+        el.style.fontWeight=on?'700':'600';
+      });
+    }
+    function setScopePills(){
+      root.querySelectorAll('[data-scope-pill]').forEach(function(el){
+        var k=el.getAttribute('data-scope-pill');
+        var on=(st.screen==='dashboard'&&k==='all')||(farmPages.indexOf(st.screen)>=0&&k===st.farm);
+        if(on){ el.style.background='#00A05A'; el.style.color='#fff'; el.style.border='1px solid #00A05A'; el.style.fontWeight='700';
+          el.querySelectorAll('span').forEach(function(s){ if(s.style.background&&s.style.width==='8px')s.style.background='#fff'; });
+        } else { el.style.background='#fff'; el.style.color='#4E5968'; el.style.border='1px solid #E5E8EB'; el.style.fontWeight='600'; }
+      });
+    }
+    function setFarmTabs(){
+      root.querySelectorAll('[data-tab]').forEach(function(el){
+        if(!el.closest('[data-farmtabrow]')) return;
+        var on=el.getAttribute('data-tab')===st.tab;
+        el.style.color=on?'#007A44':'#6B7684';
+        el.style.fontWeight=on?'800':'600';
+        el.style.borderBottom=on?'3px solid #00A05A':'3px solid transparent';
+      });
+    }
+    function applyFarm(){
+      var f=farms[st.farm]; if(!f) return;
+      var set=function(sel,txt){ var e=root.querySelector(sel); if(e)e.textContent=txt; };
+      set('[data-farmname]',f.name);
+      var ty=root.querySelector('[data-farmtype]'); if(ty)ty.textContent=f.type;
+      var sp=root.querySelector('[data-farmstatus]'); if(sp){ sp.style.color=f.sc; sp.style.background=f.bg; sp.innerHTML='<span style="width:7px;height:7px;border-radius:50%;background:'+f.dot+'"></span>'+f.status; }
+      var wx=root.querySelector('[data-farmwx]'); if(wx){ wx.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.5" stroke="#F5A623" stroke-width="2"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" stroke="#F5A623" stroke-width="2" stroke-linecap="round"></path></svg>'+f.wx; }
+      var na=root.querySelector('[data-farmnamealert]'); if(na)na.textContent='· '+f.name;
+      var wr=root.querySelector('[data-farmwxregion]'); if(wr)wr.textContent=(f.wx.split(' ')[0])+' 지역 날씨';
+    }
+    function show(id){
+      st.screen=id;
+      root.querySelectorAll('.scr').forEach(function(s){
+        if(s.getAttribute('data-screen')===id) s.removeAttribute('data-hidden'); else s.setAttribute('data-hidden','1');
+      });
+      scopebar.style.display=(scopePages.indexOf(id)>=0)?'flex':'none';
+      farmtabs.style.display=(farmPages.indexOf(id)>=0)?'flex':'none';
+      if(farmPages.indexOf(id)>=0){ st.tab=id; }
+      setMainNav(id); setScopePills(); setFarmTabs();
+      window.scrollTo(0,0);
+    }
+
+    // 큰글씨 2단계
+    var fs=parseInt(localStorage.getItem('pmv3_fs')||'0',10)||0;
+    var fsLevels=[1,1.16,1.34], fsLabels=['표준','크게','아주 크게'];
+    function applyFs(){ root.style.zoom=fsLevels[fs]; var l=root.querySelector('[data-bigfont-label]'); if(l)l.textContent=fsLabels[fs]; localStorage.setItem('pmv3_fs',String(fs)); }
+    applyFs();
+
+    function closeAll(){ var n=root.querySelector('[data-notif-panel]'), u=root.querySelector('[data-usermenu-panel]'); if(n)n.style.display='none'; if(u)u.style.display='none'; }
+
+    var self=this;
+    function reskin(){ if(self._applyProps) self._applyProps(); }
+    function openModal(n){ var m=root.querySelector('[data-modal="'+n+'"]'); if(m)m.style.display='flex'; }
+    function closeModal(n){ var m=root.querySelector('[data-modal="'+n+'"]'); if(m)m.style.display='none'; }
+
+    // 센서 상세
+    function openSensor(row){
+      var sp=row.children;
+      root.querySelector('[data-sensor-title]').textContent=sp[0].textContent.trim();
+      root.querySelector('[data-sensor-val]').textContent=sp[2].textContent.trim();
+      var stt=root.querySelector('[data-sensor-status]'); stt.textContent=sp[3].textContent.trim(); stt.style.color=sp[3].style.color||'#191F28';
+      root.querySelector('[data-sensor-loc]').textContent=sp[1].textContent.trim();
+      root.querySelector('[data-sensor-recv]').textContent=sp[4].textContent.trim();
+      openModal('sensor');
+    }
+
+    // 로봇 필터
+    var filterState={sched:'all',log:'all'};
+    function applyRobotFilter(chip){
+      var grp=chip.closest('[data-robotfilter]'); var which=grp.getAttribute('data-robotfilter'); var val=chip.getAttribute('data-rf');
+      filterState[which]=val;
+      grp.querySelectorAll('[data-rf]').forEach(function(el){ var on=el===chip; el.style.background=on?'#E7F7EF':'#fff'; el.style.color=on?'#007A44':'#8B95A1'; el.style.borderColor=on?'#9FDDBE':'#E5E8EB'; el.style.fontWeight=on?'700':'600'; });
+      var list=root.querySelector(which==='sched'?'[data-schedule-list]':'[data-log-list]');
+      var shown=0;
+      list.querySelectorAll('[data-robot]').forEach(function(r){ var vis=(val==='all'||r.getAttribute('data-robot')===val); r.style.display=vis?'':'none'; if(vis)shown++; });
+      if(which==='sched'){ var em=root.querySelector('[data-schedule-empty]'); if(em)em.style.display=shown?'none':'block'; }
+    }
+
+    // 임무 스케줄 (분 단위)
+    var schedule=[
+      {robot:'R-1 운반로봇',task:'양액 공급',start:960,dur:40,route:'A-12 반출 → WS2 작업 → A-12 반납'},
+      {robot:'R-2 방제로봇',task:'방제',start:1080,dur:30,route:'B-03 반출 → WS3 작업 → B-03 반납'}
+    ];
+    function fmt(m){ var h=Math.floor(m/60),mm=m%60; return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm; }
+    function shortName(r){ return r.split(' ')[0]; }
+    function renderSchedule(){
+      var list=root.querySelector('[data-schedule-list]'); if(!list) return;
+      var arr=schedule.slice().sort(function(a,b){return a.start-b.start;});
+      list.innerHTML=arr.map(function(s){ return '<div data-robot="'+shortName(s.robot)+'" style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;background:#F7F9FA"><span style="font-size:13px;font-weight:800;color:#00A05A;background:#E7F7EF;border-radius:8px;padding:5px 9px">'+fmt(s.start)+'</span><div style="flex:1"><div style="font-size:14px;font-weight:800">'+shortName(s.robot)+' · '+s.task+'</div><div style="font-size:12px;color:#8B95A1;font-weight:600">'+s.route+'</div></div></div>'; }).join('');
+      var chip=root.querySelector('[data-robotfilter="sched"] [data-rf="'+filterState.sched+'"]'); if(chip)applyRobotFilter(chip);
+      reskin();
+    }
+    function renderMissionCurrent(){
+      var box=root.querySelector('[data-mission-current]'); if(!box) return;
+      var arr=schedule.slice().sort(function(a,b){return a.start-b.start;});
+      box.innerHTML=arr.length?arr.map(function(s){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;background:#F7F9FA"><span style="font-size:12.5px;font-weight:800;color:#00A05A">'+fmt(s.start)+'–'+fmt(s.start+s.dur)+'</span><span style="flex:1;font-size:13px;font-weight:700">'+shortName(s.robot)+' · '+s.task+'</span></div>'; }).join(''):'<div style="font-size:12.5px;color:#8B95A1;font-weight:600">예약된 임무가 없어요</div>';
+    }
+    function missionInput(){
+      var g=function(k){return root.querySelector('[data-mf="'+k+'"]');};
+      return {robot:g('robot').value,task:g('task').value,start:parseInt(g('start').value,10),dur:parseInt(g('dur').value,10)};
+    }
+    function conflictsFor(inp){
+      var end=inp.start+inp.dur;
+      return schedule.filter(function(s){ return s.robot===inp.robot && inp.start<(s.start+s.dur) && s.start<end; });
+    }
+    function checkConflict(){
+      var inp=missionInput(); var cf=conflictsFor(inp);
+      var warn=root.querySelector('[data-mission-warn]'); var add=root.querySelector('[data-mission-add]');
+      if(cf.length){ warn.style.display='block'; root.querySelector('[data-mission-warn-text]').textContent=shortName(inp.robot)+'의 기존 임무('+cf.map(function(c){return c.task+' '+fmt(c.start)+'–'+fmt(c.start+c.dur);}).join(', ')+')와 시간이 겹쳐요'; add.style.opacity='.45'; add.style.pointerEvents='none'; }
+      else { warn.style.display='none'; add.style.opacity='1'; add.style.pointerEvents='auto'; }
+    }
+    function tryAddMission(){
+      var inp=missionInput(); if(conflictsFor(inp).length) return;
+      schedule.push({robot:inp.robot,task:inp.task,start:inp.start,dur:inp.dur,route:shortName(inp.robot)+' 지정 작업 · 자동 경로 배정'});
+      renderSchedule(); closeModal('mission');
+    }
+    function resolveMission(kind){
+      var inp=missionInput(); var cf=conflictsFor(inp);
+      if(kind==='delete'){ schedule=schedule.filter(function(s){ return cf.indexOf(s)<0; }); renderSchedule(); renderMissionCurrent(); checkConflict(); }
+      else if(kind==='after'){ var latest=Math.max.apply(null,cf.map(function(c){return c.start+c.dur;})); var sel=root.querySelector('[data-mf="start"]'); var opt=Array.prototype.slice.call(sel.options).filter(function(o){return parseInt(o.value,10)>=latest;})[0]; if(opt){ sel.value=opt.value; checkConflict(); } }
+    }
+
+    // 달력 + 메모 작성
+    var memoDays=[21,20,19,15], reportDays=[21,20,18,17,16];
+    function buildCalendar(){
+      var cal=root.querySelector('[data-calendar]'); if(!cal) return;
+      var first=new Date(2026,6,1).getDay(), html='';
+      for(var i=0;i<first;i++) html+='<span></span>';
+      for(var d=1;d<=31;d++){
+        var today=d===21, hasM=memoDays.indexOf(d)>=0, hasR=reportDays.indexOf(d)>=0;
+        var dots=''; if(hasM)dots+='<span style="width:5px;height:5px;border-radius:50%;background:#00A05A"></span>'; if(hasR)dots+='<span style="width:5px;height:5px;border-radius:50%;background:#1B64DA"></span>';
+        html+='<span data-day="'+d+'" style="cursor:pointer;height:46px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;'+(today?'background:#E7F7EF;color:#007A44;font-weight:800;border:2px solid #00A05A;':'color:#333D4B;font-weight:700;border:2px solid transparent;')+'">'+d+'<span style="display:flex;gap:3px;margin-top:3px;height:5px">'+dots+'</span></span>';
+      }
+      cal.innerHTML=html; reskin();
+    }
+    var dayData={
+      21:{memos:[{f:'성주 참외',c:'#007A44',bg:'#E7F7EF',by:'최대농 · 14:20',t:'A동 착과 상태 양호. 다음 주 수확 준비 필요.'}],reports:[{tag:'일간',t:'평균 온도 24.6℃·습도 59% 유지. 양액 3회·급수 2회 완료. 성주 참외 성장률 +4.2%, 병충해 이상 없음.'}]},
+      20:{memos:[{f:'평택 상추',c:'#E07800',bg:'#FFF6E9',by:'최대농 · 09:40',t:'양액 농도 조정. 3번 랙 생육 지연 관찰 지속.'}],reports:[{tag:'일간',t:'전 농장 정상 가동. 로봇 작업 22건 성공. 화성 딸기 습도센서 1건 재보정.'}]},
+      19:{memos:[{f:'화성 딸기',c:'#1B64DA',bg:'#EAF2FE',by:'김농부 · 17:05',t:'방제 작업 후 잎 상태 확인. 이상 없음.'}],reports:[]},
+      18:{memos:[],reports:[{tag:'일간',t:'전 농장 정상 가동. 특이사항 없음. 누적 전력 36.8kWh.'}]},
+      17:{memos:[],reports:[{tag:'일간',t:'평균 온도 25.1℃. 성주 참외 관수 3회. 이상 알림 0건.'}]},
+      15:{memos:[{f:'성주 참외',c:'#007A44',bg:'#E7F7EF',by:'최대농 · 11:10',t:'2번 베드 적엽 완료. 생육 균일.'}],reports:[]}
+    };
+    function renderDayDetail(day){
+      if(!root.querySelector('[data-detail-body]')) return;
+      var d=dayData[day]||{memos:[],reports:[]};
+      root.querySelector('[data-detail-date]').textContent='7월 '+day+'일';
+      root.querySelector('[data-detail-count]').textContent='메모 '+d.memos.length+' · 리포트 '+d.reports.length;
+      var html='';
+      d.reports.forEach(function(r){ html+='<div style="padding:14px;border-radius:14px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11px;font-weight:800;color:#1B64DA;background:#EAF2FE;border-radius:6px;padding:2px 8px">자동 리포트</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600">'+r.tag+'</span></div><div style="font-size:13px;color:#4E5968;font-weight:600;line-height:1.55">'+r.t+'</div></div>'; });
+      d.memos.forEach(function(m){ html+='<div style="padding:14px;border-radius:14px;background:#F7F9FA"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:11.5px;font-weight:800;color:'+m.c+';background:'+m.bg+';border-radius:6px;padding:2px 8px">'+m.f+'</span><span style="font-size:11.5px;color:#8B95A1;font-weight:600">'+m.by+'</span></div><div style="font-size:13.5px;color:#333D4B;font-weight:600;line-height:1.55">'+m.t+'</div></div>'; });
+      if(!html) html='<div style="font-size:13px;color:#8B95A1;font-weight:600;text-align:center;padding:16px 0">이 날짜에 등록된 일지가 없어요. 아래에서 메모를 작성해 보세요.</div>';
+      root.querySelector('[data-detail-body]').innerHTML=html;
+      reskin();
+    }
+    function selectDay(el){
+      root.querySelectorAll('[data-day]').forEach(function(x){ if(x.getAttribute('data-day')!=='21'){ x.style.background='transparent'; x.style.border='2px solid transparent'; x.style.color='#333D4B'; } });
+      if(el.getAttribute('data-day')!=='21'){ el.style.background='#F2F4F6'; el.style.border='2px solid #00A05A'; }
+      var day=parseInt(el.getAttribute('data-day'),10);
+      renderDayDetail(day); openComposer(day);
+    }
+    function openComposer(day){
+      var c=root.querySelector('[data-journal-composer]'); if(!c) return;
+      root.querySelector('[data-composer-date]').textContent='7월 '+day+'일';
+      c.style.display='block';
+    }
+    function initJournal(){ renderDayDetail(21); openComposer(21); }
+    var equipTypes={
+      '생육기':['베드형 재배대','다단 랙','포트 재배대','수경 베드'],
+      '로봇':['운반 로봇','방제 로봇','적엽 로봇','수확 로봇'],
+      '탱크':['양액 탱크','급수 탱크','방제액 탱크','세정액 탱크'],
+      '워크스테이션':['급수 스테이션','양액 스테이션','방제 스테이션','세정 스테이션'],
+      '센서':['온도센서','습도센서','CO₂센서','조도센서','토양센서','전력계']
+    };
+    var equipPh={'생육기':'예: A동 베드 4','로봇':'예: R-4 운반로봇','탱크':'예: 2번 양액 탱크','워크스테이션':'예: WS4 급수 스테이션','센서':'예: 온도센서 D'};
+    function openEquip(ae){
+      var kind=ae.textContent.replace('+','').trim();
+      var farmName='선택한 농장';
+      try{ var hdr=ae.parentElement.previousElementSibling; var nm=hdr.querySelector('span[style*="flex:1"]'); if(nm)farmName=nm.textContent.trim().replace('실외','').trim(); }catch(err){}
+      root.querySelector('[data-equip-title]').textContent=kind;
+      root.querySelector('[data-equip-title2]').textContent=kind;
+      root.querySelector('[data-equip-farm]').textContent=farmName;
+      root.querySelector('[data-equip-name-ph]').textContent=equipPh[kind]||'이름을 입력하세요';
+      var sel=root.querySelector('[data-equip-type]'); sel.innerHTML=(equipTypes[kind]||[]).map(function(t){return '<option>'+t+'</option>';}).join('');
+      root.querySelector('[data-equip-extra]').style.display=(kind==='생육기')?'block':'none';
+      openModal('equip');
+    }
+
+    document.addEventListener('click',function(e){
+      if(e.target.closest('[data-bigfont-inc]')){ if(fs<2){fs++;applyFs();} return; }
+      if(e.target.closest('[data-bigfont-dec]')){ if(fs>0){fs--;applyFs();} return; }
+      var estop=e.target.closest('[data-estop]'); if(estop){ root.querySelector('[data-estop-modal]').style.display='flex'; return; }
+      if(e.target.closest('[data-estop-confirm]')){ root.querySelector('[data-estop-modal]').style.display='none'; var b=root.querySelector('[data-estop-banner]'); b.style.display='flex'; window.scrollTo(0,0); return; }
+      if(e.target.closest('[data-estop-release]')){ root.querySelector('[data-estop-banner]').style.display='none'; return; }
+      var cl=e.target.closest('[data-close]'); if(cl){ var w=cl.getAttribute('data-close');
+        if(w==='assistant'){root.querySelector('[data-assistant-panel]').style.display='none';}
+        else if(w==='estop-modal'){root.querySelector('[data-estop-modal]').style.display='none';}
+        else if(w==='composer'){root.querySelector('[data-journal-composer]').style.display='none';}
+        else { closeModal(w); }
+        return; }
+      var mo=e.target.closest('[data-modal-open]'); if(mo){ var mn=mo.getAttribute('data-modal-open'); if(mn==='manual'){ var mr=root.querySelector('[data-manual-robot]'); if(mr)mr.textContent=mo.getAttribute('data-robot')||'R-1 운반로봇'; } if(mn==='mission'){ renderMissionCurrent(); checkConflict(); } openModal(mn); return; }
+      var srow=e.target.closest('[data-sensor-row]'); if(srow){ openSensor(srow); return; }
+      var rfc=e.target.closest('[data-rf]'); if(rfc){ applyRobotFilter(rfc); return; }
+      var mres=e.target.closest('[data-mission-resolve]'); if(mres){ resolveMission(mres.getAttribute('data-mission-resolve')); return; }
+      var madd=e.target.closest('[data-mission-add]'); if(madd){ tryAddMission(); return; }
+      var jn=e.target.closest('[data-journal-new]'); if(jn){ openComposer(21); return; }
+      var dayc=e.target.closest('[data-day]'); if(dayc){ selectDay(dayc); return; }
+      var ae=e.target.closest('[data-add-equip]'); if(ae){ openEquip(ae); return; }
+      var as=e.target.closest('[data-assistant]'); if(as){ var p=root.querySelector('[data-assistant-panel]'); p.style.display=(p.style.display==='flex')?'none':'flex'; return; }
+      var nb=e.target.closest('[data-notif]'); if(nb){ var np=root.querySelector('[data-notif-panel]'); var vis=np.style.display==='block'; closeAll(); np.style.display=vis?'none':'block'; e.stopPropagation(); return; }
+      var um=e.target.closest('[data-usermenu]'); if(um){ var up=root.querySelector('[data-usermenu-panel]'); var v2=up.style.display==='block'; closeAll(); up.style.display=v2?'none':'block'; e.stopPropagation(); return; }
+      closeAll();
+      var tabEl=e.target.closest('[data-tab]'); if(tabEl){ show(tabEl.getAttribute('data-tab')); return; }
+      var nav=e.target.closest('[data-nav]');
+      if(nav){ var t=nav.getAttribute('data-nav'); var fm=nav.getAttribute('data-farm');
+        if(fm){ st.farm=fm; applyFarm(); } show(t); return; }
+      var tg=e.target.closest('[data-toggle]');
+      if(tg){ var on=tg.getAttribute('data-toggle')!=='on'; tg.setAttribute('data-toggle',on?'on':'off'); tg.style.background=on?(tg.getAttribute('data-on-color')||'#00A05A'):'#D1D6DB'; var k=tg.querySelector('[data-knob]'); if(k)k.style.transform=on?('translateX('+(tg.getAttribute('data-tx')||18)+'px)'):'translateX(0)'; var sc=tg.closest('div'); var stx=sc&&sc.querySelector('[data-statetext]'); if(stx){stx.textContent=on?(stx.getAttribute('data-on-text')||'켜짐'):(stx.getAttribute('data-off-text')||'꺼짐');stx.style.color=on?'#00A05A':'#8B95A1';} return; }
+      var seg=e.target.closest('[data-seg-item]');
+      if(seg){ var g=seg.closest('[data-seg]'); if(g){ g.querySelectorAll('[data-seg-item]').forEach(function(el){el.style.background='transparent';el.style.color='#8B95A1';el.style.boxShadow='none';el.style.fontWeight='600';}); seg.style.background='#fff';seg.style.color='#191F28';seg.style.boxShadow='0 1px 4px rgba(0,0,0,.12)';seg.style.fontWeight='700'; } return; }
+      var rad=e.target.closest('[data-chip-radio]');
+      if(rad){ var grp=rad.closest('[data-chip-group]'); if(grp){ grp.querySelectorAll('[data-chip-radio]').forEach(function(el){ el.style.background='#fff'; el.style.color='#8B95A1'; el.style.borderColor='#E5E8EB'; el.style.fontWeight='600'; }); rad.style.background='#E7F7EF'; rad.style.color='#007A44'; rad.style.borderColor='#9FDDBE'; rad.style.fontWeight='700'; var lbl=root.querySelector('[data-statsfarm-label]'); if(lbl)lbl.textContent='· '+rad.getAttribute('data-chip-radio'); } return; }
+      var chip=e.target.closest('[data-chip-toggle]');
+      if(chip){ var c=chip.getAttribute('data-chip-toggle')!=='on'; chip.setAttribute('data-chip-toggle',c?'on':'off'); chip.style.background=c?'#E7F7EF':'#fff'; chip.style.color=c?'#007A44':'#8B95A1'; chip.style.borderColor=c?'#9FDDBE':'#E5E8EB'; }
+    });
+    document.addEventListener('input',function(e){ var s=e.target.closest('input[data-slider]'); if(s){ var o=root.querySelector('[data-out="'+s.getAttribute('data-slider')+'"]'); if(o)o.textContent=s.value+(s.getAttribute('data-unit')||''); } });
+    document.addEventListener('mouseover',function(e){ var el=e.target.closest('[data-tip]'); if(el){ tip.textContent=el.getAttribute('data-tip'); tip.style.display='block'; } });
+    document.addEventListener('mousemove',function(e){ if(tip.style.display==='block'){ var x=e.clientX+14,y=e.clientY+16; if(x+tip.offsetWidth>window.innerWidth-8)x=e.clientX-tip.offsetWidth-14; tip.style.left=x+'px'; tip.style.top=y+'px'; } });
+    document.addEventListener('mouseout',function(e){ if(e.target.closest('[data-tip]')) tip.style.display='none'; });
+
+    document.addEventListener('change',function(e){ if(e.target.closest('[data-mf]')) checkConflict(); });
+
+    // 임무 모달 시작시간 옵션
+    var startSel=root.querySelector('[data-mf="start"]');
+    if(startSel){ var opts=''; for(var mm=480;mm<=1200;mm+=30){ opts+='<option value="'+mm+'"'+(mm===900?' selected=""':'')+'>'+fmt(mm)+'</option>'; } startSel.innerHTML=opts; }
+
+    renderSchedule(); buildCalendar(); initJournal();
+    applyFarm(); show('dashboard');
+  }
+  renderVals(){ return {}; }
+}
+</script>
+</body>
+</html>

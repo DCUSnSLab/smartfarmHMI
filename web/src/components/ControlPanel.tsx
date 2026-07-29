@@ -31,12 +31,13 @@ const CMD_LABEL: Record<string, string> = {
 };
 
 export function ControlPanel({
-  farmId, deviceId, commands, disabled,
+  farmId, deviceId, commands, disabled, disabledReason,
 }: {
   farmId: string;
   deviceId: string;
   commands: Record<string, CommandState>;
   disabled: boolean;
+  disabledReason?: string;
 }) {
   const [values, setValues] = useState<Record<string, number>>(
     Object.fromEntries(CONTROLS.map((c) => [c.command, c.init])),
@@ -92,9 +93,9 @@ export function ControlPanel({
           >
             {sending ? "전송 중…" : `설정 적용${dirty.size ? ` (${dirty.size}건)` : ""}`}
           </button>
-          {disabled && (
+          {disabled && disabledReason && (
             <p className="mt-2 text-center text-[12px] font-semibold text-status-warningDark">
-              통신 단절 — 제어를 사용할 수 없습니다 (FR-37)
+              {disabledReason}
             </p>
           )}
         </div>

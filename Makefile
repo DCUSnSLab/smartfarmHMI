@@ -91,6 +91,7 @@ makemigrations:
 
 seed:
 	$(COMPOSE) exec middleware python -m middleware.scripts.seed
+	$(COMPOSE) exec api python manage.py seed_users
 
 # ---------------- 검증 ----------------
 health:

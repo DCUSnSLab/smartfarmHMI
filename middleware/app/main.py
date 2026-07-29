@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from middleware.app.commands import timeout_watcher
 from middleware.app.config import settings
 from middleware.app.ingest import connection_monitor, ingest_loop
 from middleware.app.republish import InternalPublisher
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(publisher.run(), name="republish"),
         asyncio.create_task(ingest_loop(engine, publisher), name="ingest"),
         asyncio.create_task(connection_monitor(engine, publisher), name="conn-monitor"),
+        asyncio.create_task(timeout_watcher(engine, publisher), name="cmd-timeout"),
     ]
     yield
     for t in tasks:
@@ -36,9 +38,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="smartfarmHMI middleware", lifespan=lifespan)
 
+from middleware.app.commands import router as commands_router  # noqa: E402
 from middleware.app.internal_api import router as internal_router  # noqa: E402
 
 app.include_router(internal_router)
+app.include_router(commands_router)
 
 
 @app.get("/health")

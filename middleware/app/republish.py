@@ -22,10 +22,10 @@ log = logging.getLogger("mw.republish")
 
 class InternalPublisher:
     def __init__(self, maxsize: int = 10_000):
-        self._queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=maxsize)
+        self._queue: asyncio.Queue[tuple[str, str | bytes, bool]] = asyncio.Queue(maxsize=maxsize)
 
     def publish(self, farm_id: str, stream: str, data: dict) -> None:
-        """핸들러에서 호출 — 논블로킹. 큐가 가득 차면 가장 오래된 것을 버린다."""
+        """내부 스트림 재발행 — 논블로킹. 큐가 가득 차면 가장 오래된 것을 버린다."""
         payload = json.dumps(
             {
                 "channel": f"{farm_id}/{stream}",
@@ -35,7 +35,14 @@ class InternalPublisher:
             ensure_ascii=False,
             default=str,
         )
-        item = (internal_topic(farm_id, stream), payload)
+        self._enqueue(internal_topic(farm_id, stream), payload, retain=True)
+
+    def publish_raw(self, topic: str, payload: str | bytes, retain: bool = False) -> None:
+        """임의 토픽 발행 — 커맨드 변환기용. 명령은 retain 금지 (통신 규격 §3)."""
+        self._enqueue(topic, payload, retain)
+
+    def _enqueue(self, topic: str, payload: str | bytes, retain: bool) -> None:
+        item = (topic, payload, retain)
         try:
             self._queue.put_nowait(item)
         except asyncio.QueueFull:
@@ -52,9 +59,10 @@ class InternalPublisher:
                 ) as client:
                     log.info("republish: connected")
                     while True:
-                        topic, payload = await self._queue.get()
-                        # retain=True — 신규 구독자(브리지 재시작)가 최신값 즉시 수신
-                        await client.publish(topic, payload, qos=1, retain=True)
+                        # 내부 스트림은 retain=True(신규 구독자 즉시 수신),
+                        # 명령은 retain=False(재접속 시 과거 명령 재실행 방지)
+                        topic, payload, retain = await self._queue.get()
+                        await client.publish(topic, payload, qos=1, retain=retain)
             except aiomqtt.MqttError as e:
                 log.warning("republish: mqtt disconnected (%s) — 5s 후 재접속", e)
                 await asyncio.sleep(5)

@@ -14,15 +14,18 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from middleware.app.config import settings
 from middleware.app.ingest import connection_monitor, ingest_loop
+from middleware.app.republish import InternalPublisher
 
 engine = create_async_engine(settings.database_url, pool_size=5)
+publisher = InternalPublisher()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     tasks = [
-        asyncio.create_task(ingest_loop(engine), name="ingest"),
-        asyncio.create_task(connection_monitor(engine), name="conn-monitor"),
+        asyncio.create_task(publisher.run(), name="republish"),
+        asyncio.create_task(ingest_loop(engine, publisher), name="ingest"),
+        asyncio.create_task(connection_monitor(engine, publisher), name="conn-monitor"),
     ]
     yield
     for t in tasks:
@@ -32,6 +35,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="smartfarmHMI middleware", lifespan=lifespan)
+
+from middleware.app.internal_api import router as internal_router  # noqa: E402
+
+app.include_router(internal_router)
 
 
 @app.get("/health")

@@ -15,10 +15,12 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL ON SCHEMA app TO app_user;
     GRANT ALL ON SCHEMA mw  TO mw_user;
     ALTER ROLE app_user SET search_path = app;
-    ALTER ROLE mw_user  SET search_path = mw;
+    -- mw_user 는 TimescaleDB 함수(create_hypertable 등, public 스키마)가 필요하다
+    ALTER ROLE mw_user  SET search_path = mw, public;
+    GRANT USAGE ON SCHEMA public TO mw_user;
 
     -- 상대 스키마 접근 차단 (읽기 포함 금지 — 설계 원칙 #2 의 DB 버전)
     REVOKE ALL ON SCHEMA mw  FROM app_user;
     REVOKE ALL ON SCHEMA app FROM mw_user;
-    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 EOSQL

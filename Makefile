@@ -84,10 +84,13 @@ mqtt-sub:
 # ---------------- DB ----------------
 migrate:
 	$(COMPOSE) exec api python manage.py migrate
-	$(COMPOSE) exec middleware alembic upgrade head
+	$(COMPOSE) exec -w /app/middleware middleware alembic upgrade head
 
 makemigrations:
 	$(COMPOSE) exec api python manage.py makemigrations $(APP)
+
+seed:
+	$(COMPOSE) exec middleware python -m middleware.scripts.seed
 
 # ---------------- 검증 ----------------
 health:

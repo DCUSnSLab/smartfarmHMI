@@ -24,7 +24,11 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "corsheaders",
     "apps.core",
+    "apps.accounts",
+    "apps.journal",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

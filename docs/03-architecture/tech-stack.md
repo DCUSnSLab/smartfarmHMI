@@ -28,6 +28,7 @@
 - AIBootcamp `api/`와 동일한 Django·DRF·SimpleJWT·drf-spectacular 구성.
 - **로그인 시스템은 AIBootcamp의 인증 흐름을 재사용한다** — LocalAuthAdapter + SimpleJWT 발급 + HttpOnly 쿠키 + 프론트 미들웨어 역할 가드 (FR-31). 화면(로그인·권한별 라우팅)은 신규 제작이 필요하다 (`../design/design-change-spec.md` §3.1).
 - WebSocket 푸시는 **Django Channels + Redis 채널 레이어**로 구현한다. 내부 MQTT 구독자(aiomqtt)가 수신한 메시지를 채널 레이어에 실어 웹앱으로 팬아웃한다.
+- **내부 MQTT 구독 태스크는 반드시 단일 인스턴스로 띄운다.** ASGI 워커마다 구독 태스크가 뜨면 같은 메시지가 워커 수만큼 중복 push된다. 같은 Django 코드베이스의 별도 경량 프로세스(management command, 같은 컨테이너 내 보조 프로세스)로 1개만 실행하고, 수신 메시지를 Redis 채널 레이어에 실어 컨슈머들이 받게 한다. ASGI 워커(WebSocket·REST 담당)는 자유롭게 수평 확장한다.
 
 ### 미들웨어 서버 — FastAPI + aiomqtt
 - 미들웨어 서버의 주 업무는 MQTT 수집·재발행·스케줄링으로, 요청-응답보다 **상시 비동기 IO**가 중심이다. Django보다 asyncio 네이티브인 FastAPI + aiomqtt가 적합하다.

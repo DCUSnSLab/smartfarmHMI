@@ -64,9 +64,10 @@
 
 (`../../README.md` 참고)
 
-- 애플리케이션 서버 자체 저장소와 미들웨어 서버 DB를 물리적으로 분리할지, 같은 DB를 스키마만 나눠 쓸지 — OPN-15 (OPN-03과 함께 결정 필요)
-- DB 기술 스택 — OPN-03
-- MQTT 브로커 배치(미들웨어 내장 vs 별도)와 인증·TLS·ACL 정책 — OPN-22
+- 애플리케이션 서버 자체 저장소와 미들웨어 서버 DB의 물리 분리 여부 — OPN-15. **같은 PostgreSQL 인스턴스에 스키마(또는 데이터베이스) 분리로 시작**하는 방향으로 좁혀졌고, 물리 분리는 부하 확인 후 판단한다 (`tech-stack.md`)
+- MQTT 브로커 배치(미들웨어 내장 vs 별도)와 인증·TLS·ACL 정책 — OPN-22 (브로커 소프트웨어는 Mosquitto 확정)
+
+각 모듈의 구현 스택은 `tech-stack.md` 참고 — 웹앱 Next.js 15, 애플리케이션 서버 Django 5.2 + Channels, 미들웨어 서버 FastAPI + aiomqtt, DB PostgreSQL 16 + TimescaleDB.
 
 ## 변경 이력
 - 2026-07-08 · 최초 작성

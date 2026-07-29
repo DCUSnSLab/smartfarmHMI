@@ -129,8 +129,8 @@ EnvironmentReading, DeviceConnectionState, Tank ──> Alert (AlertRule 대조�
 
 (`../../README.md` 참고)
 
-- DB 기술 스택 (RDB / 시계열DB / 하이브리드) — OPN-03. `EnvironmentReading`·`RobotStatus`가 고빈도 시계열이고 나머지는 관계형 성격이 강해 하이브리드 검토가 필요하다
-- 각 엔터티의 정확한 필드·타입은 통신 규격 확정 후 함께 정의 — OPN-09
+- ~~DB 기술 스택~~ — **OPN-03 해소: PostgreSQL 16 + TimescaleDB 확장** (`../03-architecture/tech-stack.md`). `EnvironmentReading`·`RobotStatus` 등 고빈도 시계열 테이블만 하이퍼테이블화한다
+- 각 엔터티의 정확한 필드·타입 정의 — OPN-09. 통신 규격(MQTT 스키마 0.2)이 확정되었으므로 착수 가능하다
 - 애플리케이션 서버 자체 저장소와 미들웨어 서버 DB의 분리 수준 — OPN-15
 - 배치도 좌표계 원점·축·단위·스케일 — OPN-21
 - 알림 임계값 기본값 (`AlertRule` 초기값) — OPN-20

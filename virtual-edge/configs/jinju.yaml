@@ -1,0 +1,24 @@
+# 진주 토마토 온실 — 멀티팜 테스트용 둘째 팜 (센서 구성·주기가 다름)
+farm_id: jinju
+edge_id: edge-01
+growbed_id: growbed-01
+
+broker:
+  host: host.docker.internal
+  port: 41883
+
+sensors:
+  - { id: temp-a,  type: temperature, unit: celsius, interval_sec: 7,
+      base: 25.0, amplitude: 2.5, noise: 0.2, location: 온실 중앙 }
+  - { id: hum-a,   type: humidity, unit: percent, interval_sec: 7,
+      base: 55.0, amplitude: 6.0, noise: 1.0, location: 온실 중앙 }
+  - { id: ec-a,    type: ec, unit: mS/cm, interval_sec: 12,
+      base: 2.0, amplitude: 0.15, noise: 0.04, location: 공급 라인 }
+  - { id: power-a, type: power, unit: kW, interval_sec: 20,
+      base: 2.2, noise: 0.06, location: 배전반 }
+  - { id: tank-nutrient-lv, type: water_level, unit: percent, interval_sec: 40,
+      base: 60.0, drain_per_hour: 1.0, noise: 0.1, location: 양액 탱크 }
+
+actuators:
+  - { id: heater-a, command: set_temperature, affects: temp-a, power_kw: 1.5 }
+  - { id: doser-a,  command: set_ec,          affects: ec-a,   drains: tank-nutrient-lv }

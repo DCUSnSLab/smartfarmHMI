@@ -1,0 +1,39 @@
+# 화성 딸기 스마트팜 — 가상 엣지 팜 정의 (컨테이너 1개 = 팜 1개)
+# 센서별 interval_sec 로 전송 주기를 개별 설정한다.
+farm_id: hwaseong
+edge_id: edge-01
+growbed_id: growbed-01
+
+broker:
+  host: host.docker.internal   # MQTT_HOST 환경 변수가 우선
+  port: 41883                  # 호스트 공개 포트 — 외부 장치와 동일 경로
+
+sensors:
+  # 환경 (고빈도)
+  - { id: temp-a,  type: temperature, unit: celsius, interval_sec: 5,
+      base: 22.0, amplitude: 1.5, noise: 0.15, location: 재배동 중앙 }
+  - { id: hum-a,   type: humidity, unit: percent, interval_sec: 5,
+      base: 65.0, amplitude: 5.0, noise: 0.8, location: 재배동 중앙 }
+  # 양분·공기 (중빈도)
+  - { id: ec-a,    type: ec, unit: mS/cm, interval_sec: 10,
+      base: 1.6, amplitude: 0.1, noise: 0.03, location: 공급 라인 }
+  - { id: co2-a,   type: co2, unit: ppm, interval_sec: 10,
+      base: 620.0, amplitude: 120.0, noise: 12.0, location: 천장 }
+  # 조도·전력 (저빈도)
+  - { id: illum-a, type: illuminance, unit: klx, interval_sec: 15,
+      base: 14.0, amplitude: 7.0, noise: 0.4, location: 베드 상단 }
+  - { id: power-a, type: power, unit: kW, interval_sec: 15,
+      base: 3.1, noise: 0.08, location: 배전반 }
+  # 탱크 수위 (최저빈도, 단조 감소)
+  - { id: tank-nutrient-lv,  type: water_level, unit: percent, interval_sec: 30,
+      base: 82.0, drain_per_hour: 1.5, noise: 0.1, location: 양액 탱크 }
+  - { id: tank-water-lv,     type: water_level, unit: percent, interval_sec: 30,
+      base: 90.0, drain_per_hour: 2.0, noise: 0.1, location: 급수 탱크 }
+  - { id: tank-pesticide-lv, type: water_level, unit: percent, interval_sec: 30,
+      base: 70.0, drain_per_hour: 0.4, noise: 0.1, location: 방재액 탱크 }
+
+actuators:
+  - { id: heater-a,     command: set_temperature, affects: temp-a,  power_kw: 1.2 }
+  - { id: humidifier-a, command: set_humidity,    affects: hum-a,   power_kw: 0.4 }
+  - { id: doser-a,      command: set_ec,          affects: ec-a,    drains: tank-nutrient-lv }
+  - { id: led-a,        command: set_led,         affects: illum-a, power_kw: 0.8 }

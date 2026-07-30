@@ -142,18 +142,17 @@ export default function StatsPage() {
             height={240}
             series={[
               {
-                name: "온도", color: SENSOR_META.temperature.color,
+                name: "온도", unit: "℃", color: SENSOR_META.temperature.color,
                 points: temp.map((h) => ({ ts: h.ts, value: h.avg })),
               },
               {
-                name: "습도", color: SENSOR_META.humidity.color,
+                name: "습도", unit: "%", color: SENSOR_META.humidity.color,
                 points: hum.map((h) => ({ ts: h.ts, value: h.avg })),
               },
             ]}
-            unitLabels={["℃", "%"]}
           />
           <p className="mt-2 text-[11.5px] font-semibold text-muted">
-            두 계열의 값 범위가 달라 축을 공유합니다. 축 분리는 추후 개선 항목입니다.
+            온도는 좌축, 습도는 우축 — 값 범위가 다른 계열을 각각의 축으로 표시합니다.
           </p>
         </Card>
       </section>

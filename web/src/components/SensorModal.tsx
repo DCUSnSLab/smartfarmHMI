@@ -87,10 +87,9 @@ export function SensorModal({
           <LineChart
             height={180}
             series={[{
-              name: meta.name, color: meta.color,
+              name: meta.name, unit: meta.unit, color: meta.color,
               points: history.map((h) => ({ ts: h.ts, value: h.avg })),
             }]}
-            unitLabels={[meta.unit]}
           />
         )}
       </div>

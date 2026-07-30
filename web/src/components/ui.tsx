@@ -124,79 +124,131 @@ export function Gauge({
   );
 }
 
-/** 라인 차트 — 의존성 없이 SVG (디자인의 단순 추이 그래프) */
-export function LineChart({
-  series, height = 180, unitLabels = [],
-}: {
-  series: { name: string; color: string; points: { ts: string; value: number }[] }[];
-  height?: number;
-  unitLabels?: string[];
-}) {
-  const all = series.flatMap((s) => s.points.map((p) => p.value));
-  if (all.length === 0) {
+export interface ChartSeries {
+  name: string;
+  color: string;
+  unit?: string;
+  points: { ts: string; value: number }[];
+}
+
+/**
+ * 라인 차트 — 의존성 없이 SVG (디자인의 단순 추이 그래프).
+ *
+ * **계열별 독립 축**: 온도(℃)와 습도(%)처럼 값 범위가 다른 계열을 함께 그릴 때
+ * 축을 공유하면 한쪽이 위아래로 붙어 추이를 읽을 수 없다. 각 계열을 자기
+ * 최소·최대로 정규화하고, 첫 계열은 좌축·둘째 계열은 우축에 눈금을 표시한다.
+ * (SVG 는 preserveAspectRatio="none" 으로 늘어나므로 축 라벨은 HTML 로 배치)
+ */
+export function LineChart({ series, height = 180 }: { series: ChartSeries[]; height?: number }) {
+  const usable = series.filter((s) => s.points.length > 0);
+  if (usable.length === 0) {
     return (
-      <div className="flex h-[180px] items-center justify-center text-[13px] font-semibold text-muted">
+      <div className="flex items-center justify-center text-[13px] font-semibold text-muted" style={{ height }}>
         데이터가 없어요
       </div>
     );
   }
-  const min = Math.min(...all);
-  const max = Math.max(...all);
-  const pad = (max - min) * 0.15 || 1;
-  const lo = min - pad;
-  const hi = max + pad;
+
+  // 계열별 독립 스케일
+  const scaled = usable.map((s) => {
+    const vals = s.points.map((p) => p.value);
+    const mn = Math.min(...vals);
+    const mx = Math.max(...vals);
+    const pad = (mx - mn) * 0.15 || Math.max(Math.abs(mx) * 0.05, 0.5);
+    return { ...s, lo: mn - pad, hi: mx + pad };
+  });
+
   const W = 100;
   const H = 100;
-
-  const path = (pts: { ts: string; value: number }[]) => {
-    if (pts.length === 0) return "";
-    const n = pts.length;
-    return pts
+  const path = (s: (typeof scaled)[number]) => {
+    const n = s.points.length;
+    return s.points
       .map((p, i) => {
-        const x = n === 1 ? 0 : (i / (n - 1)) * W;
-        const y = H - ((p.value - lo) / (hi - lo)) * H;
+        const x = n === 1 ? W / 2 : (i / (n - 1)) * W;
+        const y = H - ((p.value - s.lo) / (s.hi - s.lo || 1)) * H;
         return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
       })
       .join(" ");
   };
 
-  const first = series[0]?.points ?? [];
+  const ticks = (s: (typeof scaled)[number]) => {
+    const step = (s.hi - s.lo) / 4;
+    const digits = s.hi - s.lo < 5 ? 1 : 0;
+    return [4, 3, 2, 1, 0].map((i) => (s.lo + step * i).toFixed(digits));
+  };
+
+  const left = scaled[0];
+  const right = scaled.length > 1 ? scaled[1] : null;
+  const axisText = (s: (typeof scaled)[number]) =>
+    `${s.name}${s.unit ? ` (${s.unit})` : ""}`;
+
+  const timeAxis = scaled.reduce((a, b) => (b.points.length > a.points.length ? b : a)).points;
   const timeLabel = (iso: string) =>
     new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <div>
+      {/* 범례 — 어느 계열이 어느 축인지 명시 */}
       <div className="mb-2 flex flex-wrap gap-3">
-        {series.map((s, i) => (
+        {scaled.map((s, i) => (
           <span key={s.name} className="flex items-center gap-1.5 text-[12px] font-bold text-gray-600">
             <span className="h-2 w-3 rounded-sm" style={{ background: s.color }} />
             {s.name}
-            {unitLabels[i] && <span className="font-semibold text-muted">({unitLabels[i]})</span>}
+            {s.unit && <span className="font-semibold text-muted">({s.unit})</span>}
+            {scaled.length > 1 && i < 2 && (
+              <span className="rounded bg-gray-100 px-1 text-[10.5px] font-extrabold text-gray-500">
+                {i === 0 ? "좌축" : "우축"}
+              </span>
+            )}
           </span>
         ))}
-        <span className="ml-auto text-[11.5px] font-semibold text-muted">
-          {lo.toFixed(0)} ~ {hi.toFixed(0)}
-        </span>
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-        style={{ height, width: "100%" }} role="img" aria-label="추이 그래프"
-      >
-        {[0, 25, 50, 75, 100].map((y) => (
-          <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#F2F4F6" strokeWidth="0.4" />
-        ))}
-        {series.map((s) => (
-          <path
-            key={s.name} d={path(s.points)} fill="none" stroke={s.color}
-            strokeWidth="0.9" vectorEffect="non-scaling-stroke" strokeLinejoin="round"
-          />
-        ))}
-      </svg>
-      {first.length > 1 && (
-        <div className="mt-1 flex justify-between text-[11px] font-semibold text-muted">
-          <span>{timeLabel(first[0].ts)}</span>
-          <span>{timeLabel(first[Math.floor(first.length / 2)].ts)}</span>
-          <span>{timeLabel(first[first.length - 1].ts)}</span>
+
+      <div className="flex gap-1.5">
+        {/* 좌축 눈금 */}
+        <div
+          className="flex w-9 flex-col justify-between text-right text-[10.5px] font-semibold"
+          style={{ height, color: left.color }}
+        >
+          {ticks(left).map((v, i) => <span key={i}>{v}</span>)}
+        </div>
+
+        <svg
+          viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          style={{ height, width: "100%" }}
+          role="img"
+          aria-label={`추이 그래프 — ${scaled.map(axisText).join(", ")}`}
+        >
+          {[0, 25, 50, 75, 100].map((y) => (
+            <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#F2F4F6" strokeWidth="0.4" />
+          ))}
+          {scaled.map((s) => (
+            <path
+              key={s.name} d={path(s)} fill="none" stroke={s.color}
+              strokeWidth="0.9" vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+            />
+          ))}
+        </svg>
+
+        {/* 우축 눈금 (둘째 계열이 있을 때만) */}
+        {right && (
+          <div
+            className="flex w-9 flex-col justify-between text-[10.5px] font-semibold"
+            style={{ height, color: right.color }}
+          >
+            {ticks(right).map((v, i) => <span key={i}>{v}</span>)}
+          </div>
+        )}
+      </div>
+
+      {timeAxis.length > 1 && (
+        <div
+          className="mt-1 flex justify-between text-[11px] font-semibold text-muted"
+          style={{ paddingLeft: "2.625rem", paddingRight: right ? "2.625rem" : 0 }}
+        >
+          <span>{timeLabel(timeAxis[0].ts)}</span>
+          <span>{timeLabel(timeAxis[Math.floor(timeAxis.length / 2)].ts)}</span>
+          <span>{timeLabel(timeAxis[timeAxis.length - 1].ts)}</span>
         </div>
       )}
     </div>

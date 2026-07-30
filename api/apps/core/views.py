@@ -45,6 +45,68 @@ async def farm_commands(request, farm_id: str):
     return await _proxy_middleware(f"/internal/farms/{farm_id}/commands")
 
 
+async def farm_alerts(request, farm_id: str):
+    """알림 목록 (FR-33). 쿼리: unacked, severity, limit."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/alerts?{qs}")
+
+
+@csrf_exempt
+async def alert_ack(request, alert_id: int):
+    """알림 읽음 처리 (FR-33) — 로그인 사용자 누구나."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+        resp = await client.post(f"/internal/alerts/{alert_id}/ack", json={"by": user.email})
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
+@csrf_exempt
+async def alerts_ack_all(request, farm_id: str):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+        resp = await client.post(
+            f"/internal/farms/{farm_id}/alerts/ack-all", json={"by": user.email}
+        )
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
+async def alert_rules(request, farm_id: str):
+    """알림 규칙 조회 (FR-34)."""
+    if request_user(request) is None:
+        return unauthorized()
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/alert-rules")
+
+
+@csrf_exempt
+async def alert_rule_update(request, rule_id: int):
+    """알림 규칙 수정 (FR-34) — admin/manager 만."""
+    if request.method != "PUT":
+        return HttpResponseNotAllowed(["PUT"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    if user.role not in CONTROL_ROLES:
+        return forbidden("규칙 설정")
+    try:
+        body = json.loads(request.body)
+    except ValueError:
+        return JsonResponse({"error": "invalid json"}, status=400)
+    body["updated_by"] = user.email
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+        resp = await client.put(f"/internal/alert-rules/{rule_id}", json=body)
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
 @csrf_exempt  # JWT 쿠키(SameSite=Lax) 인증으로 보호 — 크로스사이트 POST 는 쿠키 미전송
 async def device_control(request, farm_id: str, device_id: str):
     """생육기 수동제어 요청 (FR-10) — admin/manager 만. viewer 는 조회 전용."""

@@ -148,6 +148,8 @@ async def handle_message(
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
+            from middleware.app.alerts import check_sensor_thresholds
+            await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
             if publisher:
                 publisher.publish(msg.farm_id, "environment", {
                     "device_id": msg.device_id, "sensor_id": msg.sensor_id,
@@ -175,6 +177,8 @@ async def handle_message(
                 })
         elif isinstance(msg, Death):
             await _handle_death(conn, msg, parsed.device_type, received_at)
+            from middleware.app.alerts import alert_connection_change
+            await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
             if publisher:
                 # 엣지 death 는 농장 전체 cascade — 화면은 farm 단위 오프라인 표시
                 publisher.publish(msg.farm_id, "connection", {
@@ -238,6 +242,10 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
                         )
                         log.info("connection: %s/%s %s → %s (gap=%.0fs)",
                                  row["farm_id"], row["device_id"], row["state"], new_state, gap)
+                        from middleware.app.alerts import alert_connection_change
+                        await alert_connection_change(
+                            conn, publisher, row["farm_id"], row["device_id"], new_state
+                        )
                         if publisher:
                             publisher.publish(row["farm_id"], "connection", {
                                 "device_id": row["device_id"], "state": new_state,

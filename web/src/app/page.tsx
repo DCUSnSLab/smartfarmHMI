@@ -7,6 +7,8 @@
  */
 
 import { useState } from "react";
+import { AlertPanel } from "@/components/AlertPanel";
+import { AlertRules } from "@/components/AlertRules";
 import { ControlPanel } from "@/components/ControlPanel";
 import { ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { timeAgo, useMonitor } from "@/lib/monitor";
@@ -42,7 +44,7 @@ function ConnBadge({ state }: { state?: string }) {
 
 export default function Dashboard() {
   const [scope, setScope] = useState<string>("seongju"); // 2차년도 기본: 농장 1개
-  const { farms, farmName, sensors, robots, conns, commands, wsOpen } = useMonitor(scope);
+  const { farms, farmName, sensors, robots, conns, commands, alerts, wsOpen } = useMonitor(scope);
   const user = useUser();
 
   const edgeConn = conns["edge-01"];
@@ -80,6 +82,7 @@ export default function Dashboard() {
         </span>
         {user && (
           <span className="flex items-center gap-2">
+            {scope !== "all" && <AlertPanel farmId={scope} alerts={alerts} />}
             <span className="rounded-xl bg-white px-3 py-1.5 text-[13px] font-bold shadow-sm">
               {user.name}
               <span className="ml-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-extrabold text-primary-dark">
@@ -134,7 +137,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── 실시간 환경값 (FR-08) ── */}
-          <section className="mb-6">
+          <section id="env" className="mb-6">
             <h3 className="mb-3 text-[15px] font-extrabold">
               실시간 환경값 <span className="font-semibold text-muted">· 센서 {Object.keys(sensors).length}대 집계</span>
             </h3>
@@ -164,7 +167,7 @@ export default function Dashboard() {
           />
 
           {/* ── 로봇 상태 (FR-04) ── */}
-          <section className="mb-6">
+          <section id="robot" className="mb-6">
             <h3 className="mb-3 text-[15px] font-extrabold">
               로봇 <span className="font-semibold text-muted">· {Object.keys(robots).length}대 · 위치·속도·전원 실시간</span>
             </h3>
@@ -191,8 +194,11 @@ export default function Dashboard() {
             </div>
           </section>
 
+          {/* ── 알림 규칙 (FR-34) ── */}
+          <AlertRules farmId={scope} editable={canControl(user)} />
+
           {/* ── 장치 통신 상태 (FR-37) ── */}
-          <section>
+          <section id="conn">
             <h3 className="mb-3 text-[15px] font-extrabold">장치 통신 상태</h3>
             <div className="rounded-2xl bg-white p-2 shadow-sm">
               {Object.values(conns).map((c) => (

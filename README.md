@@ -173,6 +173,7 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 ├─ api/                         ← 애플리케이션 서버 (Django 5.2 + DRF + Channels)
 ├─ middleware/                  ← 미들웨어 서버 (FastAPI + aiomqtt + Alembic)
 ├─ edge-sim/                    ← 임의 데이터 생성기 (2차년도 한정, 실엣지 교체 예정)
+├─ virtual-edge/                ← 가상 엣지 연동 테스트 하네스 (격리 컨테이너 · 팜 단위, 별도 compose)
 ├─ shared/schemas/              ← MQTT 메시지 pydantic 모델 (유일한 서비스 간 공유)
 ├─ deploy/
 │  ├─ nginx/  ├─ mosquitto/  ├─ timescaledb/

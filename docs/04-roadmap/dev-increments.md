@@ -18,6 +18,7 @@
 | 7 정지 | GEN-1216 | [#9](https://github.com/DCUSnSLab/smartfarmHMI/pull/9) | ✅ 완료 |
 | **8 스케줄·공급** | — | — | ⏸ **보류 — 착수 전 검토 필요 (아래 논점)** |
 | 9+ 잔여 기능 | — | — | 증분 8 이후 재계획 |
+| (병행) 가상 엣지 연동 테스트 | GEN-1217 | 브랜치 대기 | 🔨 진행 — `virtual-edge/` 격리 컨테이너 하네스, 연동 시나리오 9종 |
 
 증분 2~4 완료로 `phase2-scope.md` "현재 개발 범위"는 **전체 달성**됐다. 실행 환경 구축은 루트 `README.md` Getting Started 참고.
 

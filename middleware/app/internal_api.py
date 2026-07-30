@@ -101,6 +101,57 @@ async def farm_snapshot(farm_id: str):
                 .where(m.device_connection_state.c.farm_id == farm_id)
             )).mappings().all()
         )
+        # 탱크·워크스테이션·랙 — 작업·공급 화면과 농장 카드 게이지 (FR-08·21~26 표시)
+        tanks = (
+            (await conn.execute(
+                select(m.tank, m.device_meta.c.device_id, m.device_meta.c.name)
+                .join(m.device_meta, m.tank.c.device_meta_id == m.device_meta.c.id)
+                .where(m.tank.c.farm_id == farm_id)
+                .order_by(m.tank.c.tank_type)
+            )).mappings().all()
+        )
+        stations = (
+            (await conn.execute(
+                select(m.work_station).where(m.work_station.c.farm_id == farm_id)
+                .order_by(m.work_station.c.station_id)
+            )).mappings().all()
+        )
+        rack = (
+            await conn.execute(text(
+                "SELECT (SELECT count(*) FROM mw.rack_slot WHERE farm_id = :farm) AS slots, "
+                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm) AS pallets, "
+                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='stored') AS stored, "
+                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='moving') AS moving, "
+                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='at_station') AS at_station"
+            ), {"farm": farm_id})
+        ).mappings().first()
+
+    # 탱크 잔량 환산 — 용량·소비율로 "약 NL · N일분" (FR-08 비고)
+    #
+    # 수위 센서와 탱크의 연결: 규약상 센서 id 가 `tank-{tank_type}-lv` 다
+    # (virtual-edge config·시드가 이 규약을 공유). 장비 등록 화면에서 임의 이름의
+    # 수위 센서를 만들 수 있으므로, 매칭 실패는 정상 경로로 두고 정적 수위로 폴백한다.
+    level_by_type = {
+        s["sensor_id"].removeprefix("tank-").removesuffix("-lv"): s["last_value"]
+        for s in sensors
+        if s["sensor_type"] == "water_level" and s["sensor_id"].startswith("tank-")
+    }
+    tank_out = []
+    for t in tanks:
+        pct = level_by_type.get(t["tank_type"], t["current_level_pct"])
+        remain_l = round(t["capacity_l"] * (pct or 0) / 100, 1) if pct is not None else None
+        rate = t["consumption_rate"]
+        if remain_l is not None and rate:
+            per_day = rate if t["consumption_unit"] == "per_day" else None
+            days = round(remain_l / per_day, 1) if per_day else None
+            uses = round(remain_l / rate) if t["consumption_unit"] == "per_task" else None
+        else:
+            days = uses = None
+        tank_out.append({
+            "device_id": t["device_id"], "name": t["name"], "tank_type": t["tank_type"],
+            "capacity_l": t["capacity_l"], "level_pct": pct, "remain_l": remain_l,
+            "days_left": days, "uses_left": uses,
+        })
 
     return {
         "farm": {"farm_id": farm["farm_id"], "name": farm["name"],
@@ -121,8 +172,65 @@ async def farm_snapshot(farm_id: str):
         ],
         "connections": [
             {"device_id": c["device_id"], "state": c["state"],
+             "device_type": c["device_type"],
              "last_received_at": c["last_received_at"].isoformat()
              if c["last_received_at"] else None}
             for c in connections
         ],
+        "tanks": tank_out,
+        "stations": [
+            {"station_id": s["station_id"], "station_type": s["station_type"],
+             "state": s["state"]}
+            for s in stations
+        ],
+        "rack": dict(rack) if rack else {},
     }
+
+
+@router.get("/farms/{farm_id}/environment/history")
+async def environment_history(farm_id: str, sensor_type: str, hours: int = 24,
+                              bucket_min: int = 30):
+    """환경 이력 집계 — 통계 차트·센서 상세 24h 추이 (FR-14).
+
+    TimescaleDB time_bucket 으로 서버에서 집계한다 (원시 행을 브라우저로 보내지 않음).
+    """
+    hours = max(1, min(hours, 24 * 31))
+    bucket_min = max(1, min(bucket_min, 1440))
+    async with _engine().connect() as conn:
+        rows = (
+            await conn.execute(text(
+                "SELECT time_bucket(make_interval(mins => :bm), ts) AS bucket, "
+                "       avg(value) AS avg_value, min(value) AS min_value, max(value) AS max_value "
+                "FROM mw.environment_reading "
+                "WHERE farm_id = :farm AND sensor_type = :stype "
+                "  AND ts > now() - make_interval(hours => :hrs) "
+                "GROUP BY bucket ORDER BY bucket"
+            ), {"farm": farm_id, "stype": sensor_type, "hrs": hours, "bm": bucket_min})
+        ).mappings().all()
+    return [
+        {"ts": r["bucket"].isoformat(), "avg": round(float(r["avg_value"]), 2),
+         "min": round(float(r["min_value"]), 2), "max": round(float(r["max_value"]), 2)}
+        for r in rows
+    ]
+
+
+@router.get("/farms/{farm_id}/environment/summary")
+async def environment_summary(farm_id: str, hours: int = 24):
+    """기간 요약 KPI — 센서 유형별 평균·최소·최대 (통계 화면 상단)."""
+    hours = max(1, min(hours, 24 * 31))
+    async with _engine().connect() as conn:
+        rows = (
+            await conn.execute(text(
+                "SELECT sensor_type, avg(value) AS avg_value, min(value) AS min_value, "
+                "       max(value) AS max_value, count(*) AS n "
+                "FROM mw.environment_reading "
+                "WHERE farm_id = :farm AND ts > now() - make_interval(hours => :hrs) "
+                "GROUP BY sensor_type ORDER BY sensor_type"
+            ), {"farm": farm_id, "hrs": hours})
+        ).mappings().all()
+    return [
+        {"sensor_type": r["sensor_type"], "avg": round(float(r["avg_value"]), 2),
+         "min": round(float(r["min_value"]), 2), "max": round(float(r["max_value"]), 2),
+         "count": r["n"]}
+        for r in rows
+    ]

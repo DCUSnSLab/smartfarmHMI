@@ -1,7 +1,11 @@
 from django.urls import path
 
 from apps.accounts import views as auth_views
+from apps.journal import views as journal_views
 from apps.core.views import (
+    all_alerts,
+    environment_history,
+    environment_summary,
     alert_ack,
     alert_rule_update,
     alert_rules,
@@ -38,6 +42,11 @@ urlpatterns = [
     path("api/farms/<str:farm_id>/snapshot", farm_snapshot),
     path("api/farms/<str:farm_id>/commands", farm_commands),
     path("api/farms/<str:farm_id>/devices/<str:device_id>/control", device_control),
+    path("api/alerts", all_alerts),
+    path("api/farms/<str:farm_id>/environment/history", environment_history),
+    path("api/farms/<str:farm_id>/environment/summary", environment_summary),
+    path("api/memos", journal_views.memos),
+    path("api/memos/<int:memo_id>", journal_views.memo_detail),
     path("api/farms/<str:farm_id>/alerts", farm_alerts),
     path("api/farms/<str:farm_id>/alerts/ack-all", alerts_ack_all),
     path("api/alerts/<int:alert_id>/ack", alert_ack),

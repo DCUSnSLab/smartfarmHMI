@@ -6,6 +6,7 @@
  * 카드형 KPI, 상태 점 표기(색+도형 병기), 강조 수치 22px+, 통신 상태 상시 표시.
  */
 
+import Link from "next/link";
 import { useState } from "react";
 import { AlertPanel } from "@/components/AlertPanel";
 import { AlertRules } from "@/components/AlertRules";
@@ -95,6 +96,11 @@ export default function Dashboard() {
                 {ROLE_LABEL[user.role]}
               </span>
             </span>
+            {canControl(user) && (
+              <Link href="/settings" className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-bold text-gray-500">
+                설정
+              </Link>
+            )}
             <button onClick={logout} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-bold text-gray-500">
               로그아웃
             </button>

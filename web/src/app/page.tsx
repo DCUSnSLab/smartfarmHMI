@@ -10,6 +10,7 @@ import { useState } from "react";
 import { AlertPanel } from "@/components/AlertPanel";
 import { AlertRules } from "@/components/AlertRules";
 import { ControlPanel } from "@/components/ControlPanel";
+import { StopBanners, StopButton } from "@/components/StopControls";
 import { ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { timeAgo, useMonitor } from "@/lib/monitor";
 
@@ -44,13 +45,16 @@ function ConnBadge({ state }: { state?: string }) {
 
 export default function Dashboard() {
   const [scope, setScope] = useState<string>("seongju"); // 2차년도 기본: 농장 1개
-  const { farms, farmName, sensors, robots, conns, commands, alerts, wsOpen } = useMonitor(scope);
+  const { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen } = useMonitor(scope);
   const user = useUser();
 
   const edgeConn = conns["edge-01"];
   const farmOnline = edgeConn?.state === "online";
+  const stopped = stops.remote != null || stops.physical_estop != null;
 
   return (
+    <>
+    <StopBanners stops={stops} canRelease={canControl(user)} />
     <main className="mx-auto max-w-6xl px-6 py-6">
       {/* ── 상단: 스코프 스위처 + 연결 상태 ── */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -83,6 +87,7 @@ export default function Dashboard() {
         {user && (
           <span className="flex items-center gap-2">
             {scope !== "all" && <AlertPanel farmId={scope} alerts={alerts} />}
+            {!stops.remote && <StopButton canStop={canControl(user)} />}
             <span className="rounded-xl bg-white px-3 py-1.5 text-[13px] font-bold shadow-sm">
               {user.name}
               <span className="ml-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-extrabold text-primary-dark">
@@ -159,11 +164,16 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* ── 환경 제어 (FR-10) — viewer 는 조회 전용 ── */}
+          {/* ── 환경 제어 (FR-10) — viewer·정지 중·통신 단절 시 잠금 ── */}
           <ControlPanel
             farmId={scope} deviceId="growbed-01" commands={commands}
-            disabled={!farmOnline || !canControl(user)}
-            disabledReason={!farmOnline ? "통신 단절 — 제어를 사용할 수 없습니다" : !canControl(user) ? "조회 전용 계정 — 제어 권한이 없습니다" : undefined}
+            disabled={!farmOnline || !canControl(user) || stopped}
+            disabledReason={
+              stopped ? "정지 발동 중 — 원격 제어가 차단되었습니다 (FR-35)"
+              : !farmOnline ? "통신 단절 — 제어를 사용할 수 없습니다"
+              : !canControl(user) ? "조회 전용 계정 — 제어 권한이 없습니다"
+              : undefined
+            }
           />
 
           {/* ── 로봇 상태 (FR-04) ── */}
@@ -215,5 +225,6 @@ export default function Dashboard() {
         </>
       )}
     </main>
+    </>
   );
 }

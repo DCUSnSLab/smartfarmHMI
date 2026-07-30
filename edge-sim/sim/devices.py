@@ -39,6 +39,9 @@ ANOMALY = os.environ.get("EDGE_SIM_ANOMALY", "0") == "1"
 # 제어 명령이 적용한 목표값 — sensor_type → base 대체값 (FR-10 피드백 가시화)
 TARGETS: dict[str, float] = {}
 
+# 원격 전체 정지 상태 (FR-35) — True 면 로봇 정지 모사
+STOPPED: dict[str, bool] = {"value": False}
+
 # command → 대상 sensor_type (set_led 는 % → klx 환산)
 COMMAND_SENSOR = {
     "set_temperature": "temperature",
@@ -75,6 +78,10 @@ def sensor_value(spec: SensorSpec, t_sec: float) -> float:
 
 def robot_state(device_id: str, t_sec: float) -> dict:
     """R-1 은 순환 임무(이동↔작업), R-2 는 대기·충전을 오간다."""
+    if STOPPED["value"]:
+        # 원격 전체 정지 중 — 제자리 정지 (Cat.2: 제어된 정지, 전원 유지)
+        return {"position": {"x": 1.0, "y": 1.0, "frame": "farm_local"}, "speed": 0.0,
+                "battery_pct": 80, "charging": False, "mission_state": "idle"}
     if device_id == "robot-01":
         phase = (t_sec % 300) / 300  # 5분 주기
         moving = phase < 0.5

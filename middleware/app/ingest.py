@@ -22,6 +22,7 @@ from shared.schemas import (
     Ack,
     Birth,
     Death,
+    EstopState,
     RobotStatusMsg,
     SensorReading,
     parse_message,
@@ -189,7 +190,9 @@ async def handle_message(
         elif isinstance(msg, Ack):
             from middleware.app.commands import handle_ack  # 순환 import 회피
             await handle_ack(conn, msg, received_at, publisher)
-        # estop_state 는 증분 7 에서 처리
+        elif isinstance(msg, EstopState):
+            from middleware.app.stop import handle_estop_state
+            await handle_estop_state(conn, msg, received_at, publisher)
 
 
 async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:

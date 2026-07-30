@@ -43,11 +43,17 @@ class ControlRequest(BaseModel):
 async def issue_control(farm_id: str, device_id: str, req: ControlRequest):
     """생육기 환경 제어 명령 발행 (FR-10).
 
-    TODO(증분 7): 원격 전체 정지 발동 중에는 여기서 거부한다 (FR-35 차단).
+    원격 전체 정지 발동 중에는 **여기서 거부**한다 — 차단은 미들웨어가 수행하며
+    웹앱 UI 비활성화에 의존하지 않는다 (non-functional.md §2.3).
     """
     if req.command not in ALLOWED_COMMANDS:
         raise HTTPException(400, f"허용되지 않는 명령: {req.command}")
     engine, publisher = _deps()
+
+    from middleware.app.stop import is_remote_stopped
+    async with engine.connect() as conn:
+        if await is_remote_stopped(conn, farm_id):
+            raise HTTPException(423, "원격 전체 정지 발동 중 — 제어가 차단되었습니다 (FR-35)")
 
     command_id = f"cmd-{uuid.uuid4().hex[:12]}"
     msg = ControlCommand(

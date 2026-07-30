@@ -1,0 +1,241 @@
+"""정지 관리자 — component-internals.md §3 (FR-35·36).
+
+두 정지는 성격이 다르다 (non-functional.md §2):
+- 원격 전체 정지(remote): IEC 60204-1 Cat.2 운전 정지, **비안전등급**.
+  웹앱에서 발동·해제. 발동 중 자동 스케줄·제어 명령을 **미들웨어가 차단**한다.
+- 물리 비상정지(physical_estop): ISO 13850 안전 기능. 엣지가 상태를 발행(OPN-19)
+  하며 **표시 전용** — 해제 역방향 명령은 존재하지 않는다 (현장 수동 조작만).
+"""
+
+import logging
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
+
+from middleware.app import models as m
+from shared.schemas import EstopState, RemoteStop, RemoteStopRelease
+from shared.schemas.topics import topic
+
+log = logging.getLogger("mw.stop")
+
+router = APIRouter(prefix="/internal")
+
+
+def _deps():
+    from middleware.app.main import engine, publisher
+    return engine, publisher
+
+
+async def is_remote_stopped(conn, farm_id: str) -> bool:
+    """제어 차단 판정 (FR-35) — scope=all 또는 해당 농장의 미해제 원격 정지."""
+    row = (
+        await conn.execute(
+            select(m.stop_event.c.id).where(
+                m.stop_event.c.stop_kind == "remote",
+                m.stop_event.c.released_at.is_(None),
+                (m.stop_event.c.scope == "all") | (m.stop_event.c.farm_id == farm_id),
+            ).limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def _edge_devices(conn, farm_id: str | None) -> list[tuple[str, str]]:
+    stmt = select(m.device_meta.c.farm_id, m.device_meta.c.device_id).where(
+        m.device_meta.c.device_type == "edge", m.device_meta.c.deleted_at.is_(None)
+    )
+    if farm_id:
+        stmt = stmt.where(m.device_meta.c.farm_id == farm_id)
+    return [(r[0], r[1]) for r in (await conn.execute(stmt)).all()]
+
+
+async def _all_farm_ids(conn) -> list[str]:
+    return [r[0] for r in (await conn.execute(select(m.farm.c.farm_id))).all()]
+
+
+def _stream_payload(kind: str, active: bool, *, scope: str | None = None,
+                    engaged_at=None, released_at=None, by=None, reason=None) -> dict:
+    return {"stop_kind": kind, "active": active, "scope": scope,
+            "engaged_at": engaged_at, "released_at": released_at,
+            "by": by, "reason": reason}
+
+
+class StopRequest(BaseModel):
+    scope: str = "all"          # 디자인 전달본 기준 전 농장 정지가 기본
+    farm_id: str | None = None  # scope=farm 일 때
+    reason: str | None = None
+    by: str | None = None
+
+
+@router.post("/stop")
+async def engage_remote_stop(req: StopRequest):
+    """원격 전체 정지 발동 (FR-35). 안전 기능이 아니다 — Cat.2 운전 정지."""
+    if req.scope not in ("all", "farm") or (req.scope == "farm" and not req.farm_id):
+        raise HTTPException(400, "scope=all 또는 scope=farm+farm_id")
+    engine, publisher = _deps()
+    now = datetime.now(timezone.utc)
+    command_id = f"cmd-{uuid.uuid4().hex[:12]}"
+
+    async with engine.begin() as conn:
+        # 같은 범위 미해제 정지 중복 방지 (부분 UNIQUE 인덱스와 이중 방어)
+        exists = (
+            await conn.execute(
+                select(m.stop_event.c.id).where(
+                    m.stop_event.c.stop_kind == "remote",
+                    m.stop_event.c.released_at.is_(None),
+                    m.stop_event.c.scope == req.scope,
+                ).limit(1)
+            )
+        ).first()
+        if exists:
+            raise HTTPException(409, "이미 원격 전체 정지가 발동 중입니다")
+
+        await conn.execute(
+            insert(m.stop_event).values(
+                stop_kind="remote", scope=req.scope, farm_id=req.farm_id,
+                engaged_at=now, engaged_by=req.by, reason=req.reason,
+                command_id=None,
+            )
+        )
+        edges = await _edge_devices(conn, req.farm_id if req.scope == "farm" else None)
+        farms = [req.farm_id] if req.scope == "farm" else await _all_farm_ids(conn)
+        for farm_id, device_id in edges:
+            msg = RemoteStop(command_id=command_id, farm_id=farm_id, scope=req.scope,
+                             reason=req.reason, issued_by=req.by, timestamp=now)
+            await conn.execute(
+                insert(m.command_log).values(
+                    command_id=f"{command_id}-{device_id}", farm_id=farm_id,
+                    device_id=device_id, command_type="remote_stop",
+                    payload=msg.model_dump(mode="json"), issued_by=req.by, timeout_sec=30,
+                )
+            )
+            publisher.publish_raw(topic(farm_id, "edge", device_id, "command"),
+                                  msg.model_dump_json(), retain=False)
+
+    from middleware.app.alerts import create_alert
+    async with engine.begin() as conn:
+        for farm_id in farms:
+            publisher.publish(farm_id, "stop", _stream_payload(
+                "remote", True, scope=req.scope, engaged_at=now.isoformat(),
+                by=req.by, reason=req.reason))
+            await create_alert(conn, publisher, farm_id=farm_id, severity="warning",
+                               alert_kind="stop", title="원격 전체 정지 발동됨",
+                               body=f"발동 {req.by or '-'} · 자동 스케줄·원격 제어 차단",
+                               deeplink="#control")
+    log.warning("remote stop engaged: scope=%s by=%s", req.scope, req.by)
+    return {"ok": True, "engaged_at": now.isoformat()}
+
+
+@router.post("/stop/release")
+async def release_remote_stop(req: StopRequest):
+    """원격 전체 정지 해제 (FR-35). 해제 권한 수준은 OPN-18 — 현재 API 단은 무검증
+    (역할 검사는 앱서버 프록시에서 admin/manager 로 제한)."""
+    engine, publisher = _deps()
+    now = datetime.now(timezone.utc)
+    async with engine.begin() as conn:
+        row = (
+            await conn.execute(
+                update(m.stop_event)
+                .where(m.stop_event.c.stop_kind == "remote",
+                       m.stop_event.c.released_at.is_(None),
+                       m.stop_event.c.scope == req.scope)
+                .values(released_at=now, released_by=req.by)
+                .returning(m.stop_event.c.farm_id)
+            )
+        ).first()
+        if row is None:
+            raise HTTPException(404, "발동 중인 원격 전체 정지가 없습니다")
+        edges = await _edge_devices(conn, row[0])
+        farms = [row[0]] if row[0] else await _all_farm_ids(conn)
+        command_id = f"cmd-{uuid.uuid4().hex[:12]}"
+        for farm_id, device_id in edges:
+            msg = RemoteStopRelease(command_id=command_id, farm_id=farm_id,
+                                    scope=req.scope, issued_by=req.by, timestamp=now)
+            publisher.publish_raw(topic(farm_id, "edge", device_id, "command"),
+                                  msg.model_dump_json(), retain=False)
+
+    from middleware.app.alerts import create_alert
+    async with engine.begin() as conn:
+        for farm_id in farms:
+            publisher.publish(farm_id, "stop", _stream_payload(
+                "remote", False, scope=req.scope, released_at=now.isoformat(), by=req.by))
+            await create_alert(conn, publisher, farm_id=farm_id, severity="info",
+                               alert_kind="stop", title="원격 전체 정지 해제됨",
+                               body=f"해제 {req.by or '-'}")
+    log.warning("remote stop released: scope=%s by=%s", req.scope, req.by)
+    return {"ok": True, "released_at": now.isoformat()}
+
+
+@router.get("/farms/{farm_id}/stop-state")
+async def stop_state(farm_id: str):
+    """활성 정지 상태 — 원격·물리 각각 독립 표시 (동시 성립 가능)."""
+    engine, _ = _deps()
+    async with engine.connect() as conn:
+        rows = (
+            (await conn.execute(
+                select(m.stop_event).where(
+                    m.stop_event.c.released_at.is_(None),
+                    (m.stop_event.c.scope == "all") | (m.stop_event.c.farm_id == farm_id),
+                )
+            )).mappings().all()
+        )
+    out = {"remote": None, "physical_estop": None}
+    for r in rows:
+        out[r["stop_kind"]] = {
+            "scope": r["scope"], "engaged_at": r["engaged_at"].isoformat(),
+            "by": r["engaged_by"], "reason": r["reason"],
+        }
+    return out
+
+
+async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
+                             publisher=None) -> None:
+    """물리 비상정지 상태 수신 (FR-36, ingest 훅) — 표시 전용."""
+    if msg.engaged:
+        exists = (
+            await conn.execute(
+                select(m.stop_event.c.id).where(
+                    m.stop_event.c.stop_kind == "physical_estop",
+                    m.stop_event.c.released_at.is_(None),
+                    m.stop_event.c.farm_id == msg.farm_id,
+                ).limit(1)
+            )
+        ).first()
+        if exists:
+            return
+        await conn.execute(
+            insert(m.stop_event).values(
+                stop_kind="physical_estop", scope="farm", farm_id=msg.farm_id,
+                engaged_at=msg.timestamp, reason=f"현장 장치 ({msg.source})",
+            )
+        )
+        if publisher:
+            publisher.publish(msg.farm_id, "stop", _stream_payload(
+                "physical_estop", True, scope="farm",
+                engaged_at=msg.timestamp.isoformat()))
+        from middleware.app.alerts import create_alert
+        await create_alert(conn, publisher, farm_id=msg.farm_id, severity="warning",
+                           alert_kind="stop", title="현장 비상정지 작동됨",
+                           body="현장에서 직접 해제해야 합니다 (웹 해제 불가)",
+                           dedup_key=f"estop:{msg.farm_id}")
+        log.warning("physical estop engaged: %s", msg.farm_id)
+    else:
+        row = (
+            await conn.execute(
+                update(m.stop_event)
+                .where(m.stop_event.c.stop_kind == "physical_estop",
+                       m.stop_event.c.released_at.is_(None),
+                       m.stop_event.c.farm_id == msg.farm_id)
+                .values(released_at=msg.timestamp)
+                .returning(m.stop_event.c.id)
+            )
+        ).first()
+        if row and publisher:
+            publisher.publish(msg.farm_id, "stop", _stream_payload(
+                "physical_estop", False, scope="farm",
+                released_at=msg.timestamp.isoformat()))
+            log.warning("physical estop released (현장 조작): %s", msg.farm_id)

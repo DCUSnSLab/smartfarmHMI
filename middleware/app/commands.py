@@ -144,6 +144,10 @@ async def handle_ack(conn, msg: Ack, received_at: datetime, publisher=None) -> N
             "status": msg.result, "detail": msg.detail,
         })
         log.info("ack: %s → %s", msg.command_id, msg.result)
+    if result and msg.result in ("failed", "rejected"):
+        from middleware.app.alerts import alert_command_failure
+        await alert_command_failure(conn, publisher, msg.farm_id, msg.device_id,
+                                    msg.command_id, msg.result)
 
 
 async def timeout_watcher(engine, publisher=None, interval_sec: int = 5) -> None:
@@ -168,5 +172,9 @@ async def timeout_watcher(engine, publisher=None, interval_sec: int = 5) -> None
                     publisher.publish(farm_id, "command", {
                         "command_id": command_id, "device_id": device_id, "status": "timeout",
                     })
+                from middleware.app.alerts import alert_command_failure
+                async with engine.begin() as conn:
+                    await alert_command_failure(conn, publisher, farm_id, device_id,
+                                                command_id, "timeout")
         except Exception:
             log.exception("timeout_watcher error")

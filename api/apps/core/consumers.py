@@ -24,6 +24,7 @@ def _cookie(scope, name: str) -> str | None:
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
+        self._group: str | None = None  # 거부 경로에서도 disconnect 가 참조 — 먼저 초기화
         # 관문(①): 쿠키 JWT 검증 — 미인증 소켓은 데이터 수신 불가 (FR-31)
         # WS 핸드셰이크는 브라우저가 same-origin 쿠키를 자동 첨부한다
         raw = _cookie(self.scope, ACCESS_COOKIE)
@@ -32,7 +33,6 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4401)  # 미인증
             return
         # 농장별 접근 권한 분리는 OPN-07 확정 시 여기서 검사
-        self._group: str | None = None
         await self.accept()
 
     async def receive_json(self, content, **kwargs):
@@ -59,5 +59,5 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def disconnect(self, code):
-        if self._group:
+        if getattr(self, "_group", None):
             await self.channel_layer.group_discard(self._group, self.channel_name)

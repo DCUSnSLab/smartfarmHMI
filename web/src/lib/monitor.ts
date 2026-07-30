@@ -44,6 +44,18 @@ export interface FarmSummary {
   devices_online: number;
 }
 
+export interface AlertItem {
+  id: number;
+  severity: "warning" | "caution" | "info";
+  alert_kind: string;
+  device_id: string | null;
+  title: string;
+  body: string | null;
+  deeplink: string | null;
+  occurred_at: string;
+  acked_at: string | null;
+}
+
 export interface CommandState {
   command_id: string;
   device_id: string;
@@ -59,6 +71,7 @@ export function useMonitor(scope: string) {
   const [robots, setRobots] = useState<Record<string, RobotValue>>({});
   const [conns, setConns] = useState<Record<string, ConnState>>({});
   const [commands, setCommands] = useState<Record<string, CommandState>>({});
+  const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -82,6 +95,11 @@ export function useMonitor(scope: string) {
         if (!r.ok) return;
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
+      });
+      fetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
+        if (!r.ok) return;
+        const list: AlertItem[] = await r.json();
+        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
     }
   }, [scope, loadSnapshot]);
@@ -116,6 +134,18 @@ export function useMonitor(scope: string) {
           ...prev,
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
         }));
+      } else if (msg.stream === "alert") {
+        setAlerts((prev) => {
+          if (d.ack_all) {
+            const next: typeof prev = {};
+            for (const k of Object.keys(prev)) {
+              const id = Number(k);
+              next[id] = { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at };
+            }
+            return next;
+          }
+          return { ...prev, [d.id]: { ...prev[d.id], ...d } };
+        });
       } else if (msg.stream === "command") {
         // 접수(accepted)/완료(completed) 구분 표시의 근거 (FR-10, 비기능 §4)
         setCommands((prev) => ({
@@ -137,7 +167,15 @@ export function useMonitor(scope: string) {
     return () => ws.close();
   }, [scope]);
 
-  return { farms, farmName, sensors, robots, conns, commands, wsOpen };
+  return { farms, farmName, sensors, robots, conns, commands, alerts, wsOpen };
+}
+
+export async function ackAlert(id: number) {
+  await fetch(`/api/alerts/${id}/ack`, { method: "POST" });
+}
+
+export async function ackAllAlerts(farmId: string) {
+  await fetch(`/api/farms/${farmId}/alerts/ack-all`, { method: "POST" });
 }
 
 /** 제어 명령 발행 (FR-10) — command_id 를 반환한다. */

@@ -59,7 +59,7 @@ export function ControlPanel({
     .slice(0, 5);
 
   return (
-    <section className="mb-6">
+    <section id="control" className="mb-6">
       <h3 className="mb-3 text-[15px] font-extrabold">
         환경 제어 <span className="font-semibold text-muted">· 수동 · 온도·습도·양분·LED</span>
       </h3>

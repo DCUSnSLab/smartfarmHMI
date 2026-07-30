@@ -38,11 +38,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="smartfarmHMI middleware", lifespan=lifespan)
 
+from middleware.app.alerts import router as alerts_router  # noqa: E402
 from middleware.app.commands import router as commands_router  # noqa: E402
 from middleware.app.internal_api import router as internal_router  # noqa: E402
 
 app.include_router(internal_router)
 app.include_router(commands_router)
+app.include_router(alerts_router)
 
 
 @app.get("/health")

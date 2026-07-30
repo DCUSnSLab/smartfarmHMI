@@ -62,6 +62,15 @@ STATIONS = [("ws-water", "water"), ("ws-nutrient", "nutrient"), ("ws-pesticide",
 
 RACK_SLOTS = [(f"rack-a-{i:02d}", "A동") for i in range(1, 13)]  # A동 랙 12칸
 
+# 임계 기본값 — **잠정** (OPN-20 확정 시 교체). 시뮬레이터 패턴 기준 정상 범위 밖만 발생
+ALERT_RULES = [
+    # (sensor_type, min, max)
+    ("temperature", 15.0, 32.0),
+    ("humidity", 35.0, 80.0),
+    ("ec", 0.5, 2.8),
+    ("co2", 250.0, 1200.0),
+]
+
 
 async def seed() -> None:
     engine = create_async_engine(settings.database_url)
@@ -113,6 +122,14 @@ async def seed() -> None:
                 insert(m.work_station)
                 .values(farm_id=FARM["farm_id"], station_id=station_id, station_type=stype)
                 .on_conflict_do_nothing(constraint="uq_work_station_farm_station")
+            )
+
+        for stype, lo, hi in ALERT_RULES:
+            await conn.execute(
+                insert(m.alert_rule)
+                .values(farm_id=FARM["farm_id"], alert_kind="threshold",
+                        sensor_type=stype, min_value=lo, max_value=hi)
+                .on_conflict_do_nothing(constraint="uq_alert_rule")
             )
 
         for slot_id, zone in RACK_SLOTS:

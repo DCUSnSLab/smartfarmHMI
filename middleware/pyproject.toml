@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartfarmhmi-middleware"
+version = "0.1.0"
+description = "스마트팜 HMI 미들웨어 서버 (FastAPI + aiomqtt) — 수집·재발행·명령 변환"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+dependencies = [
+  "fastapi>=0.111,<0.116",
+  "uvicorn[standard]>=0.30,<0.36",
+  "aiomqtt>=2.0,<2.4",
+  "sqlalchemy[asyncio]>=2.0,<2.1",
+  "asyncpg>=0.29,<0.31",
+  "alembic>=1.13,<1.15",
+  "pydantic>=2.8,<2.11",
+  "pydantic-settings>=2.3,<2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2,<9",
+  "pytest-asyncio>=0.23,<0.26",
+  "ruff>=0.5,<0.13",
+  "mypy>=1.10,<1.16",
+]
+
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

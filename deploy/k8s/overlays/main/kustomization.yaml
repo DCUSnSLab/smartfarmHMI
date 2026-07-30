@@ -1,0 +1,41 @@
+# smartfarmHMI — MAIN(운영) overlay (main 브랜치 → smartfarmhmi 네임스페이스)
+# TODO: TLS(cert-manager 또는 certbot 잡 — AIBootcamp overlays/main 참조), HPA,
+#       리소스 limit, ModSecurity WAF. 운영 노출 방식(LoadBalancer/Ingress) 확정 필요.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: smartfarmhmi
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: smartfarmhmi
+      app.kubernetes.io/managed-by: kustomize
+      env: main
+
+configMapGenerator:
+  - name: smartfarmhmi-config
+    envs: [config.env]
+
+images:
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/api
+    newName: harbor.cu.ac.kr/smartfarmhmi/api
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
+    newName: harbor.cu.ac.kr/smartfarmhmi/middleware
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+    newName: harbor.cu.ac.kr/smartfarmhmi/edge-sim
+    newTag: latest
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
+    newName: harbor.cu.ac.kr/smartfarmhmi/web
+    newTag: latest
+
+patches:
+  # 운영도 우선 NodePort — 도메인·TLS 확정 시 LoadBalancer/Ingress 로 전환 (TODO)
+  - path: nginx-nodeport.yaml
+    target: { kind: Service, name: smartfarmhmi-nginx }
+  # 실제 엣지 연동(OPN-02) 전까지는 운영에서도 시뮬레이터 사용.
+  # 실엣지 전환 시 replicas: 0 또는 base 에서 제거.

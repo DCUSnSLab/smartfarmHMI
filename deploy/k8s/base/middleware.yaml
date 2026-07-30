@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-middleware
+spec:
+  replicas: 1   # MQTT 구독·스케줄러는 단일 인스턴스 전제 (tech-stack.md) — HPA 대상 아님
+  selector:
+    matchLabels: { app: smartfarmhmi-middleware }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-middleware }
+    spec:
+      containers:
+        - name: middleware
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
+          ports: [{ containerPort: 8001 }]
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: MW_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: MW_DB_PASSWORD } }
+          readinessProbe:
+            httpGet: { path: /health, port: 8001 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartfarmhmi-middleware
+spec:
+  selector: { app: smartfarmhmi-middleware }
+  ports: [{ port: 8001, targetPort: 8001 }]

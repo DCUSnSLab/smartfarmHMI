@@ -1,0 +1,18 @@
+# 임의 데이터 생성기 — 2차년도 한정. 실제 엣지 전환 시 이 Deployment 를 제거한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-edge-sim
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: smartfarmhmi-edge-sim }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-edge-sim }
+    spec:
+      containers:
+        - name: edge-sim
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }

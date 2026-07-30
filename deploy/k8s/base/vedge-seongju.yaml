@@ -1,0 +1,42 @@
+# 성주 참외 온실 — 기본 개발 스택의 데이터원 (미들웨어 시드와 1:1)
+# 이전 edge-sim 을 대체한다. 센서·로봇 id 는 middleware/scripts/seed.py 와 일치해야 한다.
+farm_id: seongju
+edge_id: edge-01
+growbed_id: growbed-01
+
+broker:
+  host: host.docker.internal   # 기본 스택에서는 MQTT_HOST=mosquitto 로 오버라이드
+  port: 41883                  # 기본 스택에서는 MQTT_PORT=1883 로 오버라이드
+
+sensors:
+  # 환경 (기존 edge-sim 패턴 파라미터 이식)
+  - { id: temp-a,  type: temperature, unit: celsius, interval_sec: 5,
+      base: 24.5, amplitude: 1.5, noise: 0.15, location: 입구 측 상단 }
+  - { id: hum-a,   type: humidity, unit: percent, interval_sec: 5,
+      base: 60.0, amplitude: 5.0, noise: 0.8, location: 중앙 통로 }
+  - { id: ec-a,    type: ec, unit: mS/cm, interval_sec: 10,
+      base: 1.8, amplitude: 0.1, noise: 0.03, location: 공급 라인 }
+  - { id: co2-a,   type: co2, unit: ppm, interval_sec: 10,
+      base: 550.0, amplitude: 120.0, noise: 15.0, location: 천장 중앙 }
+  - { id: illum-a, type: illuminance, unit: klx, interval_sec: 15,
+      base: 15.0, amplitude: 8.0, noise: 0.5, location: 입구 측 }
+  - { id: power-a, type: power, unit: kW, interval_sec: 15,
+      base: 4.2, noise: 0.1, location: 배전반 }
+  # 탱크 수위 — 시드 탱크 3기와 대응
+  - { id: tank-nutrient-lv,  type: water_level, unit: percent, interval_sec: 30,
+      base: 64.0, drain_per_hour: 1.4, noise: 0.1, location: 양액 탱크 }
+  - { id: tank-water-lv,     type: water_level, unit: percent, interval_sec: 30,
+      base: 82.0, drain_per_hour: 1.7, noise: 0.1, location: 급수 탱크 }
+  - { id: tank-pesticide-lv, type: water_level, unit: percent, interval_sec: 30,
+      base: 82.0, drain_per_hour: 0.3, noise: 0.1, location: 방재액 탱크 }
+
+actuators:
+  - { id: heater-a,     command: set_temperature, affects: temp-a,  power_kw: 1.2 }
+  - { id: humidifier-a, command: set_humidity,    affects: hum-a,   power_kw: 0.4 }
+  - { id: doser-a,      command: set_ec,          affects: ec-a,    drains: tank-nutrient-lv }
+  - { id: led-a,        command: set_led,         affects: illum-a, power_kw: 0.8 }
+
+robots:
+  # 시드의 R-1 운반로봇 / R-2 방제로봇 (edge-sim 행동 모델 이식)
+  - { id: robot-01, behavior: transport,    interval_sec: 5, cycle_sec: 300 }
+  - { id: robot-02, behavior: charge_cycle, interval_sec: 5, cycle_sec: 1800 }

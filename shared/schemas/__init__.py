@@ -1,7 +1,8 @@
 """MQTT 메시지 스키마 (통신 규격 0.2) — 서비스 간 유일한 공유 코드.
 
-middleware·edge-sim 만 import 한다. api·web 은 내부 토픽/REST 계약으로만
-통신한다 (tech-stack.md §3 경계 규칙).
+**middleware 만** import 한다. virtual-edge 는 통신 규격 문서만으로 독립
+구현하고(계약 검증 목적), api·web 은 내부 토픽/REST 계약으로만 통신한다
+(tech-stack.md §3 경계 규칙).
 """
 
 from typing import Annotated, Union

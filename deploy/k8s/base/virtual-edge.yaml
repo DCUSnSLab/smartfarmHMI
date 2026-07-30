@@ -1,0 +1,26 @@
+# 가상 엣지 (기본 데이터원, seongju) — 실제 엣지 전환(OPN-02) 시 이 Deployment 를 제거한다.
+# config 는 smartfarmhmi-vedge-config ConfigMap (원본: virtual-edge/configs/seongju.yaml 사본)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-virtual-edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: smartfarmhmi-virtual-edge }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-virtual-edge }
+    spec:
+      containers:
+        - name: virtual-edge
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/virtual-edge
+          env:
+            - { name: MQTT_HOST, value: mosquitto }
+            - { name: MQTT_PORT, value: "1883" }
+            - { name: VEDGE_CONFIG, value: /configs/seongju.yaml }
+          volumeMounts:
+            - { name: config, mountPath: /configs, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: smartfarmhmi-vedge-config }

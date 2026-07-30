@@ -157,20 +157,22 @@ services:
       retries: 10
       start_period: 20s
 
-  edge-sim:
+  # 가상 엣지 — 기본 스택의 데이터원 (seongju). 통신 규격 문서 기반 독립 구현
+  # (virtual-edge/README.md). 격리 연동 테스트는 virtual-edge/ 의 자체 compose 로 별도 수행.
+  virtual-edge:
     build:
-      context: .                      # shared/ 포함 필요 → 루트 컨텍스트
-      dockerfile: edge-sim/Dockerfile
-    env_file: .env
+      context: ./virtual-edge         # 독립 프로젝트 — 루트 컨텍스트 불필요
+      dockerfile: Dockerfile
     environment:
-      MQTT_HOST: mosquitto
-      EDGE_SIM_FARM_ID: ${EDGE_SIM_FARM_ID:-seongju}
+      MQTT_HOST: mosquitto            # 기본 스택에서는 브로커 직결 (env 가 config 오버라이드)
+      MQTT_PORT: 1883
+      VEDGE_CONFIG: /configs/seongju.yaml
     depends_on:
       mosquitto:
         condition: service_healthy
     volumes:
-      - ./edge-sim:/app/edge-sim
-      - ./shared:/app/shared
+      - ./virtual-edge/configs:/configs:ro
+      - ./virtual-edge/vedge:/app/vedge
 
   web:
     build:

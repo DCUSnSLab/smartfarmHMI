@@ -21,6 +21,7 @@ const SENSOR_LABEL: Record<string, { name: string; unit: string }> = {
   co2: { name: "CO₂", unit: "ppm" },
   illuminance: { name: "조도", unit: "klx" },
   power: { name: "소모전력", unit: "kW" },
+  water_level: { name: "탱크 수위", unit: "%" },
 };
 
 const CONN_LABEL: Record<string, { text: string; cls: string; dot: string }> = {
@@ -149,10 +150,12 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {Object.values(sensors).map((s) => {
                 const meta = SENSOR_LABEL[s.sensor_type] ?? { name: s.sensor_type, unit: s.unit };
+                // 동일 유형 다수(탱크 수위 3기 등)는 설치 위치로 구분
+                const title = s.sensor_type === "water_level" && s.location ? s.location : meta.name;
                 const stale = !farmOnline;
                 return (
                   <div key={s.sensor_id} className={`rounded-2xl bg-white p-4 shadow-sm ${stale ? "opacity-60" : ""}`}>
-                    <div className="text-[13px] font-bold text-gray-500">{meta.name}</div>
+                    <div className="text-[13px] font-bold text-gray-500">{title}</div>
                     <div className="mt-1 text-[22px] font-extrabold">
                       {s.value != null ? s.value.toFixed(1) : "—"}
                       <span className="ml-0.5 text-[12px] font-bold text-muted">{meta.unit}</span>

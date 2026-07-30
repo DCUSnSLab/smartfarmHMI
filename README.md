@@ -65,6 +65,16 @@ make health                 # 인프라 5항목 + 서비스 5항목 일괄 점�
 | `manager@smartfarm.local` | `smartfarm123!` | 농장 관리자 | 제어·정지·알림 규칙 |
 | `viewer@smartfarm.local` | `smartfarm123!` | 조회자 | 모니터링만 (제어 잠김) |
 
+### 화면 구성
+
+| 경로 | 화면 |
+|---|---|
+| `/` | 통합 대시보드 — Fleet KPI·농장별 현황 카드·전체 알림 |
+| `/farms/{farmId}/{status,env,robot,supply,alerts}` | 농장 상세 5탭 — 상태·생육기·센서·로봇·작업공급·알림 |
+| `/stats` · `/journal` · `/alerts` · `/support` · `/settings` | 통계·분석 · 농업일지 · 전역 알림 · 지원 · 설정 |
+
+화면 구성은 `docs/design` 전달본 기준으로 갖춰져 있고, **아직 구현되지 않은 기능은 「개발 예정」 칩**으로 근거(FR·증분·OPN)와 함께 표시된다 — 구현 현황표는 [design-change-spec.md](./docs/design/design-change-spec.md) 참고.
+
 로그인하면 **농장 2곳(성주·진주)** 을 스코프 스위처로 오가며 볼 수 있고, 성주는 센서 9종(환경 6 + 탱크 수위 3)·로봇 2대, 진주는 센서 5종·로봇 1대가 센서별 주기(5~40초)로 갱신된다. 환경 제어 슬라이더로 목표 온도를 바꾸면 명령이 「접수 대기 → 접수됨 → 완료」로 전이하고, 잠시 후 센서값이 목표로 이동한다.
 
 ### 4. 동작 확인 시나리오 (선택)

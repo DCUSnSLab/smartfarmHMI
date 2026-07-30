@@ -44,6 +44,18 @@ export interface FarmSummary {
   devices_online: number;
 }
 
+export interface StopInfo {
+  scope: string | null;
+  engaged_at: string;
+  by?: string | null;
+  reason?: string | null;
+}
+
+export interface StopState {
+  remote: StopInfo | null;
+  physical_estop: StopInfo | null;
+}
+
 export interface AlertItem {
   id: number;
   severity: "warning" | "caution" | "info";
@@ -72,6 +84,7 @@ export function useMonitor(scope: string) {
   const [conns, setConns] = useState<Record<string, ConnState>>({});
   const [commands, setCommands] = useState<Record<string, CommandState>>({});
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
+  const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -101,6 +114,7 @@ export function useMonitor(scope: string) {
         const list: AlertItem[] = await r.json();
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
+      fetch(`/api/farms/${scope}/stop-state`).then(async (r) => r.ok && setStops(await r.json()));
     }
   }, [scope, loadSnapshot]);
 
@@ -133,6 +147,14 @@ export function useMonitor(scope: string) {
         setConns((prev) => ({
           ...prev,
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
+        }));
+      } else if (msg.stream === "stop") {
+        // 원격/물리 정지는 독립 표시 — 동시 성립 가능 (non-functional §2.4)
+        setStops((prev) => ({
+          ...prev,
+          [d.stop_kind as "remote" | "physical_estop"]: d.active
+            ? { scope: d.scope, engaged_at: d.engaged_at, by: d.by, reason: d.reason }
+            : null,
         }));
       } else if (msg.stream === "alert") {
         setAlerts((prev) => {
@@ -167,7 +189,23 @@ export function useMonitor(scope: string) {
     return () => ws.close();
   }, [scope]);
 
-  return { farms, farmName, sensors, robots, conns, commands, alerts, wsOpen };
+  return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
+}
+
+export async function engageStop(reason?: string) {
+  const r = await fetch("/api/stop", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope: "all", reason }),
+  });
+  return r.ok;
+}
+
+export async function releaseStop() {
+  const r = await fetch("/api/stop/release", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope: "all" }),
+  });
+  return r.ok;
 }
 
 export async function ackAlert(id: number) {

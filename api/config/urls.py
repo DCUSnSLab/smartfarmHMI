@@ -10,8 +10,11 @@ from apps.core.views import (
     farm_alerts,
     farm_commands,
     farm_snapshot,
+    farm_stop_state,
     farms,
     health,
+    stop_engage,
+    stop_release,
 )
 
 urlpatterns = [
@@ -30,4 +33,7 @@ urlpatterns = [
     path("api/alerts/<int:alert_id>/ack", alert_ack),
     path("api/farms/<str:farm_id>/alert-rules", alert_rules),
     path("api/alert-rules/<int:rule_id>", alert_rule_update),
+    path("api/farms/<str:farm_id>/stop-state", farm_stop_state),
+    path("api/stop", stop_engage),
+    path("api/stop/release", stop_release),
 ]

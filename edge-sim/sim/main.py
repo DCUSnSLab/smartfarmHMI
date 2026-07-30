@@ -14,7 +14,9 @@ from datetime import datetime, timezone
 import aiomqtt
 
 from shared.schemas import topics
-from sim.devices import GROWBED_ID, ROBOTS, SENSORS, apply_command, robot_state, sensor_value
+from sim.devices import (
+    GROWBED_ID, ROBOTS, SENSORS, STOPPED, apply_command, robot_state, sensor_value,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("edge-sim")
@@ -121,6 +123,14 @@ async def handle_commands(client: aiomqtt.Client) -> None:
             await _ack(client, parsed.device_type, parsed.device_id, command_id, "completed")
             continue
         _seen_commands.add(command_id)
+
+        # 원격 전체 정지 / 해제 (FR-35) — 진행 작업 정지·재개 모사
+        if body.get("type") in ("remote_stop", "remote_stop_release"):
+            STOPPED["value"] = body["type"] == "remote_stop"
+            log.warning("remote stop %s (farm=%s)",
+                        "engaged" if STOPPED["value"] else "released", FARM_ID)
+            await _ack(client, parsed.device_type, parsed.device_id, command_id, "completed")
+            continue
 
         if body.get("type") != "control_command":
             await _ack(client, parsed.device_type, parsed.device_id, command_id,

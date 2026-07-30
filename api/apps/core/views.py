@@ -45,6 +45,53 @@ async def farm_commands(request, farm_id: str):
     return await _proxy_middleware(f"/internal/farms/{farm_id}/commands")
 
 
+async def farm_stop_state(request, farm_id: str):
+    """활성 정지 상태 (FR-35·36 표시)."""
+    if request_user(request) is None:
+        return unauthorized()
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/stop-state")
+
+
+@csrf_exempt
+async def stop_engage(request):
+    """원격 전체 정지 발동 (FR-35) — admin/manager. Cat.2 운전 정지 (비안전등급)."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    if user.role not in CONTROL_ROLES:
+        return forbidden("원격 전체 정지")
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except ValueError:
+        body = {}
+    body["by"] = user.email
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+        resp = await client.post("/internal/stop", json=body)
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
+@csrf_exempt
+async def stop_release(request):
+    """원격 전체 정지 해제 (FR-35) — 해제 권한 수준은 OPN-18 (잠정: admin/manager)."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    if user.role not in CONTROL_ROLES:
+        return forbidden("정지 해제")
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except ValueError:
+        body = {}
+    body["by"] = user.email
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+        resp = await client.post("/internal/stop/release", json=body)
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
 async def farm_alerts(request, farm_id: str):
     """알림 목록 (FR-33). 쿼리: unacked, severity, limit."""
     if request_user(request) is None:

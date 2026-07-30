@@ -58,7 +58,7 @@ device_meta = sa.Table(
     *_created_updated(),
     sa.UniqueConstraint("farm_id", "device_id", name="uq_device_meta_farm_device"),
     sa.CheckConstraint(
-        "device_type IN ('robot','growbed','tank','station','sensor','edge')",
+        "device_type IN ('robot','growbed','tank','station','sensor','edge','actuator')",
         name="device_type_check",
     ),
 )
@@ -120,6 +120,29 @@ tank = sa.Table(
     ),
 )
 
+# 액추에이터 — 생육환경 제어 대상(히터·가습기·양액기·LED 등). sensor/tank 와 동형
+# (device_meta 1:1). command 는 commands.py 의 ALLOWED_COMMANDS 와 정합.
+actuator = sa.Table(
+    "actuator",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
+    sa.Column(
+        "device_meta_id", sa.BigInteger, sa.ForeignKey("device_meta.id"), nullable=False, unique=True
+    ),
+    sa.Column("farm_id", sa.Text, sa.ForeignKey("farm.farm_id"), nullable=False),
+    sa.Column("actuator_id", sa.Text, nullable=False),  # MQTT device_id 와 대응
+    sa.Column("command", sa.Text, nullable=False),  # 제어 명령 종류
+    sa.Column("affects_sensor_id", sa.Text),  # 결합 센서 sensor_id (선택)
+    sa.Column("power_kw", sa.Double),  # 작동 부하 (선택)
+    sa.Column("location", sa.Text),
+    *_created_updated(),
+    sa.UniqueConstraint("farm_id", "actuator_id", name="uq_actuator_farm_actuator"),
+    sa.CheckConstraint(
+        "command IN ('set_temperature','set_humidity','set_ec','set_led','set_auto_mode')",
+        name="actuator_command_check",
+    ),
+)
+
 device_connection_state = sa.Table(
     "device_connection_state",
     metadata,
@@ -136,6 +159,25 @@ device_connection_state = sa.Table(
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
     sa.UniqueConstraint("farm_id", "device_id", name="uq_dcs_farm_device"),
     sa.CheckConstraint("state IN ('online','degraded','offline')", name="dcs_state_check"),
+)
+
+# 발견 버퍼 — 미들웨어에 미등록이지만 데이터가 들어오는 팜/장치를 임시 보존한다.
+# 설정 화면 "발견된 스마트팜"의 소스. farm FK 없음(미등록이 존재 이유) — ingest 의
+# FK 거부 지점에서 별도 트랜잭션으로 upsert 하고, 등록되면 해당 farm 행을 삭제한다.
+pending_registration = sa.Table(
+    "pending_registration",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
+    sa.Column("farm_id", sa.Text, nullable=False),
+    sa.Column("device_id", sa.Text, nullable=False),
+    sa.Column("device_type", sa.Text),  # birth 자기기술 (telemetry 만 온 경우 NULL)
+    # 발견 센서 누적: [{"sensor_id","sensor_type","unit"}]
+    sa.Column("sensors", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+    sa.Column("publish_interval_sec", sa.Integer),
+    sa.Column("first_seen", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
+    sa.Column("last_seen", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
+    sa.Column("msg_count", sa.Integer, nullable=False, server_default=sa.text("0")),
+    sa.UniqueConstraint("farm_id", "device_id", name="uq_pending_farm_device"),
 )
 
 # ── 3.2 로봇·작업 ─────────────────────────────────────────────

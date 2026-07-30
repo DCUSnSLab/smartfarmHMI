@@ -36,7 +36,8 @@ async def upsert_farm(req: FarmUpsert):
                     farm_type=req.farm_type, crop=req.crop)
             .on_conflict_do_update(
                 index_elements=["farm_id"],
-                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop},
+                # 소프트 삭제된 팜을 재등록하면 재활성화한다.
+                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "is_active": True},
             )
         )
     return {"ok": True, "farm_id": req.farm_id}

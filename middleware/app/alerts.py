@@ -88,7 +88,8 @@ async def create_alert(
     ).first()
     if publisher:
         publisher.publish(farm_id, "alert", {
-            "id": row[0], "severity": severity, "alert_kind": alert_kind,
+            "id": row[0], "farm_id": farm_id, "severity": severity,
+            "alert_kind": alert_kind,
             "device_id": device_id, "title": title, "body": body,
             "deeplink": deeplink, "occurred_at": occurred_at.isoformat(), "acked_at": None,
         })
@@ -114,7 +115,7 @@ async def check_sensor_thresholds(conn, msg, publisher) -> None:
             alert_kind="threshold", device_id=msg.device_id,
             title=f"{label} {msg.value}{unit} {breach[0]} 초과",
             body=f"허용 범위 {rule['min_value']}~{rule['max_value']}{unit} · 센서 {msg.sensor_id}",
-            deeplink="#env", rule_id=rule["id"],
+            deeplink=f"/farms/{msg.farm_id}/env", rule_id=rule["id"],
             dedup_key=f"threshold:{msg.sensor_id}:{breach[0]}",
         )
 
@@ -130,7 +131,7 @@ async def alert_connection_change(conn, publisher, farm_id: str, device_id: str,
         conn, publisher, farm_id=farm_id, severity=severity, alert_kind="connection",
         device_id=device_id, title=f"{device_id} {label}",
         body="통신 상태를 확인하세요" if state == "offline" else "점검 권장",
-        deeplink="#conn", dedup_key=f"connection:{device_id}",
+        deeplink=f"/farms/{farm_id}/status", dedup_key=f"connection:{device_id}",
     )
 
 
@@ -141,7 +142,8 @@ async def alert_command_failure(conn, publisher, farm_id: str, device_id: str,
     await create_alert(
         conn, publisher, farm_id=farm_id, severity="caution", alert_kind="task_failed",
         device_id=device_id, title=f"제어 명령 {label}",
-        body=f"명령 {command_id} · 장치 {device_id}", deeplink="#control",
+        body=f"명령 {command_id} · 장치 {device_id}",
+        deeplink=f"/farms/{farm_id}/env",
         dedup_key=f"task_failed:{device_id}",
     )
 
@@ -151,6 +153,26 @@ async def alert_command_failure(conn, publisher, farm_id: str, device_id: str,
 def _deps():
     from middleware.app.main import engine, publisher
     return engine, publisher
+
+
+@router.get("/alerts")
+async def list_all_alerts(unacked: bool = False, limit: int = 100):
+    """전 농장 알림 — 통합 대시보드 KPI·전역 알림 화면 (FR-33·38)."""
+    engine, _ = _deps()
+    stmt = select(m.alert)
+    if unacked:
+        stmt = stmt.where(m.alert.c.acked_at.is_(None))
+    stmt = stmt.order_by(m.alert.c.occurred_at.desc()).limit(min(limit, 300))
+    async with engine.connect() as conn:
+        rows = (await conn.execute(stmt)).mappings().all()
+    return [
+        {"id": r["id"], "farm_id": r["farm_id"], "severity": r["severity"],
+         "alert_kind": r["alert_kind"], "device_id": r["device_id"], "title": r["title"],
+         "body": r["body"], "deeplink": r["deeplink"],
+         "occurred_at": r["occurred_at"].isoformat(),
+         "acked_at": r["acked_at"].isoformat() if r["acked_at"] else None}
+        for r in rows
+    ]
 
 
 @router.get("/farms/{farm_id}/alerts")
@@ -166,7 +188,8 @@ async def list_alerts(farm_id: str, unacked: bool = False, severity: str | None 
     async with engine.connect() as conn:
         rows = (await conn.execute(stmt)).mappings().all()
     return [
-        {"id": r["id"], "severity": r["severity"], "alert_kind": r["alert_kind"],
+        {"id": r["id"], "farm_id": r["farm_id"], "severity": r["severity"],
+         "alert_kind": r["alert_kind"],
          "device_id": r["device_id"], "title": r["title"], "body": r["body"],
          "deeplink": r["deeplink"], "occurred_at": r["occurred_at"].isoformat(),
          "acked_at": r["acked_at"].isoformat() if r["acked_at"] else None}

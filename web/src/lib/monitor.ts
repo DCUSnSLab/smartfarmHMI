@@ -58,6 +58,7 @@ export interface StopState {
 
 export interface AlertItem {
   id: number;
+  farm_id?: string;
   severity: "warning" | "caution" | "info";
   alert_kind: string;
   device_id: string | null;
@@ -102,6 +103,14 @@ export function useMonitor(scope: string) {
 
   useEffect(() => {
     fetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
+    if (scope === "all") {
+      // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
+      fetch("/api/alerts?limit=100").then(async (r) => {
+        if (!r.ok) return;
+        const list: AlertItem[] = await r.json();
+        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
+      });
+    }
     if (scope !== "all") {
       void loadSnapshot(scope);
       fetch(`/api/farms/${scope}/commands`).then(async (r) => {

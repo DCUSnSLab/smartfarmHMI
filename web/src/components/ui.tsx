@@ -1,0 +1,307 @@
+"use client";
+
+/**
+ * 공용 UI 프리미티브 — 디자인 전달본 토큰 기반 (docs/design/README.md 디자인 토큰).
+ * 상태는 색 + 도형·문자 병기 (비기능 §5 접근성: 색 단독 구분 금지).
+ */
+
+export const SEV_STYLE: Record<string, { dot: string; text: string; bg: string; label: string }> = {
+  ok: { dot: "bg-status-ok", text: "text-primary-dark", bg: "bg-primary-bg", label: "정상" },
+  caution: { dot: "bg-status-caution", text: "text-status-cautionDark", bg: "bg-status-caution/10", label: "주의" },
+  warning: { dot: "bg-status-warning", text: "text-status-warningDark", bg: "bg-status-warning/10", label: "경고" },
+  info: { dot: "bg-status-info", text: "text-status-infoDark", bg: "bg-status-info/10", label: "정보" },
+};
+
+export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
+  online: { label: "정상", sev: "ok" },
+  degraded: { label: "응답 지연", sev: "caution" },
+  offline: { label: "오프라인", sev: "warning" },
+};
+
+export function Card({
+  children, className = "", onClick,
+}: {
+  children: React.ReactNode; className?: string; onClick?: () => void;
+}) {
+  const base = `rounded-2xl bg-white p-5 shadow-sm ${className}`;
+  return onClick ? (
+    <button onClick={onClick} className={`${base} text-left transition hover:shadow-md`}>
+      {children}
+    </button>
+  ) : (
+    <div className={base}>{children}</div>
+  );
+}
+
+export function SectionTitle({
+  title, sub, right,
+}: {
+  title: string; sub?: string; right?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-baseline gap-2">
+      <h3 className="text-[15px] font-extrabold">{title}</h3>
+      {sub && <span className="text-[12.5px] font-semibold text-muted">· {sub}</span>}
+      {right && <span className="ml-auto">{right}</span>}
+    </div>
+  );
+}
+
+export function StatusDot({ sev, label }: { sev: string; label?: string }) {
+  const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[12.5px] font-bold ${s.text}`}>
+      <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+      {label ?? s.label}
+    </span>
+  );
+}
+
+/** KPI 타일 — 디자인 Fleet KPI 카드 (강조 수치 22px+, 비기능 §5) */
+export function KpiTile({
+  label, value, unit, detail, tone = "default",
+}: {
+  label: string; value: React.ReactNode; unit?: string;
+  detail?: React.ReactNode; tone?: "default" | "warning" | "caution";
+}) {
+  const valueColor =
+    tone === "warning" ? "text-status-warningDark"
+    : tone === "caution" ? "text-status-cautionDark" : "";
+  return (
+    <Card>
+      <div className="text-[13px] font-bold text-gray-500">{label}</div>
+      <div className={`mt-1 text-[26px] font-extrabold leading-tight ${valueColor}`}>
+        {value}
+        {unit && <span className="ml-0.5 text-[13px] font-bold text-muted">{unit}</span>}
+      </div>
+      {detail && <div className="mt-1 text-[12px] font-semibold text-muted">{detail}</div>}
+    </Card>
+  );
+}
+
+/** 수평 게이지 — 탱크 수위·적정범위 대비 (디자인 환경 상태·탱크 카드) */
+export function Gauge({
+  value, min = 0, max = 100, okMin, okMax, unit = "", compact = false,
+}: {
+  value: number | null; min?: number; max?: number;
+  okMin?: number | null; okMax?: number | null; unit?: string; compact?: boolean;
+}) {
+  if (value == null) {
+    return <div className="h-2 w-full rounded-full bg-gray-100" />;
+  }
+  const span = max - min || 1;
+  const pct = Math.max(0, Math.min(100, ((value - min) / span) * 100));
+  const inRange =
+    (okMin == null || value >= okMin) && (okMax == null || value <= okMax);
+  const bar = inRange ? "bg-status-ok" : "bg-status-caution";
+
+  // 적정범위 밴드 (있을 때만)
+  const bandLeft = okMin != null ? Math.max(0, ((okMin - min) / span) * 100) : null;
+  const bandRight = okMax != null ? Math.min(100, ((okMax - min) / span) * 100) : null;
+
+  return (
+    <div>
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-gray-100">
+        {bandLeft != null && bandRight != null && (
+          <div
+            className="absolute inset-y-0 bg-primary-bg"
+            style={{ left: `${bandLeft}%`, width: `${Math.max(0, bandRight - bandLeft)}%` }}
+          />
+        )}
+        <div className={`relative h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+      </div>
+      {!compact && (
+        <div className="mt-1 flex justify-between text-[11px] font-semibold text-muted">
+          <span>
+            {okMin != null && okMax != null ? `적정 ${okMin}~${okMax}${unit}` : `${min}~${max}${unit}`}
+          </span>
+          <span className={inRange ? "" : "text-status-cautionDark"}>
+            {inRange ? "적정" : "범위 밖"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export interface ChartSeries {
+  name: string;
+  color: string;
+  unit?: string;
+  points: { ts: string; value: number }[];
+}
+
+/**
+ * 라인 차트 — 의존성 없이 SVG (디자인의 단순 추이 그래프).
+ *
+ * **계열별 독립 축**: 온도(℃)와 습도(%)처럼 값 범위가 다른 계열을 함께 그릴 때
+ * 축을 공유하면 한쪽이 위아래로 붙어 추이를 읽을 수 없다. 각 계열을 자기
+ * 최소·최대로 정규화하고, 첫 계열은 좌축·둘째 계열은 우축에 눈금을 표시한다.
+ * (SVG 는 preserveAspectRatio="none" 으로 늘어나므로 축 라벨은 HTML 로 배치)
+ */
+export function LineChart({ series, height = 180 }: { series: ChartSeries[]; height?: number }) {
+  const usable = series.filter((s) => s.points.length > 0);
+  if (usable.length === 0) {
+    return (
+      <div className="flex items-center justify-center text-[13px] font-semibold text-muted" style={{ height }}>
+        데이터가 없어요
+      </div>
+    );
+  }
+
+  // 계열별 독립 스케일
+  const scaled = usable.map((s) => {
+    const vals = s.points.map((p) => p.value);
+    const mn = Math.min(...vals);
+    const mx = Math.max(...vals);
+    const pad = (mx - mn) * 0.15 || Math.max(Math.abs(mx) * 0.05, 0.5);
+    return { ...s, lo: mn - pad, hi: mx + pad };
+  });
+
+  const W = 100;
+  const H = 100;
+  const path = (s: (typeof scaled)[number]) => {
+    const n = s.points.length;
+    return s.points
+      .map((p, i) => {
+        const x = n === 1 ? W / 2 : (i / (n - 1)) * W;
+        const y = H - ((p.value - s.lo) / (s.hi - s.lo || 1)) * H;
+        return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  };
+
+  const ticks = (s: (typeof scaled)[number]) => {
+    const step = (s.hi - s.lo) / 4;
+    const digits = s.hi - s.lo < 5 ? 1 : 0;
+    return [4, 3, 2, 1, 0].map((i) => (s.lo + step * i).toFixed(digits));
+  };
+
+  const left = scaled[0];
+  const right = scaled.length > 1 ? scaled[1] : null;
+  const axisText = (s: (typeof scaled)[number]) =>
+    `${s.name}${s.unit ? ` (${s.unit})` : ""}`;
+
+  const timeAxis = scaled.reduce((a, b) => (b.points.length > a.points.length ? b : a)).points;
+  const timeLabel = (iso: string) =>
+    new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div>
+      {/* 범례 — 어느 계열이 어느 축인지 명시 */}
+      <div className="mb-2 flex flex-wrap gap-3">
+        {scaled.map((s, i) => (
+          <span key={s.name} className="flex items-center gap-1.5 text-[12px] font-bold text-gray-600">
+            <span className="h-2 w-3 rounded-sm" style={{ background: s.color }} />
+            {s.name}
+            {s.unit && <span className="font-semibold text-muted">({s.unit})</span>}
+            {scaled.length > 1 && i < 2 && (
+              <span className="rounded bg-gray-100 px-1 text-[10.5px] font-extrabold text-gray-500">
+                {i === 0 ? "좌축" : "우축"}
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex gap-1.5">
+        {/* 좌축 눈금 */}
+        <div
+          className="flex w-9 flex-col justify-between text-right text-[10.5px] font-semibold"
+          style={{ height, color: left.color }}
+        >
+          {ticks(left).map((v, i) => <span key={i}>{v}</span>)}
+        </div>
+
+        <svg
+          viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          style={{ height, width: "100%" }}
+          role="img"
+          aria-label={`추이 그래프 — ${scaled.map(axisText).join(", ")}`}
+        >
+          {[0, 25, 50, 75, 100].map((y) => (
+            <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="#F2F4F6" strokeWidth="0.4" />
+          ))}
+          {scaled.map((s) => (
+            <path
+              key={s.name} d={path(s)} fill="none" stroke={s.color}
+              strokeWidth="0.9" vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+            />
+          ))}
+        </svg>
+
+        {/* 우축 눈금 (둘째 계열이 있을 때만) */}
+        {right && (
+          <div
+            className="flex w-9 flex-col justify-between text-[10.5px] font-semibold"
+            style={{ height, color: right.color }}
+          >
+            {ticks(right).map((v, i) => <span key={i}>{v}</span>)}
+          </div>
+        )}
+      </div>
+
+      {timeAxis.length > 1 && (
+        <div
+          className="mt-1 flex justify-between text-[11px] font-semibold text-muted"
+          style={{ paddingLeft: "2.625rem", paddingRight: right ? "2.625rem" : 0 }}
+        >
+          <span>{timeLabel(timeAxis[0].ts)}</span>
+          <span>{timeLabel(timeAxis[Math.floor(timeAxis.length / 2)].ts)}</span>
+          <span>{timeLabel(timeAxis[timeAxis.length - 1].ts)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 모달 셸 — 센서 상세·수동 제어·임무 추가 공용 (디자인 모달 5종) */
+export function Modal({
+  title, sub, onClose, children, footer, wide = false,
+}: {
+  title: string; sub?: string; onClose: () => void;
+  children: React.ReactNode; footer?: React.ReactNode; wide?: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full ${wide ? "max-w-2xl" : "max-w-md"} max-h-[85vh] overflow-y-auto rounded-3xl bg-white p-6 shadow-xl`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-baseline gap-2">
+          <h3 className="text-[18px] font-extrabold">{title}</h3>
+          {sub && <span className="text-[12.5px] font-semibold text-muted">{sub}</span>}
+          <button
+            onClick={onClose} aria-label="닫기"
+            className="ml-auto text-[20px] leading-none text-gray-400"
+          >
+            ×
+          </button>
+        </div>
+        {children}
+        {footer && <div className="mt-5">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+export const SENSOR_META: Record<string, { name: string; unit: string; color: string }> = {
+  temperature: { name: "온도", unit: "℃", color: "#F04452" },
+  humidity: { name: "습도", unit: "%", color: "#3182F6" },
+  ec: { name: "양분(EC)", unit: "", color: "#00A05A" },
+  co2: { name: "CO₂", unit: "ppm", color: "#8B95A1" },
+  illuminance: { name: "조도", unit: "klx", color: "#F5A623" },
+  power: { name: "소모전력", unit: "kW", color: "#1B64DA" },
+  water_level: { name: "탱크 수위", unit: "%", color: "#0E9AA0" },
+};
+
+export const TANK_LABEL: Record<string, string> = {
+  nutrient: "양액", water: "급수", pesticide: "방재액", cleaning: "세정액",
+};
+
+export const MISSION_LABEL: Record<string, string> = {
+  idle: "대기", moving: "이동 중", working: "작업 중", charging: "충전 중", error: "이상",
+};

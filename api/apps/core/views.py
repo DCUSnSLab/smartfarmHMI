@@ -170,6 +170,30 @@ async def stop_release(request):
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
+async def all_alerts(request):
+    """전 농장 알림 (FR-33·38) — 통합 대시보드·전역 알림 화면."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/alerts?{qs}")
+
+
+async def environment_history(request, farm_id: str):
+    """환경 이력 집계 (FR-14) — 통계 차트·센서 24h 추이."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/environment/history?{qs}")
+
+
+async def environment_summary(request, farm_id: str):
+    """기간 요약 KPI (FR-14)."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/environment/summary?{qs}")
+
+
 async def farm_alerts(request, farm_id: str):
     """알림 목록 (FR-33). 쿼리: unacked, severity, limit."""
     if request_user(request) is None:

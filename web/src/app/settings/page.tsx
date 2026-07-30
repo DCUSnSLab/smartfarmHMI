@@ -7,8 +7,10 @@
  */
 
 import Link from "next/link";
+import { AlertRules } from "@/components/AlertRules";
+import { PlannedChip } from "@/components/Planned";
 import { useCallback, useEffect, useState } from "react";
-import { canControl, useUser } from "@/lib/auth";
+import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { FarmSummary } from "@/lib/monitor";
 import {
   ACTUATOR_COMMANDS, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow, DiscoveredFarm,
@@ -413,12 +415,39 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-6">
-      <div className="mb-5 flex items-center gap-3">
-        <h1 className="text-xl font-extrabold">설정 · 농장·설비 관리</h1>
-        <Link href="/" className="ml-auto rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-bold text-gray-500">
-          ← 대시보드
-        </Link>
+      <div className="mb-5 flex flex-wrap items-baseline gap-3">
+        <h1 className="text-[22px] font-extrabold">설정</h1>
+        <span className="text-[13px] font-semibold text-muted">
+          계정·권한 / 농장·설비 관리 / 알림 규칙
+        </span>
       </div>
+
+      {/* 계정 · 권한 (디자인 설정 화면 첫 섹션) */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-[16px] font-extrabold">계정 · 권한</h2>
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          {user ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-bg text-[16px] font-extrabold text-primary-dark">
+                {user.name.slice(0, 1)}
+              </span>
+              <span>
+                <span className="block text-[14.5px] font-extrabold">{user.name}</span>
+                <span className="block text-[12.5px] font-semibold text-muted">{user.email}</span>
+              </span>
+              <span className="rounded-lg bg-primary-bg px-2.5 py-1 text-[12px] font-extrabold text-primary-dark">
+                {ROLE_LABEL[user.role]}
+              </span>
+              <span className="ml-auto flex items-center gap-2">
+                <span className="text-[12.5px] font-bold text-gray-400">2단계 인증 · 원격 접근 설정</span>
+                <PlannedChip basis="FR-31 · OPN-07" />
+              </span>
+            </div>
+          ) : (
+            <div className="text-[13px] font-semibold text-muted">계정 정보를 불러오는 중…</div>
+          )}
+        </div>
+      </section>
 
       <DiscoverySection onRegistered={reloadFarms} />
 
@@ -445,6 +474,23 @@ export default function SettingsPage() {
                 <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-[12.5px] font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
               </div>
               {expanded === f.farm_id && <FarmDevices farmId={f.farm_id} />}
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* 알림 규칙 (FR-34) — 디자인 설정 화면의 알림 섹션 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-[16px] font-extrabold">알림 규칙</h2>
+        {farms.length === 0 ? (
+          <div className="rounded-2xl bg-white p-5 text-[13px] font-semibold text-muted shadow-sm">
+            팜을 먼저 등록하세요.
+          </div>
+        ) : (
+          farms.map((f) => (
+            <div key={f.farm_id} className="mb-3">
+              <div className="mb-1.5 text-[13px] font-extrabold text-gray-600">{f.name}</div>
+              <AlertRules farmId={f.farm_id} editable={canControl(user)} />
             </div>
           ))
         )}

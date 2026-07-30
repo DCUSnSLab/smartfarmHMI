@@ -2,12 +2,12 @@
 
 RISE 피지컬 AI 기반 스마트농업 생태계 구축 사업 2차년도 · **웹앱 기반 스마트팜 HMI** 개발 저장소.
 
-스마트팜(온실·식물공장)의 생육환경과 로봇을 웹에서 **실시간 모니터링·원격 제어**하는 시스템이다. 이름은 "웹앱"이지만 실제 범위는 4개 서비스 — 프론트엔드 웹앱, 애플리케이션 서버, 미들웨어 서버, 그리고 실물 엣지를 대신하는 임의 데이터 생성기(2차년도 한정)까지를 포함한다.
+스마트팜(온실·식물공장)의 생육환경과 로봇을 웹에서 **실시간 모니터링·원격 제어**하는 시스템이다. 이름은 "웹앱"이지만 실제 범위는 4개 서비스 — 프론트엔드 웹앱, 애플리케이션 서버, 미들웨어 서버, 그리고 실물 엣지를 대신하는 가상 엣지(2차년도 한정)까지를 포함한다.
 
 ```
-[엣지 (edge-sim)] ──MQTT──▶ [미들웨어 서버] ──내부 MQTT·REST──▶ [애플리케이션 서버] ──WebSocket·REST──▶ [웹앱]
-  센서·로봇 시뮬레이션        수집·적재(TimescaleDB)              인증·게이트웨이(Django)        대시보드(Next.js)
-  LWT·birth 자기기술          알림 엔진·커맨드 변환·정지 관리       Channels 푸시                  제어·알림·정지 UI
+[가상 엣지 (virtual-edge)] ──MQTT──▶ [미들웨어 서버] ──내부 MQTT·REST──▶ [애플리케이션 서버] ──WebSocket·REST──▶ [웹앱]
+  팜 단위 센서·로봇 시뮬레이션    수집·적재(TimescaleDB)              인증·게이트웨이(Django)         대시보드(Next.js)
+  LWT·birth 자기기술 (독립 계약)  알림 엔진·커맨드 변환·정지 관리       Channels 푸시                   제어·알림·정지 UI
 ```
 
 **주요 기능** (증분 0~7 구현 완료 — [개발 현황](./docs/04-roadmap/dev-increments.md)):
@@ -65,7 +65,7 @@ make health                 # 인프라 5항목 + 서비스 5항목 일괄 점�
 | `manager@smartfarm.local` | `smartfarm123!` | 농장 관리자 | 제어·정지·알림 규칙 |
 | `viewer@smartfarm.local` | `smartfarm123!` | 조회자 | 모니터링만 (제어 잠김) |
 
-로그인하면 센서 6종 값이 5초 주기로 갱신되는 대시보드가 보인다. 환경 제어 슬라이더로 목표 온도를 바꾸면 명령이 「접수 대기 → 접수됨 → 완료」로 전이하고, 잠시 후 센서값이 목표로 이동한다.
+로그인하면 센서 9종(환경 6 + 탱크 수위 3) 값이 센서별 주기(5~30초)로 갱신되는 대시보드가 보인다. 환경 제어 슬라이더로 목표 온도를 바꾸면 명령이 「접수 대기 → 접수됨 → 완료」로 전이하고, 잠시 후 센서값이 목표로 이동한다.
 
 ### 4. 동작 확인 시나리오 (선택)
 
@@ -73,9 +73,9 @@ make health                 # 인프라 5항목 + 서비스 5항목 일괄 점�
 # 실시간 데이터 흐름 관찰 (엣지 원시 토픽)
 make mqtt-sub T='farmon/v1/#'
 
-# 통신 단절 페일세이프: edge-sim 강제 종료 → LWT → 화면 전 장치 오프라인
-docker kill smartfarmhmi-edge-sim-1     # 화면: 오프라인 배지 + 제어 잠김
-docker compose up -d edge-sim           # 복구: online 복귀
+# 통신 단절 페일세이프: 가상 엣지 강제 종료 → LWT → 화면 전 장치 오프라인
+docker kill smartfarmhmi-virtual-edge-1   # 화면: 오프라인 배지 + 제어 잠김
+docker compose up -d virtual-edge         # 복구: online 복귀
 
 # 알림: 임계 초과 값 직접 발행 → 벨에 경고 도착
 docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/growbed/growbed-01/telemetry' -q 1 \
@@ -111,9 +111,9 @@ docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/s
 ### 소스 수정 시
 
 api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 즉시 반영**된다. 예외:
-- `edge-sim` — 리로드 없음: `docker compose up -d --build edge-sim`
+- `virtual-edge` — 리로드 없음: `docker compose restart virtual-edge` (소스는 마운트됨, 의존성 변경 시 `--build`)
 - 파이썬 **의존성 추가**(pyproject.toml) — 이미지 재빌드: `make build SVC=api && docker compose up -d api`
-- `shared/schemas` 수정 — middleware·edge-sim 재시작
+- `shared/schemas` 수정 — middleware 재시작 (virtual-edge 는 shared 미사용 — 독립 계약 구현)
 
 ### 개발 워크플로우
 
@@ -122,7 +122,7 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 3. PR base는 **develop** (develop→main은 릴리즈 PR)
 4. 증분·DoD는 [dev-increments.md](./docs/04-roadmap/dev-increments.md)를 따른다
 
-**경계 규칙**: 서비스 간 코드 import 금지. 유일한 공유는 `shared/schemas`(MQTT pydantic 모델, middleware·edge-sim만 참조). 상세: [tech-stack.md](./docs/03-architecture/tech-stack.md) §3.
+**경계 규칙**: 서비스 간 코드 import 금지. 유일한 공유는 `shared/schemas`(MQTT pydantic 모델, **middleware 전용**). virtual-edge 는 통신 규격 문서만으로 독립 구현한다. 상세: [tech-stack.md](./docs/03-architecture/tech-stack.md) §3.
 
 ---
 
@@ -172,8 +172,7 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 ├─ web/                         ← 웹앱 (Next.js 15 · React 19 · Tailwind)
 ├─ api/                         ← 애플리케이션 서버 (Django 5.2 + DRF + Channels)
 ├─ middleware/                  ← 미들웨어 서버 (FastAPI + aiomqtt + Alembic)
-├─ edge-sim/                    ← 임의 데이터 생성기 (2차년도 한정, 실엣지 교체 예정)
-├─ virtual-edge/                ← 가상 엣지 연동 테스트 하네스 (격리 컨테이너 · 팜 단위, 별도 compose)
+├─ virtual-edge/                ← 가상 엣지 (2차년도 한정 데이터원 + 격리 연동 테스트 하네스, 실엣지 교체 예정)
 ├─ shared/schemas/              ← MQTT 메시지 pydantic 모델 (유일한 서비스 간 공유)
 ├─ deploy/
 │  ├─ nginx/  ├─ mosquitto/  ├─ timescaledb/

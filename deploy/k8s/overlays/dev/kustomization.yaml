@@ -22,7 +22,7 @@ images:
     newTag: latest
   - name: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
     newTag: latest
-  - name: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/virtual-edge
     newTag: latest
   - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
     newTag: latest

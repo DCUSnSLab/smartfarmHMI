@@ -155,6 +155,20 @@ async def test_5_duplicate_command_idempotent(mw, db, registered_farms):
         f"중복 명령이 재실행됨: {drain_before} → {drain_after}"
 
 
+async def test_5b_robot_status_ingested(db, registered_farms):
+    """로봇 상태 적재 (§4.2) — hwaseong robot-01, mission_state 유효값."""
+    async def robot_rows():
+        rows = await db.fetch(
+            "SELECT DISTINCT mission_state FROM mw.robot_status "
+            "WHERE farm_id=$1 AND device_id='robot-01' "
+            "AND ts > now() - interval '1 minute'", HW)
+        return rows or None
+
+    rows = await wait_until(robot_rows, timeout=60, desc="robot-01 상태 적재")
+    valid = {"idle", "moving", "working", "charging", "error"}
+    assert {r["mission_state"] for r in rows} <= valid
+
+
 # ── phase 2: 멀티팜 (farm-jinju 추가 기동 상태) ────────────────
 
 @pytest.mark.multi
@@ -175,6 +189,46 @@ async def test_6_multifarm_isolation(db, registered_farms):
     hw_states = {r["device_id"]: r["state"] for r in await db.fetch(
         "SELECT device_id, state FROM mw.device_connection_state WHERE farm_id=$1", HW)}
     assert hw_states.get("edge-01") == "online"  # 이웃 팜 기동이 기존 팜에 무영향
+
+
+# ── phase 2.5: farm 스코프 정지 (양 팜 기동 상태) ──────────────
+
+@pytest.mark.stop
+async def test_6b_farm_scope_stop_isolation(mw, db, registered_farms):
+    """farm 스코프 원격 정지 — 대상 농장만 차단, 이웃·기본 스택 무영향 (FR-35).
+
+    stop.py 스코프 중복 검사 버그(멀티팜에서 farm_id 미구분)의 회귀 테스트.
+    """
+    # hwaseong 만 정지
+    r = await mw.post("/internal/stop",
+                      json={"scope": "farm", "farm_id": HW, "by": "vedge-test"})
+    assert r.status_code == 200, r.text
+    try:
+        # hwaseong 제어 → 423 차단
+        r = await mw.post(f"/internal/farms/{HW}/devices/{GROWBED}/control",
+                          json={"command": "set_led", "params": {"target": 50}})
+        assert r.status_code == 423, f"정지 중 제어가 차단되지 않음: {r.status_code}"
+
+        # hwaseong 로봇 정지 전이
+        async def robot_stopped():
+            row = await db.fetchrow(
+                "SELECT mission_state, speed FROM mw.robot_status "
+                "WHERE farm_id=$1 AND device_id='robot-01' ORDER BY ts DESC LIMIT 1", HW)
+            return row if row and row["mission_state"] == "idle" and row["speed"] == 0 else None
+        await wait_until(robot_stopped, timeout=30, desc="hwaseong 로봇 정지")
+
+        # 기본 스택(seongju)은 무영향 — farm_id 미구분 버그가 있으면 여기가 깨진다
+        seongju = (await mw.get("/internal/farms/seongju/stop-state")).json()
+        assert seongju["remote"] is None, "farm 스코프 정지가 이웃 농장에 번짐"
+    finally:
+        r = await mw.post("/internal/stop/release",
+                          json={"scope": "farm", "farm_id": HW, "by": "vedge-test"})
+        assert r.status_code == 200, r.text
+
+    # 해제 후 제어 복귀
+    r = await mw.post(f"/internal/farms/{HW}/devices/{GROWBED}/control",
+                      json={"command": "set_led", "params": {"target": 60}})
+    assert r.status_code == 200, f"해제 후 제어 미복귀: {r.status_code}"
 
 
 # ── phase 3: LWT 오프라인 (farm-hwaseong 중지 상태) ────────────

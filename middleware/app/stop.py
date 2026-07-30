@@ -45,11 +45,16 @@ async def is_remote_stopped(conn, farm_id: str) -> bool:
 
 
 async def _edge_devices(conn, farm_id: str | None) -> list[tuple[str, str]]:
-    stmt = select(m.device_meta.c.farm_id, m.device_meta.c.device_id).where(
-        m.device_meta.c.device_type == "edge", m.device_meta.c.deleted_at.is_(None)
-    )
+    """정지 명령 전달 대상 엣지 — **birth 로 알려진 장치**(연결 상태)에서 찾는다.
+
+    장비 레지스트리(device_meta, 사용자 등록)가 아니라 자기기술(birth) 기준 —
+    미등록 농장(테스트 팜 등)에도 정지가 전달된다. offline 엣지에도 발행하지만
+    명령은 retain=false 라 미접속 장치가 나중에 받는 일은 없다.
+    """
+    dcs = m.device_connection_state
+    stmt = select(dcs.c.farm_id, dcs.c.device_id).where(dcs.c.device_type == "edge")
     if farm_id:
-        stmt = stmt.where(m.device_meta.c.farm_id == farm_id)
+        stmt = stmt.where(dcs.c.farm_id == farm_id)
     return [(r[0], r[1]) for r in (await conn.execute(stmt)).all()]
 
 
@@ -81,15 +86,17 @@ async def engage_remote_stop(req: StopRequest):
     command_id = f"cmd-{uuid.uuid4().hex[:12]}"
 
     async with engine.begin() as conn:
-        # 같은 범위 미해제 정지 중복 방지 (부분 UNIQUE 인덱스와 이중 방어)
+        # 같은 범위 미해제 정지 중복 방지 (부분 UNIQUE 인덱스와 이중 방어).
+        # scope=farm 은 farm_id 까지 일치해야 중복 — 서로 다른 농장은 각각 발동 가능
+        dup_cond = [
+            m.stop_event.c.stop_kind == "remote",
+            m.stop_event.c.released_at.is_(None),
+            m.stop_event.c.scope == req.scope,
+        ]
+        if req.scope == "farm":
+            dup_cond.append(m.stop_event.c.farm_id == req.farm_id)
         exists = (
-            await conn.execute(
-                select(m.stop_event.c.id).where(
-                    m.stop_event.c.stop_kind == "remote",
-                    m.stop_event.c.released_at.is_(None),
-                    m.stop_event.c.scope == req.scope,
-                ).limit(1)
-            )
+            await conn.execute(select(m.stop_event.c.id).where(*dup_cond).limit(1))
         ).first()
         if exists:
             raise HTTPException(409, "이미 원격 전체 정지가 발동 중입니다")
@@ -137,12 +144,18 @@ async def release_remote_stop(req: StopRequest):
     engine, publisher = _deps()
     now = datetime.now(timezone.utc)
     async with engine.begin() as conn:
+        rel_cond = [
+            m.stop_event.c.stop_kind == "remote",
+            m.stop_event.c.released_at.is_(None),
+            m.stop_event.c.scope == req.scope,
+        ]
+        if req.scope == "farm":
+            # 해제 대상을 해당 농장으로 한정 — 다른 농장의 정지를 잡지 않는다
+            rel_cond.append(m.stop_event.c.farm_id == req.farm_id)
         row = (
             await conn.execute(
                 update(m.stop_event)
-                .where(m.stop_event.c.stop_kind == "remote",
-                       m.stop_event.c.released_at.is_(None),
-                       m.stop_event.c.scope == req.scope)
+                .where(*rel_cond)
                 .values(released_at=now, released_by=req.by)
                 .returning(m.stop_event.c.farm_id)
             )

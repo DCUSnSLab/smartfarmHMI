@@ -11,7 +11,7 @@ resources:
   - api.yaml
   - api-migrate.yaml
   - middleware.yaml
-  - edge-sim.yaml
+  - virtual-edge.yaml
   - web.yaml
   - nginx.yaml
 
@@ -25,6 +25,8 @@ configMapGenerator:
     files: [mosquitto.conf]
   - name: smartfarmhmi-db-init
     files: [01-schemas.sh=db-init-01-schemas.sh]
+  - name: smartfarmhmi-vedge-config
+    files: [seongju.yaml=vedge-seongju.yaml]
 
 # 이미지 placeholder — overlay/Jenkins 가 newTag 치환 (IMAGE_TAG=BUILD_NUMBER-GIT_SHA)
 images:
@@ -32,7 +34,7 @@ images:
     newTag: latest
   - name: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
     newTag: latest
-  - name: harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim
+  - name: harbor.cu.ac.kr/smartfarmhmi-dev/virtual-edge
     newTag: latest
   - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
     newTag: latest

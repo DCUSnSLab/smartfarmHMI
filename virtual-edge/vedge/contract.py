@@ -46,6 +46,24 @@ def sensor_reading(farm_id: str, device_id: str, *, sensor_id: str, sensor_type:
     }
 
 
+def robot_status(farm_id: str, device_id: str, *, x: float, y: float, frame: str,
+                 speed: float, battery_pct: int, charging: bool,
+                 mission_state: str) -> dict:
+    """§4.2 — 엣지 → 미들웨어: 로봇 상태.
+
+    mission_state: idle | moving | working | charging | error
+    charging·mission_state 는 화면의 "자동 충전 중", "작업 중" 표시 근거.
+    """
+    return {
+        "type": "robot_status", "version": VERSION,
+        "farm_id": farm_id, "device_id": device_id,
+        "position": {"x": x, "y": y, "frame": frame},
+        "speed": speed, "battery_pct": battery_pct, "charging": charging,
+        "mission_state": mission_state, "error": None,
+        "timestamp": now_iso(),
+    }
+
+
 def birth(farm_id: str, device_id: str, device_type: str, *,
           metrics: list[dict], publish_interval_sec: int | None) -> dict:
     """§4.9 — 접속 선언. 장치가 발행 항목을 자기기술한다.

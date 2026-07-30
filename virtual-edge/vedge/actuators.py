@@ -8,6 +8,7 @@
 import asyncio
 import json
 import logging
+from collections import deque
 
 import aiomqtt
 
@@ -20,12 +21,22 @@ log = logging.getLogger("vedge.actuators")
 DOSE_DRAIN_PCT = 2.0  # 도저 1회 작동당 탱크 소모(%)
 
 
+SEEN_LIMIT = 1000  # 멱등 추적 상한 — 초과 시 가장 오래된 command_id 부터 삭제
+
+
 class ActuatorHub:
     def __init__(self, cfg: FarmConfig, state: FarmState):
         self.cfg = cfg
         self.state = state
         self.by_command = {a.command: a for a in cfg.actuators}
         self._seen: set[str] = set()
+        self._seen_order: deque[str] = deque()
+
+    def _mark_seen(self, command_id: str) -> None:
+        self._seen.add(command_id)
+        self._seen_order.append(command_id)
+        while len(self._seen_order) > SEEN_LIMIT:
+            self._seen.discard(self._seen_order.popleft())
 
     def _apply(self, command: str, params: dict) -> bool:
         act = self.by_command.get(command)
@@ -73,7 +84,7 @@ class ActuatorHub:
                 log.info("duplicate command ignored: %s", command_id)
                 await send_ack("completed")  # 멱등 — ack 유실 대비 재응답
                 continue
-            self._seen.add(command_id)
+            self._mark_seen(command_id)
 
             msg_type = body.get("type")
             if msg_type in ("remote_stop", "remote_stop_release"):

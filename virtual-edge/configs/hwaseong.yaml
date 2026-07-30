@@ -37,3 +37,6 @@ actuators:
   - { id: humidifier-a, command: set_humidity,    affects: hum-a,   power_kw: 0.4 }
   - { id: doser-a,      command: set_ec,          affects: ec-a,    drains: tank-nutrient-lv }
   - { id: led-a,        command: set_led,         affects: illum-a, power_kw: 0.8 }
+
+robots:
+  - { id: robot-01, behavior: transport, interval_sec: 5, cycle_sec: 240 }

@@ -95,14 +95,15 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
     stmt = (
         insert(m.device_connection_state)
         .values(
-            farm_id=msg.farm_id, device_id=msg.device_id, state="online",
-            last_birth_at=msg.timestamp, last_received_at=received_at,
+            farm_id=msg.farm_id, device_id=msg.device_id, device_type=msg.device_type,
+            state="online", last_birth_at=msg.timestamp, last_received_at=received_at,
             birth_metrics=metrics, publish_interval_sec=msg.publish_interval_sec,
             updated_at=received_at,
         )
         .on_conflict_do_update(
             constraint="uq_dcs_farm_device",
-            set_={"state": "online", "last_birth_at": msg.timestamp,
+            set_={"state": "online", "device_type": msg.device_type,
+                  "last_birth_at": msg.timestamp,
                   "last_received_at": received_at, "birth_metrics": metrics,
                   "publish_interval_sec": msg.publish_interval_sec, "updated_at": received_at},
         )

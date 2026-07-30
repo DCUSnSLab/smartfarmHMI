@@ -14,6 +14,7 @@ import aiomqtt
 
 from vedge import config, contract
 from vedge.actuators import ActuatorHub
+from vedge.robots import RobotSim
 from vedge.sensors import SensorSim, birth_metrics
 from vedge.state import FarmState
 
@@ -25,6 +26,7 @@ async def run() -> None:
     cfg = config.load()
     state = FarmState()
     sensors = [SensorSim(s, cfg, state) for s in cfg.sensors]
+    robots = [RobotSim(r, cfg, state) for r in cfg.robots]
     hub = ActuatorHub(cfg, state)
 
     death_topic = contract.topic(cfg.farm_id, "edge", cfg.edge_id, "death")
@@ -40,14 +42,14 @@ async def run() -> None:
                 cfg.mqtt_host, cfg.mqtt_port, will=will, keepalive=15,
                 identifier=f"vedge-{cfg.farm_id}",
             ) as client:
-                log.info("connected %s:%s — farm=%s (sensors=%d, actuators=%d)",
+                log.info("connected %s:%s — farm=%s (sensors=%d, actuators=%d, robots=%d)",
                          cfg.mqtt_host, cfg.mqtt_port, cfg.farm_id,
-                         len(cfg.sensors), len(cfg.actuators))
+                         len(cfg.sensors), len(cfg.actuators), len(cfg.robots))
 
                 # §3 LWT 계약 — 재접속 직후 retained death 정리
                 await client.publish(death_topic, payload=b"", qos=contract.QOS, retain=True)
 
-                # §4.9 birth — 엣지(주기 미선언 → LWT 전용 판정) + 생육기(metrics)
+                # §4.9 birth — 엣지(주기 미선언 → LWT 전용 판정) + 생육기(metrics) + 로봇
                 births = [
                     ("edge", cfg.edge_id,
                      contract.birth(cfg.farm_id, cfg.edge_id, "edge",
@@ -56,13 +58,18 @@ async def run() -> None:
                      contract.birth(cfg.farm_id, cfg.growbed_id, "growbed",
                                     metrics=birth_metrics(cfg),
                                     publish_interval_sec=cfg.min_interval_sec)),
+                    *[("robot", r.id,
+                       contract.birth(cfg.farm_id, r.id, "robot", metrics=[],
+                                      publish_interval_sec=int(r.interval_sec)))
+                      for r in cfg.robots],
                 ]
                 for dtype, dev, payload in births:
                     await client.publish(
                         contract.topic(cfg.farm_id, dtype, dev, "birth"),
                         contract.dump(payload), qos=contract.QOS, retain=True,
                     )
-                log.info("birth published (edge + growbed, metrics=%d)", len(cfg.sensors))
+                log.info("birth published (edge + growbed + robots=%d, metrics=%d)",
+                         len(cfg.robots), len(cfg.sensors))
 
                 await client.subscribe(
                     f"{contract.PREFIX}/{cfg.farm_id}/+/+/command", qos=contract.QOS
@@ -71,6 +78,8 @@ async def run() -> None:
                 async with asyncio.TaskGroup() as tg:
                     for sensor in sensors:
                         tg.create_task(sensor.run(client))
+                    for robot in robots:
+                        tg.create_task(robot.run(client))
                     tg.create_task(hub.handle_commands(client))
         except* aiomqtt.MqttError as e:
             log.warning("mqtt disconnected (%s) — 5s 후 재접속", e.exceptions[0])

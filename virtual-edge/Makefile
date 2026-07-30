@@ -42,10 +42,12 @@ test: build
 	$(COMPOSE) --profile multi up -d --force-recreate farm-hwaseong farm-jinju
 	@echo "── 워밍업 90s (저빈도 센서 표본 축적) ──"
 	@sleep 90
-	@echo "── phase 1: 기본 연동 (등록·birth·적재·주기·제어·멱등) ──"
-	$(COMPOSE) run --rm test pytest tests -v --tb=short -m "not multi and not offline and not recover"
+	@echo "── phase 1: 기본 연동 (등록·birth·적재·주기·제어·멱등·로봇) ──"
+	$(COMPOSE) run --rm test pytest tests -v --tb=short -m "not multi and not stop and not offline and not recover"
 	@echo "── phase 2: 멀티팜 분리 ──"
 	$(COMPOSE) run --rm test pytest tests -v --tb=short -m multi
+	@echo "── phase 2.5: farm 스코프 정지 (스코프 격리 회귀) ──"
+	$(COMPOSE) run --rm test pytest tests -v --tb=short -m stop
 	@echo "── phase 3: LWT 오프라인 (hwaseong 강제 중단) ──"
 	$(COMPOSE) kill farm-hwaseong
 	$(COMPOSE) run --rm test pytest tests -v --tb=short -m offline

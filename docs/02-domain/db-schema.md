@@ -116,6 +116,7 @@
 | id | BIGINT | PK |
 | farm_id | TEXT | NOT NULL, FK→farm |
 | device_id | TEXT | NOT NULL. **UNIQUE(farm_id, device_id)** |
+| device_type | TEXT | NULL — birth 자기기술 보존. 정지 명령의 엣지 식별에 사용 (마이그레이션 0002) |
 | state | TEXT | NOT NULL, CHECK (`online`\|`degraded`\|`offline`) |
 | last_birth_at / last_death_at | TIMESTAMPTZ | NULL |
 | last_received_at | TIMESTAMPTZ | NULL |

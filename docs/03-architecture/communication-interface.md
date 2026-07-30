@@ -63,6 +63,13 @@ farmon-internal/v1/{farm_id}/{stream}
 - **모든 장치는 접속 시 LWT를 등록한다.** LWT 토픽은 자신의 `death` 토픽이다. 애플리케이션이 별도로 폴링해 생존을 확인하지 않는다.
 - **QoS 1은 중복 배달이 가능하므로 명령은 멱등해야 한다.** 모든 `command`는 `command_id`를 갖고, 수신 측이 이미 처리한 `command_id`를 재실행하지 않는다.
 
+**LWT death 계약** (증분 2 구현에서 확정 — 실제 엣지 구현체에도 요구):
+
+- LWT death 페이로드의 `timestamp`는 **접속 시점**에 만들어지므로 이후 birth 와 선후 비교에 쓸 수 없다. 수신 측은 death 를 타임스탬프 가드 없이 즉시 offline 으로 처리한다.
+- 대신 **엣지는 정상 재접속 직후, birth 발행 전에 자신의 death 토픽에 빈 retained 발행(retained 삭제)을 수행**해야 한다 — 미들웨어 재시작 시 오래된 retained death 가 재배달되는 것을 발행 측에서 차단한다.
+- birth 에 `publish_interval_sec` 를 선언하지 않은 장치(엣지 컨트롤러 등 주기 발행이 없는 장치)는 주기 배수 판정(§5)에서 제외되고 **LWT 로만** 생존을 판정한다.
+- **엣지 컨트롤러의 death 는 해당 농장 전 장치의 offline 로 전파(cascade)** 된다 — 엣지가 유일한 통신 통로이기 때문이다 (페일세이프 ②).
+
 ## 4. 메시지 스키마 (초안)
 
 모든 메시지는 `type`, `version`, `timestamp`를 포함하고, 확장 항목은 `payload`·`params`에 자유 형식 JSON으로 담아 필드 추가에 열려 있게 둔다. `timestamp`는 **발생 시각**이며, 미들웨어 서버는 수신 시각을 별도로 보존한다 (FR-16).
@@ -179,7 +186,7 @@ farmon-internal/v1/{farm_id}/{stream}
 }
 ```
 
-해제는 `"type": "remote_stop_release"`로 동일 구조를 쓴다. `scope`는 `all` \| `farm`.
+해제는 `"type": "remote_stop_release"`로 동일 구조를 쓴다. `scope`는 `all` \| `farm`. 발행 토픽은 대상 농장의 **엣지 컨트롤러 command 토픽**(`farmon/v1/{farm}/edge/{edge_id}/command`)이다 — 전 장치 정지의 실행 주체가 엣지이기 때문이다 (증분 7 확정).
 
 > **이 메시지는 안전 기능이 아니다.** IEC 60204-1 Stop Category 2(제어된 정지, 전원 유지)에 해당하는 운전 정지이며, MQTT가 안전등급 통신이 아니므로 안전 기능을 이 경로에 의존시키지 않는다. 실제 비상정지는 현장 물리 장치가 담당한다 (`../01-requirements/non-functional.md` §2).
 
@@ -197,7 +204,7 @@ farmon-internal/v1/{farm_id}/{stream}
 }
 ```
 
-**표시 전용이다.** 미들웨어·웹앱에서 이 상태를 해제하는 역방향 메시지를 정의하지 않는다 — 물리 비상정지는 현장에서 의도적인 수동 조작으로만 리셋된다. **엣지가 이 상태를 발행해 주기로 확정되었다** (OPN-19 해소). retained=true로 발행해 서버 재시작 후에도 마지막 상태를 복구할 수 있게 한다.
+**표시 전용이다.** 미들웨어·웹앱에서 이 상태를 해제하는 역방향 메시지를 정의하지 않는다 — 물리 비상정지는 현장에서 의도적인 수동 조작으로만 리셋된다. **엣지가 이 상태를 발행해 주기로 확정되었다** (OPN-19 해소). retained=true로 발행해 서버 재시작 후에도 마지막 상태를 복구할 수 있게 한다. 발행 토픽은 엣지 컨트롤러의 **status 토픽**(`farmon/v1/{farm}/edge/{edge_id}/status`)이다 (증분 7 확정). 해제는 같은 토픽에 `engaged: false` 발행으로 전달된다.
 
 ### 4.8 엣지 → 미들웨어: 명령 응답 (ACK)
 
@@ -312,4 +319,5 @@ farmon-internal/v1/{farm_id}/{stream}
 
 ## 변경 이력
 - 2026-07-07 · 최초 작성
+- 2026-07-30 · 구현(증분 2~7)에서 확정된 계약 반영 — LWT death 정리 계약(§3), remote_stop·estop_state 발행 토픽 명시(§4.6·4.7)
 - 2026-07-29 · MQTT 확정에 따른 전면 개편. 토픽 네임스페이스(§2), QoS·retained·LWT 정책(§3), 통신 상태 판정(§5), 좌표계(§6), 내부 REST 개요(§7) 신설. 스키마 0.1→0.2 — `sensor_id`·`farm_id`·`command_id`·`timeout_sec` 추가, robot_status에 충전·임무 상태 추가, 신규 메시지 5종(calibrate, remote_stop/release, estop_state, ack, birth/death) 정의

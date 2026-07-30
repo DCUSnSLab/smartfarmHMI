@@ -14,6 +14,7 @@ import aiomqtt
 from pydantic import ValidationError
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from middleware.app import models as m
@@ -145,6 +146,18 @@ async def handle_message(
         return
 
     received_at = _now()
+    try:
+        await _dispatch(engine, parsed, msg, received_at, publisher)
+    except IntegrityError as e:
+        # 대표 사례: 미등록 농장의 birth/텔레메트리 (FK 위반) — README 발견 사항.
+        # birth 는 접속 시 1회 발행이라, 농장 등록 후 장치가 재접속해야 복구된다.
+        log.warning(
+            "미등록 농장/장비 메시지 거부: %s/%s (%s) — 농장 등록 후 장치 재접속 필요 [%s]",
+            msg.farm_id, getattr(msg, "device_id", "?"), msg.type, e.orig,
+        )
+
+
+async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
     async with engine.begin() as conn:
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)

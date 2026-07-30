@@ -126,6 +126,7 @@ device_connection_state = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
     sa.Column("farm_id", sa.Text, sa.ForeignKey("farm.farm_id"), nullable=False),
     sa.Column("device_id", sa.Text, nullable=False),
+    sa.Column("device_type", sa.Text),  # birth 자기기술 — 정지 명령의 엣지 식별에 사용
     sa.Column("state", sa.Text, nullable=False),
     sa.Column("last_birth_at", sa.TIMESTAMP(timezone=True)),
     sa.Column("last_death_at", sa.TIMESTAMP(timezone=True)),

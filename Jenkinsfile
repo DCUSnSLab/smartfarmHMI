@@ -56,12 +56,12 @@ pipeline {
                     docker build -t $REGISTRY/$IMAGE_PREFIX/api:$IMAGE_TAG        --target prod api
                     docker build -t $REGISTRY/$IMAGE_PREFIX/web:$IMAGE_TAG        --target prod web
                     docker build -t $REGISTRY/$IMAGE_PREFIX/middleware:$IMAGE_TAG --target prod -f middleware/Dockerfile .
-                    docker build -t $REGISTRY/$IMAGE_PREFIX/edge-sim:$IMAGE_TAG                 -f edge-sim/Dockerfile .
+                    docker build -t $REGISTRY/$IMAGE_PREFIX/virtual-edge:$IMAGE_TAG              virtual-edge
 
                     # docker push $REGISTRY/$IMAGE_PREFIX/api:$IMAGE_TAG          # TODO: 로그인 후 활성화
                     # docker push $REGISTRY/$IMAGE_PREFIX/web:$IMAGE_TAG
                     # docker push $REGISTRY/$IMAGE_PREFIX/middleware:$IMAGE_TAG
-                    # docker push $REGISTRY/$IMAGE_PREFIX/edge-sim:$IMAGE_TAG
+                    # docker push $REGISTRY/$IMAGE_PREFIX/virtual-edge:$IMAGE_TAG
                 '''
             }
         }
@@ -78,7 +78,7 @@ pipeline {
                     # kustomize edit set image \
                     #   harbor.cu.ac.kr/smartfarmhmi-dev/api=$REGISTRY/$IMAGE_PREFIX/api:$IMAGE_TAG \
                     #   harbor.cu.ac.kr/smartfarmhmi-dev/middleware=$REGISTRY/$IMAGE_PREFIX/middleware:$IMAGE_TAG \
-                    #   harbor.cu.ac.kr/smartfarmhmi-dev/edge-sim=$REGISTRY/$IMAGE_PREFIX/edge-sim:$IMAGE_TAG \
+                    #   harbor.cu.ac.kr/smartfarmhmi-dev/virtual-edge=$REGISTRY/$IMAGE_PREFIX/virtual-edge:$IMAGE_TAG \
                     #   harbor.cu.ac.kr/smartfarmhmi-dev/web=$REGISTRY/$IMAGE_PREFIX/web:$IMAGE_TAG
                     # kubectl delete job smartfarmhmi-api-migrate -n $NAMESPACE --ignore-not-found
                     # kubectl apply -k . -n $NAMESPACE

@@ -1,0 +1,48 @@
+# 가상 엣지 — 자체 compose 프로젝트 (메인 스택과 네트워크 분리, 완전 외부 격리)
+# 브로커 접속은 호스트 공개 포트(41883) 경유 — 실제 외부 장치와 동일한 경로.
+# 팜 추가 = 서비스 블록 추가 (컨테이너 1개 = 팜 1개 = config 1개)
+name: virtual-edge
+
+x-vedge-base: &vedge-base
+  build: .
+  extra_hosts:
+    - "host.docker.internal:host-gateway"   # 리눅스에서 호스트 게이트웨이 접근
+  environment:
+    MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
+    MQTT_PORT: ${MQTT_PORT:-41883}
+  volumes:
+    - ./configs:/configs:ro
+  restart: unless-stopped
+
+services:
+  farm-hwaseong:
+    <<: *vedge-base
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
+      MQTT_PORT: ${MQTT_PORT:-41883}
+      VEDGE_CONFIG: /configs/hwaseong.yaml
+
+  # 멀티팜 테스트용 둘째 팜 — 기본 기동에서 제외 (--profile multi 로 활성화)
+  farm-jinju:
+    <<: *vedge-base
+    profiles: ["multi"]
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
+      MQTT_PORT: ${MQTT_PORT:-41883}
+      VEDGE_CONFIG: /configs/jinju.yaml
+
+  # 연동 테스트 러너 — 역시 외부 관점 (호스트 공개 포트로만 접근)
+  test:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    profiles: ["test"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      MW_BASE: ${MW_BASE:-http://host.docker.internal:48001}
+      DB_DSN: ${DB_DSN:-postgresql://mw_user:mw_dev@host.docker.internal:45432/smartfarm}
+      MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
+      MQTT_PORT: ${MQTT_PORT:-41883}
+    volumes:
+      - ./tests:/app/tests:ro

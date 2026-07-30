@@ -107,7 +107,7 @@ health:
 	echo "── services ──"; \
 	$(COMPOSE) exec -T api python -c 'import urllib.request;urllib.request.urlopen("http://127.0.0.1:8000/health")' 2>/dev/null && echo "✓ api /health" || { echo "✗ api /health"; ok=0; }; \
 	$(COMPOSE) exec -T middleware python -c 'import urllib.request;urllib.request.urlopen("http://127.0.0.1:8001/health")' 2>/dev/null && echo "✓ middleware /health" || { echo "✗ middleware /health"; ok=0; }; \
-	$(COMPOSE) ps edge-sim --format '{{.State}}' | grep -q running && echo "✓ edge-sim running" || { echo "✗ edge-sim"; ok=0; }; \
+	$(COMPOSE) ps virtual-edge --format '{{.State}}' | grep -q running && echo "✓ virtual-edge running" || { echo "✗ virtual-edge"; ok=0; }; \
 	curl -sf http://localhost:$${HOST_GATEWAY_PORT:-48080}/ >/dev/null && echo "✓ nginx → web" || { echo "✗ nginx → web"; ok=0; }; \
 	curl -sf http://localhost:$${HOST_GATEWAY_PORT:-48080}/api/health >/dev/null && echo "✓ nginx → api" || { echo "✗ nginx → api"; ok=0; }; \
 	[ $$ok -eq 1 ] && echo "── ALL OK ──" || { echo "── FAILED ──"; exit 1; }

@@ -4,11 +4,42 @@
 """
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
 
 router = APIRouter(prefix="/internal")
+
+
+class FarmUpsert(BaseModel):
+    farm_id: str
+    name: str
+    farm_type: str = "greenhouse"
+    crop: str | None = None
+
+
+@router.post("/farms")
+async def upsert_farm(req: FarmUpsert):
+    """농장 등록 (멱등 upsert) — FR-38 다농장의 초석.
+
+    가상 엣지 연동 테스트가 둘째 농장을 붙일 때 사용한다. 미등록 농장의
+    birth 는 FK 로 거부되므로, 데이터 수신 전에 반드시 등록해야 한다.
+    """
+    if req.farm_type not in ("greenhouse", "plant_factory", "open_field"):
+        raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
+    async with _engine().begin() as conn:
+        await conn.execute(
+            insert(m.farm)
+            .values(farm_id=req.farm_id, name=req.name,
+                    farm_type=req.farm_type, crop=req.crop)
+            .on_conflict_do_update(
+                index_elements=["farm_id"],
+                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop},
+            )
+        )
+    return {"ok": True, "farm_id": req.farm_id}
 
 
 def _engine():

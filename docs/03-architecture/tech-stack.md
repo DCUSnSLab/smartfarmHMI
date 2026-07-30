@@ -14,7 +14,7 @@
 | 캐시·채널 레이어 | **Redis 7** (Channels 채널 레이어 + 캐시) | 동일 |
 | MQTT 브로커 | **Eclipse Mosquitto 2.x** (토픽 ACL 지원) | 신규 (AIBootcamp에 없는 계층) |
 | 파일 스토리지 | **MinIO** (메모 첨부, 영상 목데이터) | 동일 |
-| 엣지 시뮬레이터 | **Python 3.12 + aiomqtt** | 미들웨어와 동일 계열 |
+| 가상 엣지 (virtual-edge) | **Python 3.12 + aiomqtt + PyYAML** — 통신 규격 문서 기반 독립 구현 (shared 미사용) | 언어 동일 계열 |
 | 배포 | **Docker Compose** (2차년도), Jenkins CI | 동일 |
 
 ## 2. 계층별 근거
@@ -52,7 +52,7 @@ docker-compose
 ├─ web          Next.js 15                     (웹앱)
 ├─ api          Django 5.2 + Channels          (애플리케이션 서버)
 ├─ middleware   FastAPI + aiomqtt              (미들웨어 서버)
-├─ edge-sim     Python + aiomqtt               (임의 데이터 생성기)
+├─ virtual-edge Python + aiomqtt               (가상 엣지 — 팜 config 기반 데이터원)
 ├─ mosquitto    Eclipse Mosquitto 2.x          (MQTT 브로커)
 ├─ timescaledb  PostgreSQL 16 + TimescaleDB
 ├─ redis        Redis 7                        (Channels 레이어·캐시)
@@ -60,7 +60,7 @@ docker-compose
 └─ nginx        단일 진입점 (/ → web, /api·/ws → api)
 ```
 
-**경계 규칙 — 서비스 간 코드 import 금지.** 유일한 공유는 `shared/schemas/`(MQTT 메시지 pydantic 모델)이며 middleware·edge-sim만 참조한다. api·web은 shared를 import하지 않고 내부 토픽/REST 계약으로만 통신한다. 이 경계를 지키면 추후 미들웨어를 별도 저장소로 분리할 때 디렉토리 추출만으로 가능하다.
+**경계 규칙 — 서비스 간 코드 import 금지.** 유일한 공유는 `shared/schemas/`(MQTT 메시지 pydantic 모델)이며 **middleware 만** 참조한다. virtual-edge 는 통신 규격 문서만으로 메시지를 독립 구현하고(계약 검증 목적), api·web은 내부 토픽/REST 계약으로만 통신한다. 이 경계를 지키면 추후 미들웨어를 별도 저장소로 분리할 때 디렉토리 추출만으로 가능하다.
 
 ## 4. 확정 필요 항목
 

@@ -18,6 +18,7 @@
 | 7 정지 | GEN-1216 | [#9](https://github.com/DCUSnSLab/smartfarmHMI/pull/9) | ✅ 완료 |
 | **8 스케줄·공급** | — | — | ⏸ **보류 — 착수 전 검토 필요 (아래 논점)** |
 | 9+ 잔여 기능 | — | — | 증분 8 이후 재계획 |
+| (병행) 가상 엣지 + 시뮬레이터 통합 | GEN-1217 | 브랜치 대기 | ✅ 구현 완료 — `virtual-edge/` 하네스(연동 시나리오 11종) + **edge-sim 통합 제거** (기본 스택 데이터원 교체, 로봇 시뮬 이식) |
 
 증분 2~4 완료로 `phase2-scope.md` "현재 개발 범위"는 **전체 달성**됐다. 실행 환경 구축은 루트 `README.md` Getting Started 참고.
 
@@ -122,7 +123,7 @@ AIBootcamp 패턴 이식.
 ## 원칙
 
 1. **증분마다 끝에서 끝까지** — 레이어 하나를 다 만들고 다음 레이어로 가지 않는다. 매 증분이 실행 가능한 데모다.
-2. **경계 규칙** — 서비스 간 코드 import 금지. 유일한 공유는 `shared/schemas`(MQTT pydantic 모델, middleware·edge-sim만 참조). api·web은 내부 토픽/REST 계약으로만 통신한다.
+2. **경계 규칙** — 서비스 간 코드 import 금지. 유일한 공유는 `shared/schemas`(MQTT pydantic 모델, **middleware 전용**). virtual-edge 는 통신 규격 문서만으로 독립 구현하고, api·web은 내부 토픽/REST 계약으로만 통신한다.
 3. **DoD를 통과하지 못하면 다음 증분을 시작하지 않는다.**
 4. 증분 완료 시 본 문서에 상태(✅)와 실제 PR 번호를 기록한다.
 

@@ -40,6 +40,9 @@ DEVICES = [
     ("co2-a", "sensor", "CO₂센서", "천장 중앙"),
     ("illum-a", "sensor", "조도센서 A", "입구 측"),
     ("power-a", "sensor", "전력계", "배전반"),
+    ("tank-nutrient-lv", "sensor", "양액 탱크 수위계", "양액 탱크"),
+    ("tank-water-lv", "sensor", "급수 탱크 수위계", "급수 탱크"),
+    ("tank-pesticide-lv", "sensor", "방재액 탱크 수위계", "방재액 탱크"),
 ]
 
 SENSORS = [
@@ -50,6 +53,10 @@ SENSORS = [
     ("co2-a", "co2", "ppm"),
     ("illum-a", "illuminance", "klx"),
     ("power-a", "power", "kW"),
+    # 탱크 수위 — virtual-edge seongju.yaml 과 1:1 (미등록 센서는 캐시 미갱신)
+    ("tank-nutrient-lv", "water_level", "percent"),
+    ("tank-water-lv", "water_level", "percent"),
+    ("tank-pesticide-lv", "water_level", "percent"),
 ]
 
 TANKS = [

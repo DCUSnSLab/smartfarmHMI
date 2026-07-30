@@ -2,8 +2,8 @@
 
 단계는 Makefile 이 오케스트레이션한다 (pytest 는 docker 를 제어하지 않는다):
 - phase1 (기본): farm-hwaseong 기동 상태 — 등록·birth·적재·주기·제어·멱등
-- phase2 (-m multi): farm-jinju 추가 기동 상태 — 멀티팜 분리
-- phase3 (-m offline): farm-hwaseong 중지 상태 — LWT 오프라인 (jinju 는 생존)
+- phase2 (-m multi): farm-gimje 추가 기동 상태 — 멀티팜 분리
+- phase3 (-m offline): farm-hwaseong 중지 상태 — LWT 오프라인 (gimje 는 생존)
 - phase4 (-m recover): farm-hwaseong 재기동 상태 — 재접속 복구
 """
 
@@ -169,23 +169,23 @@ async def test_5b_robot_status_ingested(db, registered_farms):
     assert {r["mission_state"] for r in rows} <= valid
 
 
-# ── phase 2: 멀티팜 (farm-jinju 추가 기동 상태) ────────────────
+# ── phase 2: 멀티팜 (farm-gimje 추가 기동 상태) ────────────────
 
 @pytest.mark.multi
 async def test_6_multifarm_isolation(db, registered_farms):
     """두 팜의 데이터가 farm_id 로 분리 적재 — 상호 간섭 없음."""
-    async def jinju_ingested():
+    async def gimje_ingested():
         n = await db.fetchval(
             "SELECT count(DISTINCT sensor_id) FROM mw.environment_reading "
-            "WHERE farm_id='jinju' AND ts > now() - interval '2 minutes'")
+            "WHERE farm_id='gimje' AND ts > now() - interval '2 minutes'")
         return n if n >= 5 else None
 
-    await wait_until(jinju_ingested, timeout=90, desc="jinju 센서 5종 적재")
+    await wait_until(gimje_ingested, timeout=90, desc="gimje 센서 5종 적재")
 
-    # 분리 검증: jinju 센서 목록에 hwaseong 전용 센서가 섞이지 않음
-    jinju_ids = {r["sensor_id"] for r in await db.fetch(
-        "SELECT DISTINCT sensor_id FROM mw.environment_reading WHERE farm_id='jinju'")}
-    assert "co2-a" not in jinju_ids  # jinju config 에는 co2 없음
+    # 분리 검증: gimje 센서 목록에 hwaseong 전용 센서가 섞이지 않음
+    gimje_ids = {r["sensor_id"] for r in await db.fetch(
+        "SELECT DISTINCT sensor_id FROM mw.environment_reading WHERE farm_id='gimje'")}
+    assert "co2-a" not in gimje_ids  # gimje config 에는 co2 없음
     hw_states = {r["device_id"]: r["state"] for r in await db.fetch(
         "SELECT device_id, state FROM mw.device_connection_state WHERE farm_id=$1", HW)}
     assert hw_states.get("edge-01") == "online"  # 이웃 팜 기동이 기존 팜에 무영향
@@ -235,7 +235,7 @@ async def test_6b_farm_scope_stop_isolation(mw, db, registered_farms):
 
 @pytest.mark.offline
 async def test_7_lwt_offline_cascade(db):
-    """엣지 강제 중단 → LWT death → 해당 농장 전 장치 offline. jinju 는 생존."""
+    """엣지 강제 중단 → LWT death → 해당 농장 전 장치 offline. gimje 는 생존."""
     async def hw_offline():
         rows = await db.fetch(
             "SELECT device_id, state FROM mw.device_connection_state WHERE farm_id=$1", HW)
@@ -245,10 +245,10 @@ async def test_7_lwt_offline_cascade(db):
     states = await wait_until(hw_offline, timeout=120, desc="hwaseong 전 장치 offline")
     assert set(states.values()) == {"offline"}
 
-    jinju = await db.fetchval(
+    gimje = await db.fetchval(
         "SELECT state FROM mw.device_connection_state "
-        "WHERE farm_id='jinju' AND device_id='edge-01'")
-    assert jinju == "online", "이웃 팜이 cascade 에 휘말림"
+        "WHERE farm_id='gimje' AND device_id='edge-01'")
+    assert gimje == "online", "이웃 팜이 cascade 에 휘말림"
 
 
 # ── phase 4: 재접속 복구 (farm-hwaseong 재기동 상태) ───────────

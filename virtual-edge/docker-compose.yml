@@ -23,13 +23,14 @@ services:
       VEDGE_CONFIG: /configs/hwaseong.yaml
 
   # 멀티팜 테스트용 둘째 팜 — 기본 기동에서 제외 (--profile multi 로 활성화)
-  farm-jinju:
+  # 주의: 기본 스택 팜(seongju·jinju)과 farm_id 를 겹치지 않게 유지 — gimje 사용
+  farm-gimje:
     <<: *vedge-base
     profiles: ["multi"]
     environment:
       MQTT_HOST: ${MQTT_HOST:-host.docker.internal}
       MQTT_PORT: ${MQTT_PORT:-41883}
-      VEDGE_CONFIG: /configs/jinju.yaml
+      VEDGE_CONFIG: /configs/gimje.yaml
 
   # 연동 테스트 러너 — 역시 외부 관점 (호스트 공개 포트로만 접근)
   test:

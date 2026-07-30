@@ -157,8 +157,10 @@ services:
       retries: 10
       start_period: 20s
 
-  # 가상 엣지 — 기본 스택의 데이터원 (seongju). 통신 규격 문서 기반 독립 구현
-  # (virtual-edge/README.md). 격리 연동 테스트는 virtual-edge/ 의 자체 compose 로 별도 수행.
+  # 가상 엣지 — 기본 스택의 데이터원. 컨테이너 1개 = 팜 1개 (virtual-edge/README.md).
+  # 기본 멀티팜: 성주(virtual-edge) + 진주(virtual-edge-jinju).
+  # 격리 연동 테스트는 virtual-edge/ 의 자체 compose 로 별도 수행 (hwaseong·gimje —
+  # 기본 스택 팜과 farm_id 를 겹치지 않게 유지: 같은 팜의 발행자 중복 = LWT 충돌).
   virtual-edge:
     build:
       context: ./virtual-edge         # 독립 프로젝트 — 루트 컨텍스트 불필요
@@ -167,6 +169,21 @@ services:
       MQTT_HOST: mosquitto            # 기본 스택에서는 브로커 직결 (env 가 config 오버라이드)
       MQTT_PORT: 1883
       VEDGE_CONFIG: /configs/seongju.yaml
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - ./virtual-edge/configs:/configs:ro
+      - ./virtual-edge/vedge:/app/vedge
+
+  virtual-edge-jinju:
+    build:
+      context: ./virtual-edge
+      dockerfile: Dockerfile
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      VEDGE_CONFIG: /configs/jinju.yaml
     depends_on:
       mosquitto:
         condition: service_healthy

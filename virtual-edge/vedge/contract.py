@@ -89,6 +89,17 @@ def death(farm_id: str, device_id: str) -> dict:
     }
 
 
+def heartbeat(farm_id: str, device_id: str, *, interval_sec: int) -> dict:
+    """§4.9 — 주기적 생존 신호. 주기 데이터가 없는 장치(엣지 컨트롤러)가
+    online 유지를 위해 interval_sec 마다 발행한다. 미들웨어는 수신 시각으로
+    연결 상태를 갱신하고, 공백이 주기 배수를 넘으면 offline 으로 판정한다."""
+    return {
+        "type": "heartbeat", "version": VERSION,
+        "farm_id": farm_id, "device_id": device_id, "interval_sec": interval_sec,
+        "timestamp": now_iso(),
+    }
+
+
 def ack(farm_id: str, device_id: str, *, command_id: str, result: str,
         detail: dict | None = None) -> dict:
     """§4.8 — 명령 응답. accepted(접수)와 completed(실행 완료)를 구분한다."""

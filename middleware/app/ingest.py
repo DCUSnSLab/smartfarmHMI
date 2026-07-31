@@ -24,6 +24,7 @@ from shared.schemas import (
     Birth,
     Death,
     EstopState,
+    Heartbeat,
     RobotStatusMsg,
     SensorReading,
     parse_message,
@@ -247,6 +248,30 @@ async def handle_message(
         await _record_pending(engine, parsed, msg)
 
 
+async def _handle_heartbeat(conn, msg: Heartbeat, device_type: str, received_at: datetime) -> None:
+    """주기 생존 신호 → 연결 상태 online 갱신 (+ 주기 보존 = 판정 근거).
+
+    주기 데이터가 없는 장치(엣지 컨트롤러)의 liveness 를 birth-once 대신 하트비트로
+    유지한다. birth 가 유실됐어도 다음 하트비트에 online 이 자가 복구되고,
+    interval_sec 를 보존해 connection_monitor 가 공백 기반 degraded/offline 판정을 한다.
+    """
+    interval_set = {} if msg.interval_sec is None else {"publish_interval_sec": msg.interval_sec}
+    stmt = (
+        insert(m.device_connection_state)
+        .values(
+            farm_id=msg.farm_id, device_id=msg.device_id, device_type=device_type,
+            state="online", last_received_at=received_at,
+            publish_interval_sec=msg.interval_sec, updated_at=received_at,
+        )
+        .on_conflict_do_update(
+            constraint="uq_dcs_farm_device",
+            set_={"state": "online", "device_type": device_type,
+                  "last_received_at": received_at, "updated_at": received_at, **interval_set},
+        )
+    )
+    await conn.execute(stmt)
+
+
 async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
     async with engine.begin() as conn:
         if isinstance(msg, SensorReading):
@@ -288,6 +313,13 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                 publisher.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "offline",
                     "cascade": parsed.device_type == "edge",
+                    "last_received_at": received_at.isoformat(),
+                })
+        elif isinstance(msg, Heartbeat):
+            await _handle_heartbeat(conn, msg, parsed.device_type, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "connection", {
+                    "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Ack):

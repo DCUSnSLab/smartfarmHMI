@@ -148,3 +148,18 @@ class Death(_Msg):
 
     type: Literal["death"] = "death"
     device_id: str
+
+
+class Heartbeat(_Msg):
+    """장치 → 미들웨어: 주기적 생존 신호 (§4.9, FR-37).
+
+    birth 로 자기기술한 뒤, 주기 데이터가 없는 장치(엣지 컨트롤러 등)가
+    online 유지를 위해 interval_sec 마다 발행한다. 미들웨어는 수신 시각으로
+    연결 상태를 갱신하고, 공백이 주기의 배수를 넘으면 degraded/offline 로 판정
+    (LWT 즉시 offline 과 이중 방어). 재기동·시드 지연으로 birth 가 유실돼도
+    다음 하트비트에 online 이 자가 복구된다.
+    """
+
+    type: Literal["heartbeat"] = "heartbeat"
+    device_id: str
+    interval_sec: int | None = None

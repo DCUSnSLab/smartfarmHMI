@@ -21,6 +21,19 @@ from vedge.state import FarmState
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("vedge")
 
+EDGE_HEARTBEAT_SEC = 10  # §4.9 — 엣지 컨트롤러 생존 신호 주기
+
+
+async def _heartbeat_loop(client, cfg, interval_sec: int) -> None:
+    """엣지 컨트롤러 주기 하트비트 — 주기 데이터가 없어도 online 을 유지·자가 복구한다."""
+    while True:
+        await asyncio.sleep(interval_sec)
+        await client.publish(
+            contract.topic(cfg.farm_id, "edge", cfg.edge_id, "heartbeat"),
+            contract.dump(contract.heartbeat(cfg.farm_id, cfg.edge_id, interval_sec=interval_sec)),
+            qos=contract.QOS, retain=False,  # 생존 신호는 순간값 — retain 하지 않음
+        )
+
 
 async def run() -> None:
     cfg = config.load()
@@ -49,11 +62,11 @@ async def run() -> None:
                 # §3 LWT 계약 — 재접속 직후 retained death 정리
                 await client.publish(death_topic, payload=b"", qos=contract.QOS, retain=True)
 
-                # §4.9 birth — 엣지(주기 미선언 → LWT 전용 판정) + 생육기(metrics) + 로봇
+                # §4.9 birth — 엣지(하트비트 주기 선언) + 생육기(metrics) + 로봇
                 births = [
                     ("edge", cfg.edge_id,
                      contract.birth(cfg.farm_id, cfg.edge_id, "edge",
-                                    metrics=[], publish_interval_sec=None)),
+                                    metrics=[], publish_interval_sec=EDGE_HEARTBEAT_SEC)),
                     ("growbed", cfg.growbed_id,
                      contract.birth(cfg.farm_id, cfg.growbed_id, "growbed",
                                     metrics=birth_metrics(cfg),
@@ -81,6 +94,7 @@ async def run() -> None:
                     for robot in robots:
                         tg.create_task(robot.run(client))
                     tg.create_task(hub.handle_commands(client))
+                    tg.create_task(_heartbeat_loop(client, cfg, EDGE_HEARTBEAT_SEC))
         except* aiomqtt.MqttError as e:
             log.warning("mqtt disconnected (%s) — 5s 후 재접속", e.exceptions[0])
             await asyncio.sleep(5)

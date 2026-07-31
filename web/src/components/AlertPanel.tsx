@@ -2,10 +2,13 @@
 
 /**
  * 알림 벨 + 패널 (FR-33) — 디자인 전달본 「전체 알림」 화면 참조:
- * 미확인 배지, 심각도 필터(전체/경고/주의/완료), 모두 읽음, 항목 클릭 → 관련 섹션 딥링크.
+ * 미확인 배지, 심각도 필터(전체/경고/주의/완료), 모두 읽음, 항목 클릭 → 딥링크.
+ *
+ * farmId=null(전체 스코프)이면 모두 읽음은 감추고, 항목의 farm_id 로 경로를 만든다.
  */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertItem, ackAlert, ackAllAlerts, timeAgo } from "@/lib/monitor";
 
 const SEV: Record<string, { label: string; dot: string; text: string }> = {
@@ -21,7 +24,13 @@ const FILTERS = [
   { key: "info", label: "완료" },
 ] as const;
 
-export function AlertPanel({ farmId, alerts }: { farmId: string; alerts: Record<number, AlertItem> }) {
+export function AlertPanel({
+  farmId, alerts,
+}: {
+  farmId: string | null;
+  alerts: Record<number, AlertItem>;
+}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<string>("all");
 
@@ -37,18 +46,17 @@ export function AlertPanel({ farmId, alerts }: { farmId: string; alerts: Record<
 
   const jump = (a: AlertItem) => {
     if (!a.acked_at) void ackAlert(a.id);
-    if (a.deeplink?.startsWith("#")) {
-      document.getElementById(a.deeplink.slice(1))?.scrollIntoView({ behavior: "smooth" });
-      setOpen(false);
-    }
+    setOpen(false);
+    // deeplink 는 경로형(/farms/{farm}/{tab}) — 없으면 알림 목록으로
+    if (a.deeplink?.startsWith("/")) router.push(a.deeplink);
+    else router.push("/alerts");
   };
 
   return (
     <span className="relative">
-      {/* 벨 버튼 + 미확인 배지 */}
       <button
         onClick={() => setOpen(!open)}
-        className="relative rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[13px] font-bold text-gray-600"
+        className="relative rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-[12.5px] font-bold text-gray-600"
         aria-label={`알림 ${unacked}건 미확인`}
       >
         알림
@@ -60,16 +68,26 @@ export function AlertPanel({ farmId, alerts }: { farmId: string; alerts: Record<
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[380px] rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-100">
+        <div className="absolute right-0 top-11 z-50 w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-100">
           <div className="mb-3 flex items-center gap-2">
             <span className="text-[15px] font-extrabold">알림</span>
             <span className="text-[12px] font-bold text-muted">미확인 {unacked}건</span>
-            <button
-              onClick={() => void ackAllAlerts(farmId)}
-              className="ml-auto text-[12px] font-bold text-primary-dark"
-            >
-              모두 읽음
-            </button>
+            <span className="ml-auto flex gap-2">
+              {farmId && (
+                <button
+                  onClick={() => void ackAllAlerts(farmId)}
+                  className="text-[12px] font-bold text-primary-dark"
+                >
+                  모두 읽음
+                </button>
+              )}
+              <button
+                onClick={() => { setOpen(false); router.push("/alerts"); }}
+                className="text-[12px] font-bold text-gray-500"
+              >
+                전체 보기
+              </button>
+            </span>
           </div>
           <div className="mb-2 flex gap-1.5">
             {FILTERS.map((f) => (
@@ -112,5 +130,87 @@ export function AlertPanel({ farmId, alerts }: { farmId: string; alerts: Record<
         </div>
       )}
     </span>
+  );
+}
+
+/** 알림 목록 (페이지형 — /alerts, 농장 알림 탭 공용) */
+export function AlertList({
+  alerts, farmId, showFarm = false,
+}: {
+  alerts: AlertItem[];
+  farmId?: string | null;
+  showFarm?: boolean;
+}) {
+  const router = useRouter();
+  const [filter, setFilter] = useState<string>("all");
+  const list = alerts
+    .filter((a) => filter === "all" || a.severity === filter)
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+  const unacked = alerts.filter((a) => !a.acked_at).length;
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-[13px] font-bold text-muted">미확인 {unacked}건</span>
+        <span className="flex gap-1.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-lg px-2.5 py-1 text-[12.5px] font-bold ${
+                filter === f.key ? "bg-primary-bg text-primary-dark" : "bg-white text-gray-500"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </span>
+        {farmId && (
+          <button
+            onClick={() => void ackAllAlerts(farmId)}
+            className="ml-auto rounded-lg bg-white px-3 py-1 text-[12.5px] font-bold text-primary-dark shadow-sm"
+          >
+            모두 읽음
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-2xl bg-white p-2 shadow-sm">
+        {list.length === 0 && (
+          <div className="py-10 text-center text-[13px] font-semibold text-muted">알림이 없어요</div>
+        )}
+        {list.map((a) => (
+          <button
+            key={a.id}
+            onClick={() => {
+              if (!a.acked_at) void ackAlert(a.id);
+              if (a.deeplink?.startsWith("/")) router.push(a.deeplink);
+            }}
+            className={`flex w-full items-center gap-3 border-b border-gray-50 px-3 py-3 text-left last:border-0 ${
+              a.acked_at ? "opacity-50" : ""
+            }`}
+          >
+            <span className={`h-2.5 w-2.5 flex-none rounded-full ${SEV[a.severity].dot}`} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-bold">
+                {showFarm && a.farm_id && (
+                  <span className="mr-1.5 text-muted">{a.farm_id}</span>
+                )}
+                {a.title}
+              </span>
+              <span className="block text-[12.5px] font-semibold text-muted">{a.body}</span>
+            </span>
+            <span className="flex-none text-right">
+              <span className={`block text-[11.5px] font-extrabold ${SEV[a.severity].text}`}>
+                {SEV[a.severity].label}
+              </span>
+              <span className="block text-[11.5px] font-semibold text-muted">
+                {timeAgo(a.occurred_at)}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }

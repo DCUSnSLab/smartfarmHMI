@@ -24,6 +24,7 @@ from shared.schemas import (
     Birth,
     Death,
     EstopState,
+    Heartbeat,
     RobotStatusMsg,
     SensorReading,
     parse_message,
@@ -38,6 +39,25 @@ OFFLINE_FACTOR = 10
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# farm 활성 상태 캐시 — 텔레메트리 고빈도 경로에서 매번 SELECT 하지 않도록 짧게 캐싱.
+_farm_active_cache: dict[str, bool] = {}
+_farm_cache_at: datetime | None = None
+_FARM_CACHE_TTL = timedelta(seconds=10)
+
+
+async def _is_farm_active(engine: AsyncEngine, farm_id: str) -> bool | None:
+    """farm.is_active 반환. 행이 없으면 None (미등록). 10초 캐시."""
+    global _farm_cache_at
+    now = _now()
+    if _farm_cache_at is None or (now - _farm_cache_at) > _FARM_CACHE_TTL:
+        async with engine.connect() as conn:
+            rows = (await conn.execute(select(m.farm.c.farm_id, m.farm.c.is_active))).all()
+        _farm_active_cache.clear()
+        _farm_active_cache.update({r.farm_id: r.is_active for r in rows})
+        _farm_cache_at = now
+    return _farm_active_cache.get(farm_id)
 
 
 async def _touch_connection(conn, farm_id: str, device_id: str, received_at: datetime) -> None:
@@ -132,6 +152,70 @@ async def _handle_death(conn, msg: Death, device_type: str, received_at: datetim
     )
 
 
+async def _record_pending(engine: AsyncEngine, parsed, msg) -> None:
+    """미등록 팜/장치를 발견 버퍼(pending_registration)에 기록 — 설정 화면 '발견' 소스.
+
+    메인 dispatch 는 FK 위반으로 롤백됐으므로 **별도 트랜잭션**으로 쓴다.
+    device_type 은 토픽에서(항상 존재), 센서 자기기술은 birth.metrics / telemetry 에서 얻어
+    (farm_id, device_id) 단위로 누적 병합한다.
+    """
+    device_type, device_id = parsed.device_type, parsed.device_id
+    publish_interval = getattr(msg, "publish_interval_sec", None)
+    incoming: list[dict] = []
+    if isinstance(msg, Birth):
+        incoming = [
+            {"sensor_id": mt.sensor_id, "sensor_type": mt.sensor_type, "unit": mt.unit}
+            for mt in msg.metrics
+        ]
+    elif isinstance(msg, SensorReading):
+        incoming = [{"sensor_id": msg.sensor_id, "sensor_type": msg.sensor_type, "unit": msg.unit}]
+    now = _now()
+    try:
+        async with engine.begin() as conn:
+            row = (
+                await conn.execute(
+                    select(
+                        m.pending_registration.c.sensors,
+                        m.pending_registration.c.msg_count,
+                        m.pending_registration.c.publish_interval_sec,
+                    ).where(
+                        m.pending_registration.c.farm_id == msg.farm_id,
+                        m.pending_registration.c.device_id == device_id,
+                    )
+                )
+            ).first()
+            if row is None:
+                await conn.execute(
+                    insert(m.pending_registration).values(
+                        farm_id=msg.farm_id, device_id=device_id, device_type=device_type,
+                        sensors=incoming, publish_interval_sec=publish_interval,
+                        first_seen=now, last_seen=now, msg_count=1,
+                    )
+                )
+            else:
+                merged = {s["sensor_id"]: s for s in (row.sensors or [])}
+                for s in incoming:
+                    merged[s["sensor_id"]] = s
+                await conn.execute(
+                    update(m.pending_registration)
+                    .where(
+                        m.pending_registration.c.farm_id == msg.farm_id,
+                        m.pending_registration.c.device_id == device_id,
+                    )
+                    .values(
+                        device_type=device_type,
+                        sensors=list(merged.values()),
+                        publish_interval_sec=publish_interval
+                        if publish_interval is not None
+                        else row.publish_interval_sec,
+                        last_seen=now,
+                        msg_count=row.msg_count + 1,
+                    )
+                )
+    except Exception:  # 발견 기록 실패가 수집 루프를 막지 않게
+        log.exception("pending_registration upsert 실패: %s/%s", msg.farm_id, device_id)
+
+
 async def handle_message(
     engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None
 ) -> None:
@@ -147,6 +231,10 @@ async def handle_message(
         return
 
     received_at = _now()
+    # 비활성(소프트 삭제) 팜 — 데이터를 적재하지 않고 발견 버퍼로 전환해 재발견을 허용한다.
+    if await _is_farm_active(engine, msg.farm_id) is False:
+        await _record_pending(engine, parsed, msg)
+        return
     try:
         await _dispatch(engine, parsed, msg, received_at, publisher)
     except IntegrityError as e:
@@ -156,6 +244,32 @@ async def handle_message(
             "미등록 농장/장비 메시지 거부: %s/%s (%s) — 농장 등록 후 장치 재접속 필요 [%s]",
             msg.farm_id, getattr(msg, "device_id", "?"), msg.type, e.orig,
         )
+        # 발견 버퍼에 기록 — 설정 화면에서 이 팜을 "발견"으로 등록할 수 있게 한다.
+        await _record_pending(engine, parsed, msg)
+
+
+async def _handle_heartbeat(conn, msg: Heartbeat, device_type: str, received_at: datetime) -> None:
+    """주기 생존 신호 → 연결 상태 online 갱신 (+ 주기 보존 = 판정 근거).
+
+    주기 데이터가 없는 장치(엣지 컨트롤러)의 liveness 를 birth-once 대신 하트비트로
+    유지한다. birth 가 유실됐어도 다음 하트비트에 online 이 자가 복구되고,
+    interval_sec 를 보존해 connection_monitor 가 공백 기반 degraded/offline 판정을 한다.
+    """
+    interval_set = {} if msg.interval_sec is None else {"publish_interval_sec": msg.interval_sec}
+    stmt = (
+        insert(m.device_connection_state)
+        .values(
+            farm_id=msg.farm_id, device_id=msg.device_id, device_type=device_type,
+            state="online", last_received_at=received_at,
+            publish_interval_sec=msg.interval_sec, updated_at=received_at,
+        )
+        .on_conflict_do_update(
+            constraint="uq_dcs_farm_device",
+            set_={"state": "online", "device_type": device_type,
+                  "last_received_at": received_at, "updated_at": received_at, **interval_set},
+        )
+    )
+    await conn.execute(stmt)
 
 
 async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
@@ -199,6 +313,13 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                 publisher.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "offline",
                     "cascade": parsed.device_type == "edge",
+                    "last_received_at": received_at.isoformat(),
+                })
+        elif isinstance(msg, Heartbeat):
+            await _handle_heartbeat(conn, msg, parsed.device_type, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "connection", {
+                    "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Ack):

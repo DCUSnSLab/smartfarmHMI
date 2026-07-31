@@ -2,8 +2,17 @@
 
 실물 센서가 없는 2차년도에 엣지를 대신하는 **가상 엣지 컨테이너 프로젝트**. 두 가지 역할을 겸한다:
 
-1. **기본 스택의 데이터원** — 루트 compose 의 `virtual-edge` 서비스가 `configs/seongju.yaml` 로 기동돼 대시보드의 센서·로봇 데이터를 공급한다 (이전 `edge-sim` 을 대체·통합)
+1. **기본 스택의 데이터원** — 루트 compose 가 팜 2개를 기동해 대시보드에 공급한다 (이전 `edge-sim` 을 대체·통합)
 2. **격리 연동 테스트 하네스** — 이 디렉토리의 자체 compose 로 완전 외부 환경에서 팜 컨테이너들을 띄우고 미들웨어 연동을 자동 검증한다
+
+**팜 배치** — 기본 스택과 하네스의 farm_id 는 겹치지 않게 유지한다 (같은 팜 발행자 중복 = LWT·retained 충돌):
+
+| farm_id | 팜 | 어디서 | config |
+|---|---|---|---|
+| seongju | 성주 참외 온실 (센서 9·로봇 2) | 루트 compose `virtual-edge` | seongju.yaml |
+| jinju | 진주 토마토 온실 (센서 5·로봇 1) | 루트 compose `virtual-edge-jinju` | jinju.yaml |
+| hwaseong | 화성 딸기 스마트팜 | 하네스 기본 (`make up`) | hwaseong.yaml |
+| gimje | 김제 벼 노지 | 하네스 멀티 (`--profile multi`) | gimje.yaml |
 
 **컨테이너 1개 = 팜 1개**이며, config YAML 하나로 팜의 센서·액추에이터·로봇 구성과 센서별 전송 주기를 정의한다.
 
@@ -61,7 +70,7 @@ curl -X POST http://localhost:48001/internal/farms -H 'Content-Type: application
   -d '{"farm_id":"hwaseong","name":"화성 딸기 스마트팜","farm_type":"greenhouse","crop":"딸기"}'
 
 make up            # 기본 팜(hwaseong) 기동 → 대시보드 스코프에 농장 추가됨
-make up-multi      # 멀티팜 (hwaseong + jinju)
+make up-multi      # 멀티팜 (hwaseong + gimje)
 make logs SVC=farm-hwaseong
 make down
 ```
@@ -85,9 +94,9 @@ make가 5단계를 오케스트레이션한다 (pytest는 docker를 제어하지
 | phase | 상태 | 시나리오 |
 |---|---|---|
 | 1 | hwaseong 기동 | ① 등록+birth→online ② metrics 자기기술 보존(주기 확장 필드 포함) ③ 센서 9종 적재 ④ **센서별 주기 준수**(ts 간격 중앙값) ⑤ 제어 왕복(completed+수렴) ⑥ **멱등**(중복 command 재발행→탱크 추가 소모 없음) ⑦ 로봇 상태 적재 |
-| 2 | +jinju 기동 | ⑧ 멀티팜 분리 적재·상호 무간섭 |
+| 2 | +gimje 기동 | ⑧ 멀티팜 분리 적재·상호 무간섭 |
 | 2.5 | 양 팜 기동 | ⑨ **farm 스코프 정지 격리** — 대상 팜만 제어 423·로봇 정지, 이웃·기본 스택 무영향, 해제 복귀 |
-| 3 | hwaseong 강제 중단 | ⑩ LWT→해당 농장 전 장치 offline cascade, jinju 생존 |
+| 3 | hwaseong 강제 중단 | ⑩ LWT→해당 농장 전 장치 offline cascade, gimje 생존 |
 | 4 | hwaseong 재기동 | ⑪ retained death 정리+birth→online 복귀 |
 
 테스트도 **외부 관점** — 미들웨어 REST(48001)·DB(45432)의 호스트 공개 포트로만 검증한다.

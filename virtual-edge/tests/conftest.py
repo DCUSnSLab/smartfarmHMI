@@ -16,9 +16,10 @@ MW_BASE = os.environ.get("MW_BASE", "http://host.docker.internal:48001")
 DB_DSN = os.environ.get("DB_DSN",
                         "postgresql://mw_user:mw_dev@host.docker.internal:45432/smartfarm")
 
+# 하네스 전용 팜 — 기본 스택 팜(seongju·jinju)과 farm_id 를 겹치지 않게 유지
 FARMS = {
     "hwaseong": {"name": "화성 딸기 스마트팜", "farm_type": "greenhouse", "crop": "딸기"},
-    "jinju": {"name": "진주 토마토 온실", "farm_type": "greenhouse", "crop": "토마토"},
+    "gimje": {"name": "김제 벼 노지", "farm_type": "open_field", "crop": "벼"},
 }
 
 # hwaseong config (configs/hwaseong.yaml)와 일치해야 하는 기대값

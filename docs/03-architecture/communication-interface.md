@@ -27,7 +27,7 @@ farmon/v1/{farm_id}/{device_type}/{device_id}/{message_type}
 | `farm_id` | 농장 식별자 (예: `seongju`) |
 | `device_type` | `robot` \| `growbed` \| `sensor` \| `tank` \| `station` \| `edge` |
 | `device_id` | 장치 식별자 (예: `robot-01`, `temp-a`) |
-| `message_type` | `telemetry` \| `status` \| `command` \| `ack` \| `birth` \| `death` |
+| `message_type` | `telemetry` \| `status` \| `command` \| `ack` \| `birth` \| `death` \| `heartbeat` |
 
 예시:
 ```
@@ -58,6 +58,7 @@ farmon-internal/v1/{farm_id}/{stream}
 | `ack` (명령 응답) | 1 | false | |
 | `birth` | 1 | **true** | 장치가 발행할 항목·타입·초기값 선언 |
 | `death` | 1 | **true** | LWT로 등록. 브로커가 keep-alive 만료 시 대신 발행 |
+| `heartbeat` | 1 | **false** | 주기적 생존 신호(§4.9). 순간값이라 retain 금지 |
 
 - **QoS 1을 기본으로 한다.** 스마트팜 환경에서 QoS 1이 가장 안정적인 특성을 보이는 것으로 보고된다 (`../01-requirements/non-functional.md` §4). QoS 2는 오버헤드 때문에 쓰지 않는다.
 - **모든 장치는 접속 시 LWT를 등록한다.** LWT 토픽은 자신의 `death` 토픽이다. 애플리케이션이 별도로 폴링해 생존을 확인하지 않는다.
@@ -67,7 +68,7 @@ farmon-internal/v1/{farm_id}/{stream}
 
 - LWT death 페이로드의 `timestamp`는 **접속 시점**에 만들어지므로 이후 birth 와 선후 비교에 쓸 수 없다. 수신 측은 death 를 타임스탬프 가드 없이 즉시 offline 으로 처리한다.
 - 대신 **엣지는 정상 재접속 직후, birth 발행 전에 자신의 death 토픽에 빈 retained 발행(retained 삭제)을 수행**해야 한다 — 미들웨어 재시작 시 오래된 retained death 가 재배달되는 것을 발행 측에서 차단한다.
-- birth 에 `publish_interval_sec` 를 선언하지 않은 장치(엣지 컨트롤러 등 주기 발행이 없는 장치)는 주기 배수 판정(§5)에서 제외되고 **LWT 로만** 생존을 판정한다.
+- **주기 발행이 없는 장치(엣지 컨트롤러 등)는 birth 에 하트비트 주기(`publish_interval_sec`)를 선언하고, 그 주기마다 `heartbeat` 를 발행한다**(§4.9). 미들웨어는 하트비트 수신 시각으로 online 을 유지하고 주기 배수 판정(§5)에 포함한다. LWT death 는 이와 별개로 즉시 offline 처리하는 이중 방어다. birth 가 유실(미들웨어 재시작·농장 등록 지연)돼도 다음 하트비트에 online 이 자가 복구된다.
 - **엣지 컨트롤러의 death 는 해당 농장 전 장치의 offline 로 전파(cascade)** 된다 — 엣지가 유일한 통신 통로이기 때문이다 (페일세이프 ②).
 
 ## 4. 메시지 스키마 (초안)
@@ -223,7 +224,7 @@ farmon-internal/v1/{farm_id}/{stream}
 
 `result`는 `accepted` \| `rejected` \| `completed` \| `failed`. 명령을 **접수한 것**과 **실행 완료한 것**을 구분하며, 웹앱도 이를 구분해 표시한다. `timeout_sec` 내 `accepted`가 오지 않으면 실패로 처리한다.
 
-### 4.9 장치 → 미들웨어: birth / death (FR-37)
+### 4.9 장치 → 미들웨어: birth / death / heartbeat (FR-37)
 
 ```json
 {
@@ -255,6 +256,19 @@ farmon-internal/v1/{farm_id}/{stream}
 }
 ```
 
+**heartbeat** — 주기 데이터가 없는 장치(엣지 컨트롤러 등)의 생존 신호다. birth 에 선언한 `interval_sec` 마다 발행하고, 미들웨어는 수신 시각으로 online 을 유지한다(§5의 "마지막 수신"에 포함). 공백이 주기 배수를 넘으면 degraded/offline 로 판정하며, LWT death 즉시-offline 과 이중 방어를 이룬다. birth 가 유실돼도 다음 하트비트에 online 이 자가 복구된다. retain 하지 않는다(순간값).
+
+```json
+{
+  "type": "heartbeat",
+  "version": "0.2",
+  "farm_id": "seongju",
+  "device_id": "edge-01",
+  "interval_sec": 10,
+  "timestamp": "2026-07-21T10:00:05+09:00"
+}
+```
+
 ### 4.10 애플리케이션 서버 → 웹앱: 실시간 푸시 (FR-04, FR-08, FR-32 등)
 
 ```json
@@ -273,7 +287,7 @@ farmon-internal/v1/{farm_id}/{stream}
 
 | 상태 | 판정 근거 |
 |---|---|
-| `online` | birth 수신 후, 마지막 수신이 발행 주기의 3배 이내 |
+| `online` | birth 수신 후, 마지막 수신(telemetry·status·**heartbeat** 포함)이 발행 주기의 3배 이내 |
 | `degraded` | 마지막 수신이 발행 주기의 3배 초과, death 미수신 |
 | `offline` | death 수신 (LWT 발행 포함) 또는 마지막 수신이 발행 주기의 10배 초과 |
 
@@ -319,5 +333,6 @@ farmon-internal/v1/{farm_id}/{stream}
 
 ## 변경 이력
 - 2026-07-07 · 최초 작성
+- 2026-07-31 · `heartbeat` 메시지 신설(GEN-1225) — 주기 발행이 없는 엣지 컨트롤러의 생존 신호. §2 message_type·§3 정책·§4.9·§5 판정 반영. birth 유실 시 online 자가 복구, LWT 와 이중 방어
 - 2026-07-30 · 구현(증분 2~7)에서 확정된 계약 반영 — LWT death 정리 계약(§3), remote_stop·estop_state 발행 토픽 명시(§4.6·4.7)
 - 2026-07-29 · MQTT 확정에 따른 전면 개편. 토픽 네임스페이스(§2), QoS·retained·LWT 정책(§3), 통신 상태 판정(§5), 좌표계(§6), 내부 REST 개요(§7) 신설. 스키마 0.1→0.2 — `sensor_id`·`farm_id`·`command_id`·`timeout_sec` 추가, robot_status에 충전·임무 상태 추가, 신규 메시지 5종(calibrate, remote_stop/release, estop_state, ack, birth/death) 정의

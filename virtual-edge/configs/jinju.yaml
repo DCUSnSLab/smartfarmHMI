@@ -1,4 +1,5 @@
-# 진주 토마토 온실 — 멀티팜 테스트용 둘째 팜 (센서 구성·주기가 다름)
+# 진주 토마토 온실 — 기본 개발 스택의 둘째 팜 (virtual-edge-jinju 서비스)
+# 센서·로봇 id 는 middleware/scripts/seed.py 의 jinju 절과 일치해야 한다.
 farm_id: jinju
 edge_id: edge-01
 growbed_id: growbed-01
@@ -22,3 +23,6 @@ sensors:
 actuators:
   - { id: heater-a, command: set_temperature, affects: temp-a, power_kw: 1.5 }
   - { id: doser-a,  command: set_ec,          affects: ec-a,   drains: tank-nutrient-lv }
+
+robots:
+  - { id: robot-01, behavior: transport, interval_sec: 5, cycle_sec: 360 }

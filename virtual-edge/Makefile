@@ -7,7 +7,7 @@ help:
 	@echo "virtual-edge — 가상 엣지 (연동 테스트 하네스)"
 	@echo ""
 	@echo "  make up          기본 팜(hwaseong) 기동"
-	@echo "  make up-multi    멀티팜(hwaseong + jinju) 기동"
+	@echo "  make up-multi    멀티팜(hwaseong + gimje) 기동"
 	@echo "  make down        전체 종료"
 	@echo "  make logs        로그 (SVC=farm-hwaseong 지정 가능)"
 	@echo "  make test        연동 테스트 전 시나리오 (메인 스택 기동 전제)"
@@ -39,7 +39,7 @@ test: build
 	@echo "── phase 0: 농장 선행 등록 (birth 는 접속 시 1회 — 기동 전 등록 필수) ──"
 	$(COMPOSE) run --rm test python tests/register_farms.py
 	@echo "── phase 1·2 준비: 팜 2개 기동 ──"
-	$(COMPOSE) --profile multi up -d --force-recreate farm-hwaseong farm-jinju
+	$(COMPOSE) --profile multi up -d --force-recreate farm-hwaseong farm-gimje
 	@echo "── 워밍업 90s (저빈도 센서 표본 축적) ──"
 	@sleep 90
 	@echo "── phase 1: 기본 연동 (등록·birth·적재·주기·제어·멱등·로봇) ──"

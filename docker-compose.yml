@@ -140,6 +140,7 @@ services:
     environment:
       POSTGRES_HOST: timescaledb
       MQTT_HOST: mosquitto
+      WEATHER_KEY: "${WEATHER_KEY:-change-me}"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -200,7 +201,6 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: "http://${PUBLIC_HOST:-localhost}:${HOST_GATEWAY_PORT:-48080}"
       INTERNAL_API_URL: http://api:8000
-      WEATHER_KEY: "${WEATHER_KEY:-change-me}"
     depends_on:
       api:
         condition: service_started

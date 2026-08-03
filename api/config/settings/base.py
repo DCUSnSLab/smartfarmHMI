@@ -89,4 +89,3 @@ USE_I18N = True
 USE_TZ = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-WEATHER_KEY = env("WEATHER_KEY", default="change-me")

@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 interface Rule {
   id: number;
@@ -26,11 +27,11 @@ export function AlertRules({ farmId, editable }: { farmId: string; editable: boo
   const [saved, setSaved] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch(`/api/farms/${farmId}/alert-rules`).then(async (r) => r.ok && setRules(await r.json()));
+    apiFetch(`/api/farms/${farmId}/alert-rules`).then(async (r) => r.ok && setRules(await r.json()));
   }, [farmId]);
 
   const save = async (rule: Rule) => {
-    const res = await fetch(`/api/alert-rules/${rule.id}`, {
+    const res = await apiFetch(`/api/alert-rules/${rule.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

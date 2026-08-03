@@ -4,6 +4,7 @@ AIBootcamp api 의 settings 분리 패턴(base/local/prod)을 따른다.
 DB 는 app 스키마 전용 계정(app_user)으로 붙는다 — docs/02-domain/db-schema.md §1.
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -76,6 +77,14 @@ CHANNEL_LAYERS = {
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# ── SimpleJWT — AIBootcamp 정합 (access 30분 / refresh 14일) ──
+# 명시하지 않으면 라이브러리 기본값(access 5분)이 적용된다. 쿠키 max_age 는
+# 이 값에서 파생한다 (accounts/auth.py). 운영 수치는 OPN-07 과 함께 확정.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=30)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=14)),
 }
 
 PASSWORD_HASHERS = [

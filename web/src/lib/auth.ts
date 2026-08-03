@@ -3,6 +3,7 @@
 /** 로그인 사용자 훅 — /api/auth/me. 만료 시 /login 이동. */
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface AuthUser {
   email: string;
@@ -21,7 +22,7 @@ export const canControl = (u: AuthUser | null) =>
 export function useUser() {
   const [user, setUser] = useState<AuthUser | null>(null);
   useEffect(() => {
-    fetch("/api/auth/me").then(async (r) => {
+    apiFetch("/api/auth/me").then(async (r) => {
       if (r.ok) setUser(await r.json());
       else if (r.status === 401) location.href = "/login";
     });
@@ -30,6 +31,6 @@ export function useUser() {
 }
 
 export async function logout() {
-  await fetch("/api/auth/logout", { method: "POST" });
+  await fetch("/api/auth/logout", { method: "POST" });  // 인증 검사 없음 — 갱신 불필요
   location.href = "/login";
 }

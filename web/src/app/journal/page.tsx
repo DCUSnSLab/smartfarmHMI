@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import { Card, SectionTitle } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData, useScope } from "@/lib/farmData";
 
@@ -42,7 +43,7 @@ export default function JournalPage() {
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/memos?month=${monthKey}`);
+    const r = await apiFetch(`/api/memos?month=${monthKey}`);
     if (r.ok) setMemos(await r.json());
   }, [monthKey]);
 
@@ -53,7 +54,7 @@ export default function JournalPage() {
     e.preventDefault();
     if (!body.trim() || !farmId) return;
     setBusy(true);
-    const r = await fetch("/api/memos", {
+    const r = await apiFetch("/api/memos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ farm_id: farmId, memo_date: selected, body }),
@@ -64,7 +65,7 @@ export default function JournalPage() {
 
   const remove = async (id: number) => {
     if (!confirm("이 메모를 삭제할까요?")) return;
-    const r = await fetch(`/api/memos/${id}`, { method: "DELETE" });
+    const r = await apiFetch(`/api/memos/${id}`, { method: "DELETE" });
     if (r.ok) void load();
   };
 

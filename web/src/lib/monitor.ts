@@ -6,7 +6,8 @@
  * 통신 상태·마지막 수신 시각을 함께 유지한다 (FR-37, 페일세이프 ③).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch, refreshToken } from "@/lib/api";
 
 export interface SensorValue {
   sensor_id: string;
@@ -88,11 +89,10 @@ export function useMonitor(scope: string) {
   const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
 
   // ── 초기 로드 (REST) ──
   const loadSnapshot = useCallback(async (farmId: string) => {
-    const res = await fetch(`/api/farms/${farmId}/snapshot`);
+    const res = await apiFetch(`/api/farms/${farmId}/snapshot`);
     if (!res.ok) return;
     const snap = await res.json();
     setFarmName(snap.farm.name);
@@ -102,10 +102,10 @@ export function useMonitor(scope: string) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
+    apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      fetch("/api/alerts?limit=100").then(async (r) => {
+      apiFetch("/api/alerts?limit=100").then(async (r) => {
         if (!r.ok) return;
         const list: AlertItem[] = await r.json();
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
@@ -113,31 +113,28 @@ export function useMonitor(scope: string) {
     }
     if (scope !== "all") {
       void loadSnapshot(scope);
-      fetch(`/api/farms/${scope}/commands`).then(async (r) => {
+      apiFetch(`/api/farms/${scope}/commands`).then(async (r) => {
         if (!r.ok) return;
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
       });
-      fetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
+      apiFetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
         if (!r.ok) return;
         const list: AlertItem[] = await r.json();
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
-      fetch(`/api/farms/${scope}/stop-state`).then(async (r) => r.ok && setStops(await r.json()));
+      apiFetch(`/api/farms/${scope}/stop-state`).then(async (r) => r.ok && setStops(await r.json()));
     }
   }, [scope, loadSnapshot]);
 
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${location.host}/ws/monitor`);
-    wsRef.current = ws;
-    ws.onopen = () => {
-      setWsOpen(true);
-      ws.send(JSON.stringify({ action: "subscribe", scope }));
-    };
-    ws.onclose = () => setWsOpen(false);
-    ws.onmessage = (ev) => {
+    let closed = false;
+    let retry = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let ws: WebSocket | null = null;
+
+    const onMessage = (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data);
       if (msg.type !== "update") return;
       const d = msg.data;
@@ -195,14 +192,39 @@ export function useMonitor(scope: string) {
         });
       }
     };
-    return () => ws.close();
+
+    const connect = () => {
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
+      ws = sock;
+      sock.onopen = () => {
+        retry = 0;
+        setWsOpen(true);
+        sock.send(JSON.stringify({ action: "subscribe", scope }));
+      };
+      // 핸드셰이크 인증은 쿠키 — 만료로 거부되면 갱신 후 재연결 (지수 백오프)
+      sock.onclose = async (ev) => {
+        setWsOpen(false);
+        if (closed) return;
+        if (ev.code !== 1000) await refreshToken();
+        timer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** retry++));
+      };
+      sock.onmessage = onMessage;
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      clearTimeout(timer);
+      ws?.close();
+    };
   }, [scope]);
 
   return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
 }
 
 export async function engageStop(reason?: string) {
-  const r = await fetch("/api/stop", {
+  const r = await apiFetch("/api/stop", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all", reason }),
   });
@@ -210,7 +232,7 @@ export async function engageStop(reason?: string) {
 }
 
 export async function releaseStop() {
-  const r = await fetch("/api/stop/release", {
+  const r = await apiFetch("/api/stop/release", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all" }),
   });
@@ -218,18 +240,18 @@ export async function releaseStop() {
 }
 
 export async function ackAlert(id: number) {
-  await fetch(`/api/alerts/${id}/ack`, { method: "POST" });
+  await apiFetch(`/api/alerts/${id}/ack`, { method: "POST" });
 }
 
 export async function ackAllAlerts(farmId: string) {
-  await fetch(`/api/farms/${farmId}/alerts/ack-all`, { method: "POST" });
+  await apiFetch(`/api/farms/${farmId}/alerts/ack-all`, { method: "POST" });
 }
 
 /** 제어 명령 발행 (FR-10) — command_id 를 반환한다. */
 export async function postControl(
   farmId: string, deviceId: string, command: string, target: number,
 ): Promise<string | null> {
-  const res = await fetch(`/api/farms/${farmId}/devices/${deviceId}/control`, {
+  const res = await apiFetch(`/api/farms/${farmId}/devices/${deviceId}/control`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ command, params: { target } }),

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # 통신 상태 판정 주기 (통신 규격 §5)
     conn_check_interval_sec: int = 10
 
+    # 외부 기상 정보 요청용
+    weather_key: str = "change-me"
+
     @property
     def database_url(self) -> str:
         return (

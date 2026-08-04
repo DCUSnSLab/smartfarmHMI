@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { CONTROL } from "@/components/ui";
 import { StopState, engageStop, releaseStop, timeAgo } from "@/lib/monitor";
 
 export function StopButton({ canStop }: { canStop: boolean }) {
@@ -20,7 +21,7 @@ export function StopButton({ canStop }: { canStop: boolean }) {
     <>
       <button
         onClick={() => setConfirming(true)}
-        className="rounded-xl border-[1.5px] border-status-warning bg-status-warning/10 px-4 py-1.5 text-[13.5px] font-extrabold text-status-warningDark"
+        className={`${CONTROL} border-[1.5px] border-status-warning bg-status-warning/10 px-4 font-extrabold text-status-warningDark`}
       >
         ■ 원격 전체 정지
       </button>

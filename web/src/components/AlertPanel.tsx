@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AlertItem, ackAlert, ackAllAlerts, timeAgo } from "@/lib/monitor";
 
 const SEV: Record<string, { label: string; dot: string; text: string }> = {
@@ -33,6 +34,8 @@ export function AlertPanel({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<string>("all");
+  const { anchorRef, style, unplaced } = useAnchoredPanel(open, 380);
+  useLightDismiss(open, anchorRef, () => setOpen(false));
 
   const list = useMemo(
     () =>
@@ -53,13 +56,20 @@ export function AlertPanel({
   };
 
   return (
-    <span className="relative">
+    <span ref={anchorRef} className="relative shrink-0">
       <button
         onClick={() => setOpen(!open)}
-        className="relative rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-[12.5px] font-bold text-gray-600"
+        className={`${CONTROL_ICON} relative border border-gray-200 bg-white text-gray-600`}
         aria-label={`알림 ${unacked}건 미확인`}
       >
-        알림
+        {/* 종 아이콘 — 디자인 전달본(.dc.html) 원본 path */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M6 9a6 6 0 1 1 12 0v3.8l1.4 2.7H4.6L6 12.8V9z"
+            stroke="currentColor" strokeWidth="2" strokeLinejoin="round"
+          />
+          <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
         {unacked > 0 && (
           <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-status-warning px-1 text-[11px] font-extrabold text-white">
             {unacked}
@@ -68,7 +78,12 @@ export function AlertPanel({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-100">
+        <div
+          style={style}
+          className={`absolute top-[calc(100%+0.375rem)] z-50 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-gray-100 ${
+            unplaced ? "invisible" : ""
+          }`}
+        >
           <div className="mb-3 flex items-center gap-2">
             <span className="text-[15px] font-extrabold">알림</span>
             <span className="text-[12px] font-bold text-muted">미확인 {unacked}건</span>

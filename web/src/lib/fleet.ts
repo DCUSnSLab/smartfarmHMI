@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import type { ConnState, RobotValue, SensorValue } from "@/lib/monitor";
 
 export interface TankInfo {
@@ -55,7 +56,7 @@ export function useFleetSnapshots(farmIds: string[], intervalMs = 15000) {
     const ids = key.split(",");
     const results = await Promise.all(
       ids.map(async (id) => {
-        const r = await fetch(`/api/farms/${id}/snapshot`);
+        const r = await apiFetch(`/api/farms/${id}/snapshot`);
         return r.ok ? ([id, (await r.json()) as FarmSnapshot] as const) : null;
       }),
     );

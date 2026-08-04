@@ -8,6 +8,7 @@ import { jwtVerify } from "jose";
 import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_COOKIE = "sf_access";
+const REFRESH_COOKIE = "sf_refresh";
 const PUBLIC_PATHS = ["/login", "/forbidden", "/data"];
 
 export async function middleware(req: NextRequest) {
@@ -23,8 +24,13 @@ export async function middleware(req: NextRequest) {
       await jwtVerify(token, secret, { algorithms: ["HS256"] });
       return NextResponse.next();
     } catch {
-      // 만료·위조 — 로그인으로
+      // 만료·위조 — 아래 리프레시 판정으로
     }
+  }
+  // 액세스가 만료돼도 리프레시가 살아 있으면 통과시킨다 — 화면 진입 후 apiFetch 가
+  // 갱신한다 (lib/api.ts). 여기서 막으면 만료마다 로그인 화면으로 튕긴다.
+  if (req.cookies.get(REFRESH_COOKIE)) {
+    return NextResponse.next();
   }
   const login = new URL("/login", req.url);
   if (pathname !== "/") login.searchParams.set("next", pathname);

@@ -51,6 +51,9 @@ export interface FarmInput {
   name: string;
   farm_type: string;
   crop?: string | null;
+  latitude?: number;
+  longitude?: number;
+  accuracy_m?: number;
 }
 
 async function jsonOk(res: Response): Promise<boolean> {
@@ -89,7 +92,14 @@ export async function createFarm(input: FarmInput): Promise<boolean> {
 
 export async function updateFarm(
   farmId: string,
-  patch: { name?: string; farm_type?: string; crop?: string | null; region_code?: string | null },
+  patch: {
+    name?: string;
+    farm_type?: string;
+    crop?: string | null;
+    latitude?: number;
+    longitude?: number;
+    accuracy_m?: number;
+  },
 ): Promise<boolean> {
   return jsonOk(
     await fetch(`/api/farms/${farmId}`, {

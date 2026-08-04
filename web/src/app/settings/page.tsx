@@ -73,14 +73,58 @@ function FarmModal({
   const [crop, setCrop] = useState(edit?.crop ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [locating, setLocating] = useState(false);
+  const [position, setPosition] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
+  const [locationMessage, setLocationMessage] = useState("");
+
+  const requestCurrentLocation = () => {
+    setErr("");
+    setLocationMessage("");
+    if (!("geolocation" in navigator)) {
+      setLocationMessage("이 브라우저는 현재 위치 확인을 지원하지 않습니다.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setPosition({ latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy });
+        setLocating(false);
+      },
+      (error) => {
+        const messages: Record<number, string> = {
+          1: "위치 권한이 거부되었습니다. 브라우저 설정에서 위치 권한을 허용해 주세요.",
+          2: "현재 위치를 확인할 수 없습니다. 위치 서비스를 켠 뒤 다시 시도해 주세요.",
+          3: "위치 확인 시간이 초과되었습니다. 다시 시도해 주세요.",
+        };
+        setPosition(null);
+        setLocationMessage(messages[error.code] ?? "현재 위치를 가져오지 못했습니다.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!edit && !position) {
+      setErr("농장의 현재 위치를 먼저 지정해 주세요.");
+      return;
+    }
     setBusy(true);
     setErr("");
     const ok = edit
-      ? await updateFarm(edit.farm_id, { name, farm_type: farmType, crop: crop || null })
-      : await createFarm({ farm_id: farmId.trim(), name, farm_type: farmType, crop: crop || null });
+      ? await updateFarm(edit.farm_id, {
+          name, farm_type: farmType, crop: crop || null,
+          ...(position ? {
+            latitude: position.latitude,
+            longitude: position.longitude,
+            accuracy_m: position.accuracy,
+          } : {}),
+        })
+      : await createFarm({
+          farm_id: farmId.trim(), name, farm_type: farmType, crop: crop || null,
+          latitude: position!.latitude, longitude: position!.longitude, accuracy_m: position!.accuracy,
+        });
     setBusy(false);
     if (ok) onDone();
     else setErr("저장에 실패했습니다. 입력값(특히 farm_id 중복)을 확인하세요.");
@@ -105,6 +149,33 @@ function FarmModal({
         <Field label="작물 (선택)">
           <input className={inputCls} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="예: 벼" />
         </Field>
+        <div className="mb-3">
+            <span className={labelCls}>농장 위치</span>
+            <button type="button" onClick={requestCurrentLocation} disabled={locating}
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2.5 text-[13.5px] font-extrabold text-primary-dark hover:bg-primary-bg disabled:cursor-wait disabled:opacity-60">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" stroke="currentColor" strokeWidth="2" />
+                <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="2" />
+              </svg>
+              {locating
+                ? "현재 위치 확인 중…"
+                : position
+                  ? "현재 위치 다시 지정"
+                  : edit
+                    ? "현재 위치로 변경"
+                    : "현재 위치로 지정"}
+            </button>
+            {position && <p className="mt-1.5 text-[12px] font-bold text-primary-dark" role="status">
+              위치 확인 완료 · 예상 정확도 약 {Math.round(position.accuracy).toLocaleString()}m
+              {position.accuracy > 2_000 && " · 정확도가 낮아 다시 측정하는 것을 권장합니다."}
+            </p>}
+            {locationMessage && <p className="mt-1.5 text-[12px] font-bold text-status-warningDark" role="alert">{locationMessage}</p>}
+            <p className="mt-1 text-[11.5px] font-semibold text-muted">
+              {edit && !position
+                ? "위치를 지정하지 않으면 기존 날씨 조회 구역을 유지합니다."
+                : "좌표는 날씨 조회 구역 계산에만 사용되며 저장되지 않습니다."}
+            </p>
+          </div>
         {err && <p className="text-[12.5px] font-bold text-status-warningDark">{err}</p>}
         <Actions onCancel={onClose} submitLabel={edit ? "수정" : "추가"} busy={busy} />
       </form>

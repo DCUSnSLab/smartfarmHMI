@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.weather import make_region_code
 
 router = APIRouter(prefix="/internal")
 
@@ -18,6 +19,10 @@ class FarmUpsert(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
+    # 위치는 region_code 계산에만 사용하며 DB에는 저장하지 않는다.
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_m: float | None = None
 
 
 @router.post("/farms")
@@ -29,15 +34,21 @@ async def upsert_farm(req: FarmUpsert):
     """
     if req.farm_type not in ("greenhouse", "plant_factory", "open_field"):
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
+    if (req.latitude is None) != (req.longitude is None):
+        raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
+    try:
+        region_code = make_region_code(req.latitude, req.longitude) if req.latitude is not None and req.longitude is not None else None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         await conn.execute(
             insert(m.farm)
             .values(farm_id=req.farm_id, name=req.name,
-                    farm_type=req.farm_type, crop=req.crop)
+                    farm_type=req.farm_type, crop=req.crop, region_code=region_code)
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 재등록하면 재활성화한다.
-                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "is_active": True},
+                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "region_code": region_code, "is_active": True},
             )
         )
     return {"ok": True, "farm_id": req.farm_id}

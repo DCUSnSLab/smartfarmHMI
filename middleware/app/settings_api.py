@@ -17,6 +17,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.weather import make_region_code
 
 router = APIRouter(prefix="/internal")
 
@@ -40,7 +41,10 @@ class FarmUpdate(BaseModel):
     name: str | None = None
     farm_type: str | None = None
     crop: str | None = None
-    region_code: str | None = None
+    # 좌표는 region_code 계산에만 사용하며 DB에는 저장하지 않는다.
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_m: float | None = None
 
 
 class DeviceUpsert(BaseModel):
@@ -180,7 +184,18 @@ async def update_farm(farm_id: str, req: FarmUpdate):
     """팜 메타데이터 수정 — farm_id(자연키·MQTT 토픽)는 불변."""
     if req.farm_type is not None and req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
-    patch = {k: v for k, v in req.model_dump().items() if v is not None}
+    if (req.latitude is None) != (req.longitude is None):
+        raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
+    patch = {
+        k: v
+        for k, v in req.model_dump(exclude={"latitude", "longitude", "accuracy_m"}).items()
+        if v is not None
+    }
+    if req.latitude is not None and req.longitude is not None:
+        try:
+            patch["region_code"] = make_region_code(req.latitude, req.longitude)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     if not patch:
         raise HTTPException(400, "수정할 필드가 없습니다")
     patch["updated_at"] = _now()

@@ -45,7 +45,7 @@ def set_auth_cookies(response, access: str, refresh: str | None = None) -> None:
     if refresh:
         response.set_cookie(
             REFRESH_COOKIE, refresh, httponly=True, samesite="Lax",
-            max_age=60 * 60 * 24 * 3650, path="/api/auth", secure=False,
+            max_age=60 * 60 * 24 * 12, path="/api/auth", secure=False,
         )
 
 

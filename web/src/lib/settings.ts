@@ -5,6 +5,8 @@
  * 쓰기는 api 계층에서 admin/manager 가드(403). monitor.ts 의 fetch 패턴을 따른다.
  */
 
+import { apiFetch } from "@/lib/api";
+
 export interface DiscoveredDevice {
   device_id: string;
   device_type: string;
@@ -59,7 +61,7 @@ async function jsonOk(res: Response): Promise<boolean> {
 
 // ── 발견(discovery) ──
 export async function listDiscovery(): Promise<DiscoveredFarm[]> {
-  const r = await fetch("/api/discovery");
+  const r = await apiFetch("/api/discovery");
   return r.ok ? r.json() : [];
 }
 
@@ -68,7 +70,7 @@ export async function registerDiscovered(
   meta: { name: string; farm_type: string; crop?: string | null },
 ): Promise<boolean> {
   return jsonOk(
-    await fetch(`/api/discovery/${farmId}/register`, {
+    await apiFetch(`/api/discovery/${farmId}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(meta),
@@ -79,7 +81,7 @@ export async function registerDiscovered(
 // ── 팜 CRUD ──
 export async function createFarm(input: FarmInput): Promise<boolean> {
   return jsonOk(
-    await fetch("/api/farms", {
+    await apiFetch("/api/farms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -92,7 +94,7 @@ export async function updateFarm(
   patch: { name?: string; farm_type?: string; crop?: string | null; region_code?: string | null },
 ): Promise<boolean> {
   return jsonOk(
-    await fetch(`/api/farms/${farmId}`, {
+    await apiFetch(`/api/farms/${farmId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -101,12 +103,12 @@ export async function updateFarm(
 }
 
 export async function deleteFarm(farmId: string): Promise<boolean> {
-  return jsonOk(await fetch(`/api/farms/${farmId}`, { method: "DELETE" }));
+  return jsonOk(await apiFetch(`/api/farms/${farmId}`, { method: "DELETE" }));
 }
 
 // ── 장치(device_meta) + 상세 CRUD ──
 export async function listDevices(farmId: string): Promise<DeviceRow[]> {
-  const r = await fetch(`/api/farms/${farmId}/devices`);
+  const r = await apiFetch(`/api/farms/${farmId}/devices`);
   return r.ok ? r.json() : [];
 }
 
@@ -115,7 +117,7 @@ export async function createDevice(
   payload: Record<string, unknown>,
 ): Promise<boolean> {
   return jsonOk(
-    await fetch(`/api/farms/${farmId}/devices`, {
+    await apiFetch(`/api/farms/${farmId}/devices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -129,7 +131,7 @@ export async function updateDevice(
   patch: Record<string, unknown>,
 ): Promise<boolean> {
   return jsonOk(
-    await fetch(`/api/farms/${farmId}/devices/${deviceId}`, {
+    await apiFetch(`/api/farms/${farmId}/devices/${deviceId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -138,7 +140,7 @@ export async function updateDevice(
 }
 
 export async function deleteDevice(farmId: string, deviceId: string): Promise<boolean> {
-  return jsonOk(await fetch(`/api/farms/${farmId}/devices/${deviceId}`, { method: "DELETE" }));
+  return jsonOk(await apiFetch(`/api/farms/${farmId}/devices/${deviceId}`, { method: "DELETE" }));
 }
 
 // ── UI 상수 ──

@@ -6,7 +6,7 @@
  */
 
 import { useParams, useRouter } from "next/navigation";
-import { PlannedBox, PlannedChip } from "@/components/Planned";
+import { PlannedChip } from "@/components/Planned";
 import {
   Card, CONN_STYLE, Gauge, SectionTitle, StatusDot,
   MISSION_LABEL, SENSOR_META, TANK_LABEL,
@@ -14,6 +14,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
+import { useWeather, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -47,6 +48,67 @@ function useSummary(): { text: string; issues: string[] } {
       : `${envPart} · ${robotPart} · 특이사항 없음`,
     issues,
   };
+}
+
+function FarmWeather({ farmId }: { farmId: string }) {
+  const { rows, loading } = useWeather();
+  const weather = rows.find((row) => row.farm_id === farmId);
+
+  return (
+    <Card>
+      <SectionTitle
+        title="지역 날씨"
+        sub="농장 외부 기상"
+        right={weather?.received_at && (
+          <span className="text-[11px] font-semibold text-muted">{timeAgo(weather.received_at)} 갱신</span>
+        )}
+      />
+      {loading ? (
+        <div className="py-7 text-center text-[12.5px] font-semibold text-muted">날씨를 불러오는 중…</div>
+      ) : weather?.ts ? (
+        <>
+          <div className="flex items-end gap-3">
+            <span className="text-[30px]" aria-hidden="true">
+              {weatherIcon(weather.condition, weather.precipitation_mm)}
+            </span>
+            <span className="text-[30px] font-extrabold leading-none">
+              {weather.temperature_c != null ? weather.temperature_c.toFixed(1) : "—"}
+              <span className="ml-0.5 text-[14px] font-bold text-muted">℃</span>
+            </span>
+            <span className="pb-0.5 text-[13px] font-extrabold text-gray-600">{weather.condition ?? "정보 없음"}</span>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
+              <div className="text-[11px] font-semibold text-muted">습도</div>
+              <div className="mt-0.5 text-[14px] font-extrabold">
+                {weather.humidity_pct != null ? `${Math.round(weather.humidity_pct)}%` : "—"}
+              </div>
+            </div>
+            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
+              <div className="text-[11px] font-semibold text-muted">1시간 강수</div>
+              <div className="mt-0.5 text-[14px] font-extrabold">
+                {weather.precipitation_mm != null ? `${weather.precipitation_mm}mm` : "—"}
+              </div>
+            </div>
+            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
+              <div className="text-[11px] font-semibold text-muted">풍속</div>
+              <div className="mt-0.5 text-[14px] font-extrabold">
+                {weather.wind_ms != null ? `${weather.wind_ms}m/s` : "—"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-between text-[10.5px] font-semibold text-muted">
+            <span>관측 {new Date(weather.ts).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+            <span>기상청 초단기실황</span>
+          </div>
+        </>
+      ) : (
+        <div className="py-6 text-center text-[12.5px] font-semibold text-muted">
+          {weather?.region_code ? "기상 정보를 준비 중입니다." : "날씨 조회 위치가 설정되지 않았습니다."}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 /**
@@ -139,9 +201,7 @@ export default function StatusTab() {
             규칙 기반 요약입니다. LLM 연동 후 서술형 분석·조치 권고로 확장됩니다 (FR-30).
           </p>
         </Card>
-        <PlannedBox feature="지역 날씨" basis="FR-40 · OPN-17">
-          외부 기상 API 연동 후 기온·날씨·습도·풍속·일사량이 표시됩니다. 차광·환기 권고는 참고 정보로만 제공되며 제어는 범위 밖입니다.
-        </PlannedBox>
+        <FarmWeather farmId={farmId} />
       </section>
 
       {/* 배치도 + 하드웨어 */}

@@ -109,6 +109,13 @@ async def discovery_register(request, farm_id: str):
     return await _proxy_write(request, "POST", f"/internal/discovery/{farm_id}/register")
 
 
+async def weather(request):
+    """활성 농장별 최신 외부 날씨. 인증된 대시보드용."""
+    if request_user(request) is None:
+        return unauthorized()
+    return await _proxy_middleware("/internal/weather")
+
+
 async def farm_snapshot(request, farm_id: str):
     """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
     if request_user(request) is None:

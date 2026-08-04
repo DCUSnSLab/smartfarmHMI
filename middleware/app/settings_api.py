@@ -11,13 +11,13 @@ device_meta 와 상세 테이블은 seed.py 의 2단계(device_meta.id 확보 �
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from middleware.app.weather import make_region_code
+from middleware.app.weather import collect_farm_weather, make_region_code
 
 router = APIRouter(prefix="/internal")
 
@@ -180,7 +180,7 @@ async def _create_device(conn, farm_id: str, d: DeviceUpsert) -> int:
 # ── 팜 수정/삭제 ──────────────────────────────────────────────
 
 @router.put("/farms/{farm_id}")
-async def update_farm(farm_id: str, req: FarmUpdate):
+async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: BackgroundTasks):
     """팜 메타데이터 수정 — farm_id(자연키·MQTT 토픽)는 불변."""
     if req.farm_type is not None and req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
@@ -202,6 +202,8 @@ async def update_farm(farm_id: str, req: FarmUpdate):
     async with _engine().begin() as conn:
         await _require_farm(conn, farm_id)
         await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
+    if "region_code" in patch:
+        background_tasks.add_task(collect_farm_weather, _engine(), farm_id, patch["region_code"])
     return {"ok": True, "farm_id": farm_id}
 
 

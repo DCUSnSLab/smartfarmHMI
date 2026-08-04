@@ -24,6 +24,7 @@ from apps.core.views import (
     health,
     stop_engage,
     stop_release,
+    weather,
 )
 
 urlpatterns = [
@@ -34,6 +35,7 @@ urlpatterns = [
     path("api/auth/refresh", auth_views.refresh),
     path("api/auth/me", auth_views.me),
     path("api/farms", farms),
+    path("api/weather", weather),
     path("api/discovery", discovery),
     path("api/discovery/<str:farm_id>/register", discovery_register),
     path("api/farms/<str:farm_id>", farm_detail),

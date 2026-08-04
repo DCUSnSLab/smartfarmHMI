@@ -3,13 +3,13 @@
 실시간은 내부 MQTT 재발행으로 흐르고, 여기는 초기 로드·이력 조회를 담당한다.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from middleware.app.weather import make_region_code
+from middleware.app.weather import collect_farm_weather, make_region_code
 
 router = APIRouter(prefix="/internal")
 
@@ -26,7 +26,7 @@ class FarmUpsert(BaseModel):
 
 
 @router.post("/farms")
-async def upsert_farm(req: FarmUpsert):
+async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
     """농장 등록 (멱등 upsert) — FR-38 다농장의 초석.
 
     가상 엣지 연동 테스트가 둘째 농장을 붙일 때 사용한다. 미등록 농장의
@@ -51,6 +51,8 @@ async def upsert_farm(req: FarmUpsert):
                 set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "region_code": region_code, "is_active": True},
             )
         )
+    if region_code is not None:
+        background_tasks.add_task(collect_farm_weather, _engine(), req.farm_id, region_code)
     return {"ok": True, "farm_id": req.farm_id}
 
 
@@ -80,6 +82,24 @@ async def list_farms():
         }
         for f in farms
     ]
+
+
+@router.get("/weather")
+async def latest_weather():
+    """활성 농장별 최신 외부 날씨. 미수집 농장도 null 값으로 포함한다."""
+    async with _engine().connect() as conn:
+        rows = (
+            await conn.execute(text(
+                "SELECT f.farm_id, f.name, f.region_code, w.ts, w.received_at, "
+                "w.temperature_c, w.humidity_pct, w.precipitation_mm, "
+                "w.wind_ms, w.condition, w.provider "
+                "FROM mw.farm f LEFT JOIN LATERAL ("
+                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id "
+                " ORDER BY wr.ts DESC LIMIT 1"
+                ") w ON true WHERE f.is_active ORDER BY f.created_at"
+            ))
+        ).mappings().all()
+    return [dict(row) for row in rows]
 
 
 @router.get("/farms/{farm_id}/snapshot")

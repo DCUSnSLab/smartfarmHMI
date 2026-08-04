@@ -41,7 +41,7 @@ class FarmUpdate(BaseModel):
     name: str | None = None
     farm_type: str | None = None
     crop: str | None = None
-    # 좌표는 region_code 계산에만 사용하며 DB에는 저장하지 않는다.
+    # 위도·경도는 region_code 문자열로 저장한다.
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None

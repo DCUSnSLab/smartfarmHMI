@@ -44,7 +44,7 @@
 | name | TEXT | NOT NULL |
 | farm_type | TEXT | NOT NULL, CHECK (`greenhouse`\|`plant_factory`\|`open_field`) |
 | crop | TEXT | NULL |
-| region_code | TEXT | NULL — 기상 조회용 지역 식별 (OPN-17 확정 시 형식 구체화) |
+| region_code | TEXT | NULL — WGS84 위도·경도 ({latitude:.3f}-{longitude:.3f}, 예: 35.950-128.660) |
 | is_active | BOOLEAN | NOT NULL DEFAULT true |
 | created_at / updated_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 

@@ -2,7 +2,7 @@
 
 /**
  * 통합 대시보드 A — 전체 현황 (디자인 전달본 "통합 대시보드 A (전체)").
- * Fleet KPI · 농장별 현황 카드 · 전체 알림 · 오늘 작업 · 지역 날씨.
+ * Fleet KPI · 농장별 현황 카드 · 전체 알림 · 오늘 작업.
  * (기존 MVP 의 농장별 내용은 /farms/[farmId]/[tab] 로 이관)
  */
 
@@ -16,94 +16,53 @@ import {
 import { useFarmData, useScope } from "@/lib/farmData";
 import { FarmSnapshot, farmSeverity, sensorOf, useFleetSnapshots } from "@/lib/fleet";
 import { timeAgo } from "@/lib/monitor";
-import { useWeather, weatherCardBackground, weatherIcon } from "@/lib/weather";
+import { useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
 const KPI_SENSORS = ["temperature", "humidity", "co2"] as const;
 
-function WeatherPanel() {
-  const { rows, loading } = useWeather();
-
-  return (
-    <Card>
-      <SectionTitle
-        title="지역 날씨"
-        sub="농장 외부 기상"
-        right={rows.some((row) => row.received_at) && (
-          <span className="text-[11.5px] font-semibold text-muted">
-            {timeAgo(rows.find((row) => row.received_at)?.received_at ?? "")} 갱신
-          </span>
-        )}
-      />
-      <div className="grid grid-cols-2 gap-2.5">
-        {loading && (
-          <div className="col-span-2 py-8 text-center text-[12.5px] font-semibold text-muted">
-            날씨를 불러오는 중…
-          </div>
-        )}
-        {!loading && rows.map((row) => (
-          <Link
-            key={row.farm_id}
-            href={`/farms/${row.farm_id}/status`}
-            className={`flex aspect-[4/5] min-w-0 flex-col overflow-hidden rounded-2xl bg-gradient-to-b p-3 text-center text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${weatherCardBackground(row.condition)}`}
-          >
-            <span className="truncate text-[14px] font-extrabold text-white">{row.name}</span>
-            {row.ts ? (
-              <>
-                <span className="flex flex-1 items-center justify-center text-[76px] leading-none drop-shadow-sm" aria-hidden="true">
-                  {weatherIcon(row.condition, row.precipitation_mm)}
-                </span>
-                <span className="mb-3 text-[27px] font-extrabold leading-none">
-                  {row.temperature_c != null ? `${row.temperature_c.toFixed(1)}°` : "—"}
-                </span>
-                <span className="grid grid-cols-3 divide-x divide-white/30 border-t border-white/30 pt-2 text-[10px] font-semibold">
-                  <span>
-                    <strong className="block text-[11px] font-extrabold">
-                      {(row.precipitation_mm ?? 0) > 0 ? `${row.precipitation_mm}mm` : "없음"}
-                    </strong>
-                    <small className="text-[9px] font-semibold text-white/70">강수</small>
-                  </span>
-                  <span>
-                    <strong className="block text-[11px] font-extrabold">
-                      {row.humidity_pct != null ? `${Math.round(row.humidity_pct)}%` : "—"}
-                    </strong>
-                    <small className="text-[9px] font-semibold text-white/70">습도</small>
-                  </span>
-                  <span>
-                    <strong className="block text-[11px] font-extrabold">
-                      {row.wind_ms != null ? `${row.wind_ms}m/s` : "—"}
-                    </strong>
-                    <small className="text-[9px] font-semibold text-white/70">풍속</small>
-                  </span>
-                </span>
-              </>
-            ) : (
-              <span className="flex flex-1 items-center justify-center px-1 text-[22px] font-extrabold text-white">
-                {row.region_code ? "로딩중" : "위치 미설정"}
-              </span>
-            )}
-          </Link>
-        ))}
-        {!loading && rows.length === 0 && (
-          <div className="col-span-2 py-8 text-center text-[12.5px] font-semibold text-muted">
-            표시할 농장이 없습니다.
-          </div>
-        )}
-      </div>
-      <div className="mt-2 text-right text-[10.5px] font-semibold text-muted">기상청 초단기실황</div>
-    </Card>
-  );
-}
-
-function FarmCard({ snap, unackedWarnings }: { snap: FarmSnapshot; unackedWarnings: number }) {
+function FarmCard({
+  snap,
+  unackedWarnings,
+  weather,
+}: {
+  snap: FarmSnapshot;
+  unackedWarnings: number;
+  weather?: WeatherRow;
+}) {
   const router = useRouter();
   const sev = farmSeverity(snap, unackedWarnings);
   const s = SEV_STYLE[sev];
+  const weatherTitle = weather?.ts
+    ? [
+        weatherConditionLabel(weather.condition),
+        weather.humidity_pct != null ? `습도 ${Math.round(weather.humidity_pct)}%` : null,
+        weather.precipitation_mm != null ? `강수 ${weather.precipitation_mm}mm` : null,
+        weather.wind_ms != null ? `풍속 ${weather.wind_ms}m/s` : null,
+      ].filter(Boolean).join(" · ")
+    : weather?.region_code
+      ? "기상 정보를 불러오는 중입니다."
+      : "날씨 조회 위치가 설정되지 않았습니다.";
 
   return (
     <Card onClick={() => router.push(`/farms/${snap.farm.farm_id}/status`)}>
       <div className="mb-3 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 flex-none rounded-full ${s.dot}`} />
         <span className="min-w-0 flex-1 truncate text-[16px] font-extrabold">{snap.farm.name}</span>
+        <span
+          title={weatherTitle}
+          className="flex flex-none items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[12px] font-extrabold text-gray-700"
+        >
+          {weather?.ts ? (
+            <>
+              <span className="text-[15px] leading-none" aria-hidden="true">
+                {weatherIcon(weather.condition, weather.precipitation_mm)}
+              </span>
+              <span>{weather.temperature_c != null ? `${weather.temperature_c.toFixed(1)}°` : "—"}</span>
+            </>
+          ) : (
+            <span>날씨 —</span>
+          )}
+        </span>
         <span className={`rounded-lg px-2 py-0.5 text-[11.5px] font-extrabold ${s.bg} ${s.text}`}>
           {s.label}
         </span>
@@ -157,6 +116,8 @@ function FarmCard({ snap, unackedWarnings }: { snap: FarmSnapshot; unackedWarnin
 export default function Dashboard() {
   useScope("all");
   const { farms, alerts, wsOpen } = useFarmData();
+  const { rows: weatherRows } = useWeather();
+  const weatherByFarm = new Map(weatherRows.map((row) => [row.farm_id, row]));
   const farmIds = farms.map((f) => f.farm_id);
   const snaps = useFleetSnapshots(farmIds);
 
@@ -217,7 +178,12 @@ export default function Dashboard() {
           {farms.map((f) => {
             const snap = snaps[f.farm_id];
             return snap ? (
-              <FarmCard key={f.farm_id} snap={snap} unackedWarnings={warnByFarm(f.farm_id)} />
+              <FarmCard
+                key={f.farm_id}
+                snap={snap}
+                unackedWarnings={warnByFarm(f.farm_id)}
+                weather={weatherByFarm.get(f.farm_id)}
+              />
             ) : (
               <Card key={f.farm_id}>
                 <div className="text-[16px] font-extrabold">{f.name}</div>
@@ -274,7 +240,6 @@ export default function Dashboard() {
           <PlannedBox feature="오늘 예정 작업" basis="증분 8 · FR-19·03">
             작업 스케줄과 로봇 임무가 구현되면 오늘 예정된 양액·급수·방재 작업이 시간순으로 표시됩니다.
           </PlannedBox>
-          <WeatherPanel />
           <Card>
             <SectionTitle title="장치 통신" sub="전 농장" />
             <div className="space-y-1.5">

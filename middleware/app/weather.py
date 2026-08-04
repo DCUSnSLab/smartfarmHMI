@@ -1,4 +1,4 @@
-"""기상청 동네예보 격자 변환·초단기실황 수집."""
+"""기상청 동네예보 격자 변환·초단기예보 수집."""
 import asyncio
 import json
 import logging
@@ -17,12 +17,11 @@ from middleware.app.config import settings
 
 log = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
-API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst"
-PROVIDER = "kma-ultra-srt-ncst"
+API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
+PROVIDER = "kma-ultra-srt-fcst"
 COLLECT_MINUTE = 40
-REGION_PATTERN = re.compile(r"^kma-dfs-v1:(\d{3}):(\d{3})$")
+REGION_PATTERN = re.compile(r"^(\d{1,2}\.\d{3})-(\d{2,3}\.\d{3})$")
 
-import math
 NX, NY = 149, 253
 _RE = 6371.00877 / 5.0
 _XO, _YO = 210 / 5.0, 675 / 5.0
@@ -50,26 +49,44 @@ def map_to_grid(latitude: float, longitude: float) -> tuple[int, int]:
     return nx, ny
 
 def make_region_code(latitude: float, longitude: float) -> str:
-    """좌표를 공급자·격자 버전 포함 지역 코드로 변환한다."""
-    nx, ny = map_to_grid(latitude, longitude)
-    return f"kma-dfs-v1:{nx:03d}:{ny:03d}"
+    """대한민국 WGS84 좌표를 소수점 셋째 자리의 region_code로 직렬화한다."""
+    if not (32.0 <= latitude <= 40.0 and 123.0 <= longitude <= 133.0):
+        raise ValueError("대한민국 범위를 벗어난 위치입니다")
+    return f"{latitude:.3f}-{longitude:.3f}"
 
 
-def parse_region_code(region_code: str) -> tuple[int, int]:
+def parse_region_code(region_code: str) -> tuple[float, float]:
+    """region_code에서 WGS84 위도·경도를 복원한다."""
     match = REGION_PATTERN.fullmatch(region_code)
     if match is None:
-        raise ValueError(f"지원하지 않는 기상 지역 코드입니다: {region_code}")
-    return int(match.group(1)), int(match.group(2))
+        raise ValueError(f"지원하지 않는 위치 코드입니다: {region_code}")
+    latitude, longitude = float(match.group(1)), float(match.group(2))
+    if not (32.0 <= latitude <= 40.0 and 123.0 <= longitude <= 133.0):
+        raise ValueError(f"대한민국 범위를 벗어난 위치 코드입니다: {region_code}")
+    return latitude, longitude
 
 
 def _base_datetime() -> tuple[str, str]:
-    target = datetime.now(KST) - timedelta(minutes=40)
-    return target.strftime("%Y%m%d"), target.strftime("%H00")
+    """현재 이용 가능한 가장 최근 초단기예보 발표 시각(HH30)을 반환한다."""
+    target = datetime.now(KST)
+    if target.minute < COLLECT_MINUTE:
+        target -= timedelta(hours=1)
+    return target.strftime("%Y%m%d"), target.strftime("%H30")
 
 
 def _number(value: object) -> float | None:
     match = re.search(r"-?\d+(?:\.\d+)?", str(value))
-    return float(match.group()) if match else None
+    if match is None:
+        return None
+    number = float(match.group())
+    return None if number >= 9000 or number <= -900 else number
+
+
+def _precipitation(value: object) -> float | None:
+    text = str(value)
+    if "강수없음" in text or text.strip() == "0":
+        return 0.0
+    return _number(value)
 
 
 def _request_weather(nx: int, ny: int) -> dict:
@@ -84,32 +101,42 @@ def _request_weather(nx: int, ny: int) -> dict:
 
 
 async def fetch_weather(region_code: str) -> dict:
-    nx, ny = parse_region_code(region_code)
+    latitude, longitude = parse_region_code(region_code)
+    nx, ny = map_to_grid(latitude, longitude)
     payload = await asyncio.to_thread(_request_weather, nx, ny)
     response = payload.get("response", {})
     header = response.get("header", {})
     if header.get("resultCode") != "00":
         raise RuntimeError(f"기상청 API 오류: {header.get('resultMsg', 'unknown')}")
     items = response.get("body", {}).get("items", {}).get("item", [])
-    values = {item["category"]: item.get("obsrValue") for item in items}
     if not items:
-        raise RuntimeError("기상청 관측값이 비어 있습니다")
-    observed_at = datetime.strptime(
-        f"{items[0]['baseDate']}{items[0]['baseTime']}", "%Y%m%d%H%M"
-    ).replace(tzinfo=KST)
-    pty = int(_number(values.get("PTY")) or 0)
-    condition = {
-        0: "강수 없음", 1: "비", 2: "비/눈", 3: "눈",
-        5: "빗방울", 6: "빗방울/눈날림", 7: "눈날림",
-    }.get(pty, "알 수 없음")
+        raise RuntimeError("기상청 예보값이 비어 있습니다")
+
+    forecasts: dict[datetime, dict[str, object]] = {}
+    for item in items:
+        forecast_at = datetime.strptime(
+            f"{item['fcstDate']}{item['fcstTime']}", "%Y%m%d%H%M"
+        ).replace(tzinfo=KST)
+        forecasts.setdefault(forecast_at, {})[item["category"]] = item.get("fcstValue")
+
+    now = datetime.now(KST)
+    future_slots = [slot for slot in forecasts if slot >= now]
+    forecast_at = min(future_slots) if future_slots else max(forecasts)
+    values = forecasts[forecast_at]
+
+    sky = _number(values.get("SKY"))
+
     return {
-        "ts": observed_at, "received_at": datetime.now(timezone.utc),
+        "ts": forecast_at,
+        "received_at": datetime.now(timezone.utc),
         "temperature_c": _number(values.get("T1H")),
         "humidity_pct": _number(values.get("REH")),
-        "precipitation_mm": _number(values.get("RN1")),
+        "precipitation_mm": _precipitation(values.get("RN1")),
         "wind_ms": _number(values.get("WSD")),
-        "condition": condition, "solar_level": None,
-        "provider": PROVIDER, "raw": payload,
+        "condition": str(int(sky)) if sky is not None else None,
+        "solar_level": None,
+        "provider": PROVIDER,
+        "raw": payload,
     }
 
 

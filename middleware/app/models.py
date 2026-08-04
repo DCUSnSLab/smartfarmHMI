@@ -34,7 +34,7 @@ farm = sa.Table(
     sa.Column("name", sa.Text, nullable=False),
     sa.Column("farm_type", sa.Text, nullable=False),
     sa.Column("crop", sa.Text),
-    sa.Column("region_code", sa.Text),  # 기상 조회용 (OPN-17)
+    sa.Column("region_code", sa.Text),  # WGS84 latitude-longitude (소수점 셋째 자리)
     sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
     *_created_updated(),
     sa.CheckConstraint(

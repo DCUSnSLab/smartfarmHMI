@@ -8,7 +8,7 @@ import { jwtVerify } from "jose";
 import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_COOKIE = "sf_access";
-const PUBLIC_PATHS = ["/login", "/forbidden"];
+const PUBLIC_PATHS = ["/login", "/forbidden", "/data"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

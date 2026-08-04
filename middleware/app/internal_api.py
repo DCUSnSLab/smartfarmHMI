@@ -19,7 +19,7 @@ class FarmUpsert(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
-    # 위치는 region_code 계산에만 사용하며 DB에는 저장하지 않는다.
+    # 위도·경도는 region_code 문자열로 저장한다.
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None
@@ -94,7 +94,7 @@ async def latest_weather():
                 "w.temperature_c, w.humidity_pct, w.precipitation_mm, "
                 "w.wind_ms, w.condition, w.provider "
                 "FROM mw.farm f LEFT JOIN LATERAL ("
-                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id "
+                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id AND f.region_code IS NOT NULL "
                 " ORDER BY wr.ts DESC LIMIT 1"
                 ") w ON true WHERE f.is_active ORDER BY f.created_at"
             ))

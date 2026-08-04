@@ -36,20 +36,21 @@ export function useWeather() {
   return { rows, loading };
 }
 
-export function weatherIcon(condition: string | null, precipitationMm: number | null): string {
-  if (condition?.includes("비/눈") || condition?.includes("빗방울/눈")) return "🌨️";
-  if (condition?.includes("눈")) return "❄️";
-  if (condition?.includes("빗방울")) return "🌦️";
-  if (condition?.includes("비") || (precipitationMm ?? 0) > 0) return "🌧️";
-  return "🌤️";
+export function weatherConditionLabel(condition: string | null): string {
+  if (condition === "1") return "맑음";
+  if (condition === "3") return "구름많음";
+  if (condition === "4") return "흐림";
+  return condition ?? "정보 없음";
 }
 
-export function weatherCardBackground(condition: string | null): string {
-  if (condition?.includes("눈") && !condition.includes("비")) {
-    return "from-sky-200 to-blue-400";
-  }
-  if (condition?.includes("비") || condition?.includes("빗방울")) {
-    return "from-sky-400 to-blue-600";
-  }
-  return "from-sky-300 to-blue-500";
+export function weatherIcon(condition: string | null, precipitationMm: number | null): string {
+  if ((precipitationMm ?? 0) > 0) return "🌧️";
+  if (condition === "1" || condition?.includes("맑음")) return "☀️";
+  if (condition === "3" || condition?.includes("구름")) return "🌤️";
+  if (condition === "4" || condition?.includes("흐림")) return "☁️";
+  if (condition?.includes("비/눈")) return "🌨️";
+  if (condition?.includes("눈")) return "❄️";
+  if (condition?.includes("소나기")) return "🌦️";
+  if (condition?.includes("비")) return "🌧️";
+  return "🌤️";
 }

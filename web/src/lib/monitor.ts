@@ -40,6 +40,7 @@ export interface FarmSummary {
   name: string;
   farm_type: string;
   crop: string | null;
+  region_code?: string | null;
   devices_total: number;
   devices_online: number;
 }

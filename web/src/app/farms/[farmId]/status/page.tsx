@@ -14,7 +14,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { useWeather, weatherIcon } from "@/lib/weather";
+import { useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -53,58 +53,103 @@ function useSummary(): { text: string; issues: string[] } {
 function FarmWeather({ farmId }: { farmId: string }) {
   const { rows, loading } = useWeather();
   const weather = rows.find((row) => row.farm_id === farmId);
+  const regionLabel = weather?.name.split(/\s+/)[0] ?? "";
+  const conditionLabel = weatherConditionLabel(weather?.condition ?? null);
+  const isRainy = (weather?.precipitation_mm ?? 0) > 0;
+  const weatherTheme = !weather?.ts
+    ? {
+        panel: "border-[#E5E8EB] bg-white",
+        heading: "text-[#191F28]", badge: "bg-[#F2F4F6] text-[#6B7684]",
+        primary: "text-[#191F28]", secondary: "text-[#6B7684]",
+        metric: "bg-[#F7F8FA]", advisory: "bg-[#F2F4F6] text-[#4E5968]",
+      }
+    : isRainy
+      ? {
+        panel: "border-[#253B62] bg-gradient-to-br from-[#17243D] to-[#334D73]",
+        heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
+        primary: "text-white", secondary: "text-[#D8E5F7]",
+        metric: "bg-white/95", advisory: "bg-[#0E1729] text-white",
+      }
+    : weather?.condition === "4"
+      ? {
+          panel: "border-[#C7CDD4] bg-gradient-to-br from-[#D9DDE2] to-[#EEF0F2]",
+          heading: "text-[#303841]", badge: "bg-white/80 text-[#56616D]",
+          primary: "text-[#252B31]", secondary: "text-[#5D6873]",
+          metric: "bg-white/90", advisory: "bg-[#59636E] text-white",
+        }
+      : weather?.condition === "3"
+        ? {
+            panel: "border-[#B9CADB] bg-gradient-to-br from-[#D9E4EE] to-[#F2F6F9]",
+            heading: "text-[#29445F]", badge: "bg-white/80 text-[#486783]",
+            primary: "text-[#203B55]", secondary: "text-[#536D84]",
+            metric: "bg-white/90", advisory: "bg-[#4B6E8D] text-white",
+          }
+        : {
+            panel: "border-[#B9D5F8] bg-gradient-to-br from-[#D2E6FF] to-[#EAF4FF]",
+            heading: "text-[#0B3D91]", badge: "bg-white text-[#1B64DA]",
+            primary: "text-[#0B3D91]", secondary: "text-[#3A5A86]",
+            metric: "bg-white", advisory: "bg-[#1B64DA] text-white",
+          };
+  const advisory = weather?.temperature_c != null && weather.temperature_c >= 30
+    ? `외기 ${Math.round(weather.temperature_c)}℃ · 고온 상태 → 차광·환기 상태 확인 · 참고 정보 (제어는 현장에서)`
+    : (weather?.precipitation_mm ?? 0) > 0
+      ? `강수 ${weather?.precipitation_mm}mm → 개방 시설과 배수 상태 확인 · 참고 정보 (제어는 현장에서)`
+      : "외부 기상 상태를 확인하세요 · 참고 정보 (제어는 현장에서)";
 
   return (
-    <Card>
-      <SectionTitle
-        title="지역 날씨"
-        sub="농장 외부 기상"
-        right={weather?.received_at && (
-          <span className="text-[11px] font-semibold text-muted">{timeAgo(weather.received_at)} 갱신</span>
-        )}
-      />
+    <Card className={`border shadow-none transition-colors duration-500 ${weatherTheme.panel}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className={`truncate text-[16px] font-extrabold ${weatherTheme.heading}`}>
+          {regionLabel ? `${regionLabel} 지역 날씨` : "지역 날씨"}
+        </h2>
+        <span
+          title={weather?.received_at ? `${timeAgo(weather.received_at)} 갱신` : undefined}
+          className={`flex-none rounded-lg px-2.5 py-1 text-[11.5px] font-extrabold ${weatherTheme.badge}`}
+        >
+          외부 기상 연동
+        </span>
+      </div>
+
       {loading ? (
-        <div className="py-7 text-center text-[12.5px] font-semibold text-muted">날씨를 불러오는 중…</div>
+        <div className="py-10 text-center text-[17px] font-extrabold text-[#3A5A86]">로딩중</div>
       ) : weather?.ts ? (
         <>
-          <div className="flex items-end gap-3">
-            <span className="text-[30px]" aria-hidden="true">
+          <div className="mt-4 flex items-center gap-4">
+            <span className="text-[56px] leading-none drop-shadow-sm" aria-hidden="true">
               {weatherIcon(weather.condition, weather.precipitation_mm)}
             </span>
-            <span className="text-[30px] font-extrabold leading-none">
-              {weather.temperature_c != null ? weather.temperature_c.toFixed(1) : "—"}
-              <span className="ml-0.5 text-[14px] font-bold text-muted">℃</span>
-            </span>
-            <span className="pb-0.5 text-[13px] font-extrabold text-gray-600">{weather.condition ?? "정보 없음"}</span>
+            <div className="min-w-0">
+              <div className={`text-[34px] font-extrabold leading-none ${weatherTheme.primary}`}>
+                {weather.temperature_c != null ? weather.temperature_c.toFixed(1) : "—"}℃
+              </div>
+              <div className={`mt-1.5 truncate text-[13.5px] font-bold ${weatherTheme.secondary}`}>
+                {conditionLabel} · 습도 {weather.humidity_pct != null ? `${Math.round(weather.humidity_pct)}%` : "—"} · 강수 {weather.precipitation_mm != null ? `${weather.precipitation_mm}mm` : "—"}
+              </div>
+            </div>
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
-              <div className="text-[11px] font-semibold text-muted">습도</div>
-              <div className="mt-0.5 text-[14px] font-extrabold">
-                {weather.humidity_pct != null ? `${Math.round(weather.humidity_pct)}%` : "—"}
-              </div>
-            </div>
-            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
-              <div className="text-[11px] font-semibold text-muted">1시간 강수</div>
-              <div className="mt-0.5 text-[14px] font-extrabold">
-                {weather.precipitation_mm != null ? `${weather.precipitation_mm}mm` : "—"}
-              </div>
-            </div>
-            <div className="rounded-xl bg-gray-50 px-2 py-2 text-center">
-              <div className="text-[11px] font-semibold text-muted">풍속</div>
-              <div className="mt-0.5 text-[14px] font-extrabold">
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className={`rounded-xl px-3 py-2.5 ${weatherTheme.metric}`}>
+              <div className="text-[11.5px] font-bold text-[#8B95A1]">바람</div>
+              <div className="mt-0.5 text-[16px] font-extrabold text-[#191F28]">
                 {weather.wind_ms != null ? `${weather.wind_ms}m/s` : "—"}
               </div>
             </div>
+            <div className={`rounded-xl px-3 py-2.5 ${weatherTheme.metric}`}>
+              <div className="text-[11px] font-bold text-[#8B95A1]">1시간 강수</div>
+              <div className="mt-0.5 text-[16px] font-extrabold text-[#191F28]">
+                {weather.precipitation_mm != null ? `${weather.precipitation_mm}mm` : "—"}
+              </div>
+            </div>
           </div>
-          <div className="mt-3 flex justify-between text-[10.5px] font-semibold text-muted">
-            <span>관측 {new Date(weather.ts).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-            <span>기상청 초단기실황</span>
+
+          <div className={`mt-3 rounded-xl px-3 py-2.5 text-[12.5px] font-extrabold leading-relaxed ${weatherTheme.advisory}`}>
+            {advisory}
           </div>
         </>
       ) : (
-        <div className="py-6 text-center text-[12.5px] font-semibold text-muted">
-          {weather?.region_code ? "기상 정보를 준비 중입니다." : "날씨 조회 위치가 설정되지 않았습니다."}
+        <div className="py-10 text-center text-[15px] font-extrabold text-[#3A5A86]">
+          {weather?.region_code ? "로딩중" : "날씨 조회 위치가 설정되지 않았습니다."}
         </div>
       )}
     </Card>

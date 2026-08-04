@@ -8,17 +8,19 @@ from middleware.app.config import settings
 
 API_URL = (
     "https://apis.data.go.kr/1360000/"
-    "VilageFcstInfoService_2.0/getUltraSrtNcst"
+    "VilageFcstInfoService_2.0/getUltraSrtFcst"
 )
 KST = ZoneInfo("Asia/Seoul")
 
 def get_base_datetime() -> tuple[str, str]:
-    # 최신 관측 자료가 아직 생성되지 않았을 가능성을 고려
-    target = datetime.now(KST) - timedelta(minutes=40)
+    # 매시 30분 발표 자료를 40분부터 사용한다.
+    target = datetime.now(KST)
+    if target.minute < 40:
+        target -= timedelta(hours=1)
 
     return (
         target.strftime("%Y%m%d"),
-        target.strftime("%H00"),
+        target.strftime("%H30"),
     )
 
 

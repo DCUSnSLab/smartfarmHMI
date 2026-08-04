@@ -3,10 +3,11 @@
 @tailwind utilities;
 
 /* 폰트 기준 크기 — 글자 크기 토큰(tailwind.config.ts fontSize)의 rem 기준점.
-   가 큰글씨 3단계는 prefs.tsx 가 이 값에 %를 걸어 확대한다 (비기능 §5).
-   PrefsProvider 가 없는 화면(로그인·권한없음)에서는 이 값이 그대로 쓰인다. */
+   기준값 16px 은 여기 한 곳에만 둔다. 가 큰글씨 3단계는 prefs.tsx 가 --sf-scale
+   만 바꾼다 (비기능 §5). PrefsProvider 가 없는 화면(로그인·권한없음)은 기본 배율 1. */
 html {
-  font-size: 16px;
+  --sf-scale: 1;
+  font-size: calc(16px * var(--sf-scale));
 
   /* 스크롤바 트랙을 항상 확보 — 콘텐츠 높이에 따라 클래식 스크롤바(15px)가
      생기고 사라지며 중앙 정렬 컨테이너가 좌우로 흔들리는 것을 막는다.

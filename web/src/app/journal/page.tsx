@@ -79,8 +79,8 @@ export default function JournalPage() {
   return (
     <main className="mx-auto max-w-7xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">농업일지</h1>
-        <span className="text-[13px] font-semibold text-muted">
+        <h1 className="text-22 font-extrabold">농업일지</h1>
+        <span className="text-13 font-semibold text-muted">
           날짜를 선택해 메모를 작성하고 기록을 확인해요
         </span>
       </div>
@@ -97,25 +97,25 @@ export default function JournalPage() {
           <div className="mb-3 flex items-center gap-2">
             <button
               onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-              className="h-8 w-8 rounded-lg bg-surface text-[14px] font-extrabold text-gray-500"
+              className="h-8 w-8 rounded-lg bg-surface text-14 font-extrabold text-gray-500"
               aria-label="이전 달"
             >‹</button>
-            <span className="text-[15px] font-extrabold">
+            <span className="text-15 font-extrabold">
               {month.getFullYear()}년 {month.getMonth() + 1}월
             </span>
             <button
               onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-              className="h-8 w-8 rounded-lg bg-surface text-[14px] font-extrabold text-gray-500"
+              className="h-8 w-8 rounded-lg bg-surface text-14 font-extrabold text-gray-500"
               aria-label="다음 달"
             >›</button>
-            <span className="ml-auto flex items-center gap-1.5 text-[11.5px] font-semibold text-muted">
+            <span className="ml-auto flex items-center gap-1.5 text-11.5 font-semibold text-muted">
               <span className="h-1.5 w-1.5 rounded-full bg-primary" /> 메모 있음
             </span>
           </div>
 
           <div className="grid grid-cols-7 gap-1 text-center">
             {WEEK.map((w) => (
-              <span key={w} className="py-1 text-[11.5px] font-extrabold text-muted">{w}</span>
+              <span key={w} className="py-1 text-11.5 font-extrabold text-muted">{w}</span>
             ))}
             {Array.from({ length: firstDow }).map((_, i) => <span key={`e${i}`} />)}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
@@ -126,7 +126,7 @@ export default function JournalPage() {
                 <button
                   key={d}
                   onClick={() => setSelected(date)}
-                  className={`flex h-11 flex-col items-center justify-center rounded-xl text-[13.5px] font-bold ${
+                  className={`flex h-11 flex-col items-center justify-center rounded-xl text-13.5 font-bold ${
                     isSel ? "bg-primary text-white"
                     : isToday ? "bg-primary-bg text-primary-dark"
                     : "text-gray-700 hover:bg-surface"
@@ -151,22 +151,22 @@ export default function JournalPage() {
             {dayMemos.map((m) => (
               <div key={m.id} className="rounded-xl bg-surface p-3.5">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-extrabold text-primary-dark">
+                  <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
                     {farmName(m.farm_id)}
                   </span>
-                  <span className="text-[11.5px] font-semibold text-muted">{m.author}</span>
+                  <span className="text-11.5 font-semibold text-muted">{m.author}</span>
                   <button
                     onClick={() => void remove(m.id)}
-                    className="ml-auto text-[11.5px] font-bold text-gray-400"
+                    className="ml-auto text-11.5 font-bold text-gray-400"
                   >
                     삭제
                   </button>
                 </div>
-                <p className="text-[13.5px] font-semibold leading-relaxed text-gray-700">{m.body}</p>
+                <p className="text-13.5 font-semibold leading-relaxed text-gray-700">{m.body}</p>
               </div>
             ))}
             {dayMemos.length === 0 && (
-              <div className="py-6 text-center text-[13px] font-semibold text-muted">
+              <div className="py-6 text-center text-13 font-semibold text-muted">
                 이 날짜에 등록된 일지가 없어요. 아래에서 메모를 작성해 보세요.
               </div>
             )}
@@ -184,7 +184,7 @@ export default function JournalPage() {
                 {farms.map((f) => (
                   <button
                     key={f.farm_id} type="button" onClick={() => setFarmId(f.farm_id)}
-                    className={`rounded-xl border px-3 py-1.5 text-[12.5px] ${
+                    className={`rounded-xl border px-3 py-1.5 text-12.5 ${
                       farmId === f.farm_id
                         ? "border-primary bg-primary-bg font-extrabold text-primary-dark"
                         : "border-gray-200 font-bold text-gray-500"
@@ -197,32 +197,32 @@ export default function JournalPage() {
               <textarea
                 value={body} onChange={(e) => setBody(e.target.value)} rows={3}
                 placeholder="메모를 입력하세요…"
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-3 text-[13.5px] font-semibold outline-none focus:border-primary"
+                className="w-full rounded-xl border border-gray-200 px-3.5 py-3 text-13.5 font-semibold outline-none focus:border-primary"
               />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
                   type="button" disabled title="음성 작성은 개발 예정입니다 (FR-28)"
-                  className="rounded-xl bg-gray-100 px-3.5 py-2 text-[12.5px] font-bold text-gray-400"
+                  className="rounded-xl bg-gray-100 px-3.5 py-2 text-12.5 font-bold text-gray-400"
                 >
                   🎤 음성으로 작성
                 </button>
                 <button
                   type="button" disabled title="사진·동영상 첨부는 개발 예정입니다 (FR-18)"
-                  className="rounded-xl bg-gray-100 px-3.5 py-2 text-[12.5px] font-bold text-gray-400"
+                  className="rounded-xl bg-gray-100 px-3.5 py-2 text-12.5 font-bold text-gray-400"
                 >
                   📎 첨부
                 </button>
                 <PlannedChip basis="FR-28 음성 · FR-18 첨부" />
                 <button
                   type="submit" disabled={busy || !body.trim()}
-                  className="ml-auto rounded-xl bg-primary px-5 py-2 text-[13.5px] font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
+                  className="ml-auto rounded-xl bg-primary px-5 py-2 text-13.5 font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {busy ? "저장 중…" : "저장"}
                 </button>
               </div>
             </form>
           ) : (
-            <p className="text-[13px] font-semibold text-muted">
+            <p className="text-13 font-semibold text-muted">
               조회 전용 계정 — 메모 작성 권한이 없습니다.
             </p>
           )}
@@ -238,20 +238,20 @@ export default function JournalPage() {
               key={m.id} onClick={() => setSelected(m.memo_date)}
               className="flex w-full items-start gap-3 border-b border-gray-50 px-3 py-3 text-left last:border-0 hover:bg-surface"
             >
-              <span className="w-16 flex-none text-[12px] font-extrabold text-muted">
+              <span className="w-16 flex-none text-12 font-extrabold text-muted">
                 {m.memo_date.slice(5)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="mr-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-extrabold text-primary-dark">
+                <span className="mr-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
                   {farmName(m.farm_id)}
                 </span>
-                <span className="text-[13.5px] font-semibold text-gray-700">{m.body}</span>
+                <span className="text-13.5 font-semibold text-gray-700">{m.body}</span>
               </span>
-              <span className="flex-none text-[11.5px] font-semibold text-muted">{m.author}</span>
+              <span className="flex-none text-11.5 font-semibold text-muted">{m.author}</span>
             </button>
           ))}
           {memos.length === 0 && (
-            <div className="py-8 text-center text-[13px] font-semibold text-muted">
+            <div className="py-8 text-center text-13 font-semibold text-muted">
               이번 달 메모가 없어요
             </div>
           )}

@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 접근성 기준 (non-functional.md §5): 본문 13px 이상 — 기본 폰트 크기의 하한 */
+/* 폰트 기준 크기 — 글자 크기 토큰(tailwind.config.ts fontSize)의 rem 기준점.
+   가 큰글씨 3단계는 prefs.tsx 가 이 값에 %를 걸어 확대한다 (비기능 §5).
+   PrefsProvider 가 없는 화면(로그인·권한없음)에서는 이 값이 그대로 쓰인다. */
 html {
   font-size: 16px;
 

@@ -48,13 +48,21 @@ export function FarmScopeNav() {
             <Link
               key={farm.farm_id}
               href={`/farms/${farm.farm_id}/${currentTab}`}
-              className={`rounded-full border px-4 py-2 text-[13px] ${
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] focus:outline-none ${
                 active
                   ? "border-primary bg-primary font-extrabold text-white"
                   : "border-gray-200 bg-white font-bold text-gray-600 hover:border-primary hover:text-primary-dark"
               }`}
             >
-              {farm.name}
+              <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full bg-white ${active ? "opacity-100" : "opacity-0"}`}/>
+
+              <span>{farm.name}</span>
+
+              {farm.farm_type === "open_field" && (
+                <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-extrabold text-blue-600">
+                  실외
+                </span>
+              )}
             </Link>
           );
         })}

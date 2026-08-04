@@ -5,6 +5,66 @@
  * 상태는 색 + 도형·문자 병기 (비기능 §5 접근성: 색 단독 구분 금지).
  */
 
+import { CSSProperties, RefObject, useEffect, useRef, useState } from "react";
+
+// 헤더 컨트롤 공통 — 높이·글자·정렬 통일. 터치 기기에서만 40px 로 키운다 (비기능 §5)
+export const CONTROL =
+  "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-xl text-[13.5px] [@media(pointer:coarse)]:h-10";
+
+/** 아이콘 전용 정사각 컨트롤 */
+export const CONTROL_ICON = `${CONTROL} w-9 justify-center [@media(pointer:coarse)]:w-10`;
+
+/**
+ * 팝오버 위치 — 트리거 오른쪽에 맞추되 화면을 벗어나면 옆으로 밀어넣는다.
+ * 특정 폭에서 갑자기 전체 폭으로 바뀌지 않고 연속적으로 이동·축소된다.
+ */
+export function useAnchoredPanel(open: boolean, maxWidth: number) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [style, setStyle] = useState<CSSProperties>();
+
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const margin = 8;
+      const w = Math.min(maxWidth, window.innerWidth - margin * 2);
+      const left = Math.max(margin, Math.min(r.right - w, window.innerWidth - w - margin));
+      setStyle({ left: left - r.left, width: w });  // 앵커 기준 상대 오프셋
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, maxWidth]);
+
+  // 위치 계산은 렌더 후라 첫 프레임에 잘못된 자리에 보인다 — 계산 전까지 감춘다
+  return { anchorRef, style, unplaced: !style };
+}
+
+/** 외부 클릭·Esc 로 닫기 (라이트 디스미스) — 헤더 팝오버 공용 */
+export function useLightDismiss(
+  open: boolean,
+  ref: RefObject<HTMLElement | null>,
+  onClose: () => void,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, ref, onClose]);
+}
+
 export const SEV_STYLE: Record<string, { dot: string; text: string; bg: string; label: string }> = {
   ok: { dot: "bg-status-ok", text: "text-primary-dark", bg: "bg-primary-bg", label: "정상" },
   caution: { dot: "bg-status-caution", text: "text-status-cautionDark", bg: "bg-status-caution/10", label: "주의" },

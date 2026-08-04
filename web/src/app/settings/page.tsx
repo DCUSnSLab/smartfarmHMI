@@ -6,10 +6,10 @@
  * 데이터 CRUD 는 /lib/settings 헬퍼(→ api → middleware). 게이팅은 api 가 강제, 여기선 보조.
  */
 
-import Link from "next/link";
 import { AlertRules } from "@/components/AlertRules";
 import { PlannedChip } from "@/components/Planned";
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { FarmSummary } from "@/lib/monitor";
 import {
@@ -402,7 +402,7 @@ export default function SettingsPage() {
   const [deletingFarm, setDeletingFarm] = useState<FarmSummary | null>(null);
 
   const reloadFarms = useCallback(() => {
-    void fetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
+    void apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
   }, []);
   useEffect(reloadFarms, [reloadFarms]);
 

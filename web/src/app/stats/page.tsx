@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import { Card, LineChart, SectionTitle, SENSOR_META } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { useFarmData, useScope } from "@/lib/farmData";
 import { HistoryPoint, fetchHistory } from "@/lib/farmDetail";
 
@@ -41,7 +42,7 @@ export default function StatsPage() {
     void Promise.all([
       fetchHistory(farmId, "temperature", period.hours, period.bucket),
       fetchHistory(farmId, "humidity", period.hours, period.bucket),
-      fetch(`/api/farms/${farmId}/environment/summary?hours=${period.hours}`).then((r) =>
+      apiFetch(`/api/farms/${farmId}/environment/summary?hours=${period.hours}`).then((r) =>
         r.ok ? r.json() : [],
       ),
     ]).then(([t, h, s]) => {

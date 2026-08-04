@@ -103,7 +103,7 @@ function Layout2D() {
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
   const router = useRouter();
-  const { sensors, robots, conns } = useFarmData();
+  const { sensors, conns } = useFarmData();
   const snap = useFarmSnapshot(farmId);
   const ranges = useRanges(farmId);
   const devices = useDevices(farmId);

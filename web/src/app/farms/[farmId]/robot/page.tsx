@@ -97,7 +97,7 @@ function ManualControlModal({
 }
 
 export default function RobotTab() {
-  const { farmId } = useParams<{ farmId: string }>();
+  const { farmId } = useParams<{ farmId: string }>();  // FR-06 충전 복귀 지시에 사용 예정
   const user = useUser();
   const { robots, conns, stops } = useFarmData();
   const [selected, setSelected] = useState<RobotValue | null>(null);

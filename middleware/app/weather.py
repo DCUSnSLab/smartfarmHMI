@@ -18,6 +18,7 @@ from middleware.app.config import settings
 log = logging.getLogger(__name__)
 KST = ZoneInfo("Asia/Seoul")
 API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
+SOLAR_API_URL = "https://apis.data.go.kr/B551184/SrQtyService/getSrQtyPredcInfo"
 PROVIDER = "kma-ultra-srt-fcst"
 COLLECT_MINUTE = 40
 REGION_PATTERN = re.compile(r"^(\d{1,2}\.\d{3})-(\d{2,3}\.\d{3})$")
@@ -74,6 +75,14 @@ def _base_datetime() -> tuple[str, str]:
     return target.strftime("%Y%m%d"), target.strftime("%H30")
 
 
+def _solar_datetime() -> datetime:
+    """현재 시각과 가장 가까운 미래의 정시 일사량 예측 시각을 반환한다."""
+    now = datetime.now(KST)
+    if now.minute or now.second or now.microsecond:
+        return (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return now.replace(minute=0, second=0, microsecond=0)
+
+
 def _number(value: object) -> float | None:
     match = re.search(r"-?\d+(?:\.\d+)?", str(value))
     if match is None:
@@ -100,10 +109,50 @@ def _request_weather(nx: int, ny: int) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _request_solar(latitude: float, longitude: float, target: datetime) -> dict:
+    params = {
+        "serviceKey": settings.weather_key,
+        "pageNo": 1,
+        "numOfRows": 10,
+        "type": "json",
+        "date": target.strftime("%Y%m%d"),
+        "time": target.strftime("%H00"),
+        "lat": f"{latitude:.10f}",
+        "lot": f"{longitude:.10f}",
+    }
+    with urlopen(f"{SOLAR_API_URL}?{urlencode(params)}", timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _solar_ghi(payload: dict) -> float:
+    response = payload.get("response", {})
+    header = response.get("header", {})
+    if str(header.get("resultCode")) != "00":
+        raise RuntimeError(f"일사량 API 오류: {header.get('resultMsg', 'unknown')}")
+    items = response.get("body", {}).get("items", {}).get("item", [])
+    if isinstance(items, dict):
+        items = [items]
+    if not items:
+        # 서비스는 야간 시간대에 정상 응답과 함께 item을 비워 반환한다.
+        return 0.0
+    ghi = _number(items[0].get("ghi"))
+    if ghi is None:
+        raise RuntimeError("일사량 GHI 값이 없습니다")
+    return ghi
+
+
 async def fetch_weather(region_code: str) -> dict:
     latitude, longitude = parse_region_code(region_code)
     nx, ny = map_to_grid(latitude, longitude)
-    payload = await asyncio.to_thread(_request_weather, nx, ny)
+    solar_target = _solar_datetime()
+    weather_result, solar_result = await asyncio.gather(
+        asyncio.to_thread(_request_weather, nx, ny),
+        asyncio.to_thread(_request_solar, latitude, longitude, solar_target),
+        return_exceptions=True,
+    )
+    if isinstance(weather_result, BaseException):
+        raise weather_result
+    payload = weather_result
     response = payload.get("response", {})
     header = response.get("header", {})
     if header.get("resultCode") != "00":
@@ -125,6 +174,17 @@ async def fetch_weather(region_code: str) -> dict:
     values = forecasts[forecast_at]
 
     sky = _number(values.get("SKY"))
+    solar_level: str | None = None
+    if isinstance(solar_result, BaseException):
+        log.warning("일사량 수집 실패 region=%s: %s", region_code, solar_result)
+        solar_raw: object = {"error": str(solar_result)}
+    else:
+        solar_raw = solar_result
+        try:
+            solar_level = str(_solar_ghi(solar_result))
+        except Exception as exc:
+            log.warning("일사량 응답 처리 실패 region=%s: %s", region_code, exc)
+            solar_raw = {**solar_result, "_error": str(exc)}
 
     return {
         "ts": forecast_at,
@@ -134,9 +194,9 @@ async def fetch_weather(region_code: str) -> dict:
         "precipitation_mm": _precipitation(values.get("RN1")),
         "wind_ms": _number(values.get("WSD")),
         "condition": str(int(sky)) if sky is not None else None,
-        "solar_level": None,
+        "solar_level": solar_level,
         "provider": PROVIDER,
-        "raw": payload,
+        "raw": {**payload, "_solar": solar_raw},
     }
 
 

@@ -92,7 +92,7 @@ async def latest_weather():
             await conn.execute(text(
                 "SELECT f.farm_id, f.name, f.region_code, w.ts, w.received_at, "
                 "w.temperature_c, w.humidity_pct, w.precipitation_mm, "
-                "w.wind_ms, w.condition, w.provider "
+                "w.wind_ms, w.condition, w.solar_level, w.provider "
                 "FROM mw.farm f LEFT JOIN LATERAL ("
                 " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id AND f.region_code IS NOT NULL "
                 " ORDER BY wr.ts DESC LIMIT 1"

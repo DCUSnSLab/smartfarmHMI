@@ -14,7 +14,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { isValidWeatherRegionCode, solarLevelLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -136,9 +136,9 @@ function FarmWeather({ farmId }: { farmId: string }) {
               </div>
             </div>
             <div className={`rounded-xl px-3 py-2.5 ${weatherTheme.metric}`}>
-              <div className="text-[11px] font-bold text-[#8B95A1]">1시간 강수</div>
-              <div className="mt-0.5 text-[16px] font-extrabold text-[#191F28]">
-                {weather.precipitation_mm != null ? `${weather.precipitation_mm}mm` : "—"}
+              <div className="text-[11px] font-bold text-[#8B95A1]">일사량</div>
+              <div className="mt-0.5 text-[16px] font-extrabold text-[#F27A00]">
+                {solarLevelLabel(weather.solar_level)}
               </div>
             </div>
           </div>
@@ -149,7 +149,9 @@ function FarmWeather({ farmId }: { farmId: string }) {
         </>
       ) : (
         <div className="py-10 text-center text-[15px] font-extrabold text-[#3A5A86]">
-          {weather?.region_code ? "로딩중" : "날씨 조회 위치가 설정되지 않았습니다."}
+          {weather?.region_code
+            ? isValidWeatherRegionCode(weather.region_code) ? "로딩중" : "정보 없음"
+            : "날씨 조회 위치가 설정되지 않았습니다."}
         </div>
       )}
     </Card>

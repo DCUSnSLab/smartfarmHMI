@@ -281,7 +281,7 @@
 | farm_id | TEXT | NOT NULL |
 | temperature_c / humidity_pct / precipitation_mm / wind_ms | DOUBLE PRECISION | NULL |
 | condition | TEXT | NULL — 맑음·구름많음 등 |
-| solar_level | TEXT | NULL — 일사량 수준 |
+| solar_level | TEXT | NULL — GHI 수평면 전일사량(W/m²) |
 | provider | TEXT | NOT NULL — 공급자 식별 (OPN-17) |
 | raw | JSONB | NOT NULL DEFAULT '{}' — 공급자 응답 원문 |
 

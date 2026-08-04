@@ -13,6 +13,7 @@ export interface WeatherRow {
   precipitation_mm: number | null;
   wind_ms: number | null;
   condition: string | null;
+  solar_level: string | null;
   provider: string | null;
 }
 
@@ -41,6 +42,25 @@ export function weatherConditionLabel(condition: string | null): string {
   if (condition === "3") return "구름많음";
   if (condition === "4") return "흐림";
   return condition ?? "정보 없음";
+}
+
+export function isValidWeatherRegionCode(regionCode: string | null): boolean {
+  if (!regionCode) return false;
+  const match = /^(\d{2}\.\d{3})-(\d{3}\.\d{3})$/.exec(regionCode);
+  if (!match) return false;
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  return latitude >= 32 && latitude <= 40 && longitude >= 123 && longitude <= 133;
+}
+
+export function solarLevelLabel(ghiValue: string | null): string {
+  const ghi = ghiValue == null ? Number.NaN : Number(ghiValue);
+  if (!Number.isFinite(ghi) || ghi < 0) return "정보 없음";
+  if (ghi < 100) return "매우 낮음";
+  if (ghi < 300) return "낮음";
+  if (ghi < 600) return "보통";
+  if (ghi < 800) return "높음";
+  return "매우 높음";
 }
 
 export function weatherIcon(condition: string | null, precipitationMm: number | null): string {

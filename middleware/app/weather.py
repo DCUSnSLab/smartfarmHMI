@@ -21,7 +21,6 @@ API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrt
 SOLAR_API_URL = "https://apis.data.go.kr/B551184/SrQtyService/getSrQtyPredcInfo"
 PROVIDER = "kma-ultra-srt-fcst"
 COLLECT_MINUTE = 40
-REGION_PATTERN = re.compile(r"^(\d{1,2}\.\d{3})-(\d{2,3}\.\d{3})$")
 
 NX, NY = 149, 253
 _RE = 6371.00877 / 5.0
@@ -49,21 +48,10 @@ def map_to_grid(latitude: float, longitude: float) -> tuple[int, int]:
         raise ValueError("기상청 동네예보 격자 범위를 벗어난 위치입니다")
     return nx, ny
 
-def make_region_code(latitude: float, longitude: float) -> str:
-    """대한민국 WGS84 좌표를 소수점 셋째 자리의 region_code로 직렬화한다."""
+def validate_coordinates(latitude: float, longitude: float) -> tuple[float, float]:
+    """대한민국 범위의 WGS84 위도·경도를 검증한다."""
     if not (32.0 <= latitude <= 40.0 and 123.0 <= longitude <= 133.0):
         raise ValueError("대한민국 범위를 벗어난 위치입니다")
-    return f"{latitude:.3f}-{longitude:.3f}"
-
-
-def parse_region_code(region_code: str) -> tuple[float, float]:
-    """region_code에서 WGS84 위도·경도를 복원한다."""
-    match = REGION_PATTERN.fullmatch(region_code)
-    if match is None:
-        raise ValueError(f"지원하지 않는 위치 코드입니다: {region_code}")
-    latitude, longitude = float(match.group(1)), float(match.group(2))
-    if not (32.0 <= latitude <= 40.0 and 123.0 <= longitude <= 133.0):
-        raise ValueError(f"대한민국 범위를 벗어난 위치 코드입니다: {region_code}")
     return latitude, longitude
 
 
@@ -141,8 +129,8 @@ def _solar_ghi(payload: dict) -> float:
     return ghi
 
 
-async def fetch_weather(region_code: str) -> dict:
-    latitude, longitude = parse_region_code(region_code)
+async def fetch_weather(latitude: float, longitude: float) -> dict:
+    latitude, longitude = validate_coordinates(latitude, longitude)
     nx, ny = map_to_grid(latitude, longitude)
     solar_target = _solar_datetime()
     weather_result, solar_result = await asyncio.gather(
@@ -176,14 +164,14 @@ async def fetch_weather(region_code: str) -> dict:
     sky = _number(values.get("SKY"))
     solar_level: str | None = None
     if isinstance(solar_result, BaseException):
-        log.warning("일사량 수집 실패 region=%s: %s", region_code, solar_result)
+        log.warning("일사량 수집 실패 lat=%s lon=%s: %s", latitude, longitude, solar_result)
         solar_raw: object = {"error": str(solar_result)}
     else:
         solar_raw = solar_result
         try:
             solar_level = str(_solar_ghi(solar_result))
         except Exception as exc:
-            log.warning("일사량 응답 처리 실패 region=%s: %s", region_code, exc)
+            log.warning("일사량 응답 처리 실패 lat=%s lon=%s: %s", latitude, longitude, exc)
             solar_raw = {**solar_result, "_error": str(exc)}
 
     return {
@@ -200,10 +188,12 @@ async def fetch_weather(region_code: str) -> dict:
     }
 
 
-async def collect_region_weather(engine, region_code: str, farm_ids: list[str]) -> None:
-    """한 격자를 한 번 조회해 해당 격자의 모든 농장에 저장한다."""
+async def collect_location_weather(
+    engine, latitude: float, longitude: float, farm_ids: list[str]
+) -> None:
+    """동일 좌표를 한 번 조회해 해당 위치의 모든 농장에 저장한다."""
     try:
-        reading = await fetch_weather(region_code)
+        reading = await fetch_weather(latitude, longitude)
         async with engine.begin() as conn:
             for farm_id in farm_ids:
                 await conn.execute(
@@ -215,29 +205,38 @@ async def collect_region_weather(engine, region_code: str, farm_ids: list[str]) 
                     )
                 )
     except Exception:
-        log.exception("기상 수집 실패 region=%s farms=%s", region_code, farm_ids)
+        log.exception(
+            "기상 수집 실패 lat=%s lon=%s farms=%s", latitude, longitude, farm_ids
+        )
 
 
-async def collect_farm_weather(engine, farm_id: str, region_code: str) -> None:
+async def collect_farm_weather(
+    engine, farm_id: str, latitude: float, longitude: float
+) -> None:
     """신규 등록·위치 변경 농장의 최초 날씨를 즉시 한 번 수집한다."""
-    await collect_region_weather(engine, region_code, [farm_id])
+    await collect_location_weather(engine, latitude, longitude, [farm_id])
 
 
 async def collect_weather(engine) -> None:
     async with engine.connect() as conn:
         farms = (
             await conn.execute(
-                select(m.farm.c.farm_id, m.farm.c.region_code).where(
-                    m.farm.c.is_active, m.farm.c.region_code.is_not(None)
+                select(
+                    m.farm.c.farm_id, m.farm.c.latitude, m.farm.c.longitude
+                ).where(
+                    m.farm.c.is_active,
+                    m.farm.c.latitude.is_not(None),
+                    m.farm.c.longitude.is_not(None),
                 )
             )
         ).mappings().all()
-    by_region: dict[str, list[str]] = {}
+    by_location: dict[tuple[float, float], list[str]] = {}
     for farm in farms:
-        by_region.setdefault(farm["region_code"], []).append(farm["farm_id"])
+        location = (farm["latitude"], farm["longitude"])
+        by_location.setdefault(location, []).append(farm["farm_id"])
 
-    for region_code, farm_ids in by_region.items():
-        await collect_region_weather(engine, region_code, farm_ids)
+    for (latitude, longitude), farm_ids in by_location.items():
+        await collect_location_weather(engine, latitude, longitude, farm_ids)
 
 
 def seconds_until_next_collection(now: datetime | None = None) -> float:

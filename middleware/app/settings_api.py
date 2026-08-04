@@ -17,7 +17,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from middleware.app.weather import collect_farm_weather, make_region_code
+from middleware.app.weather import collect_farm_weather, validate_coordinates
 
 router = APIRouter(prefix="/internal")
 
@@ -41,7 +41,7 @@ class FarmUpdate(BaseModel):
     name: str | None = None
     farm_type: str | None = None
     crop: str | None = None
-    # 위도·경도는 region_code 문자열로 저장한다.
+    # 위도·경도는 farm 전용 컬럼에 저장한다.
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None
@@ -193,17 +193,23 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
     }
     if req.latitude is not None and req.longitude is not None:
         try:
-            patch["region_code"] = make_region_code(req.latitude, req.longitude)
+            validate_coordinates(req.latitude, req.longitude)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        patch["latitude"] = req.latitude
+        patch["longitude"] = req.longitude
+        patch["region_code"] = None
     if not patch:
         raise HTTPException(400, "수정할 필드가 없습니다")
     patch["updated_at"] = _now()
     async with _engine().begin() as conn:
         await _require_farm(conn, farm_id)
         await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
-    if "region_code" in patch:
-        background_tasks.add_task(collect_farm_weather, _engine(), farm_id, patch["region_code"])
+    if "latitude" in patch and "longitude" in patch:
+        background_tasks.add_task(
+            collect_farm_weather, _engine(), farm_id,
+            patch["latitude"], patch["longitude"]
+        )
     return {"ok": True, "farm_id": farm_id}
 
 

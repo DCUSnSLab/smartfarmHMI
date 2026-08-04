@@ -6,6 +6,8 @@ export interface WeatherRow {
   farm_id: string;
   name: string;
   region_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
   ts: string | null;
   received_at: string | null;
   temperature_c: number | null;
@@ -44,13 +46,13 @@ export function weatherConditionLabel(condition: string | null): string {
   return condition ?? "정보 없음";
 }
 
-export function isValidWeatherRegionCode(regionCode: string | null): boolean {
-  if (!regionCode) return false;
-  const match = /^(\d{2}\.\d{3})-(\d{3}\.\d{3})$/.exec(regionCode);
-  if (!match) return false;
-  const latitude = Number(match[1]);
-  const longitude = Number(match[2]);
-  return latitude >= 32 && latitude <= 40 && longitude >= 123 && longitude <= 133;
+export function isValidWeatherLocation(
+  latitude: number | null,
+  longitude: number | null,
+): boolean {
+  return latitude != null && longitude != null
+    && latitude >= 32 && latitude <= 40
+    && longitude >= 123 && longitude <= 133;
 }
 
 export function solarLevelLabel(ghiValue: string | null): string {

@@ -16,7 +16,7 @@ import {
 import { useFarmData, useScope } from "@/lib/farmData";
 import { FarmSnapshot, farmSeverity, sensorOf, useFleetSnapshots } from "@/lib/fleet";
 import { timeAgo } from "@/lib/monitor";
-import { isValidWeatherRegionCode, useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
+import { isValidWeatherLocation, useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
 const KPI_SENSORS = ["temperature", "humidity", "co2"] as const;
 
@@ -39,9 +39,9 @@ function FarmCard({
         weather.precipitation_mm != null ? `강수 ${weather.precipitation_mm}mm` : null,
         weather.wind_ms != null ? `풍속 ${weather.wind_ms}m/s` : null,
       ].filter(Boolean).join(" · ")
-    : isValidWeatherRegionCode(weather?.region_code ?? null)
+    : isValidWeatherLocation(weather?.latitude ?? null, weather?.longitude ?? null)
       ? "기상 정보를 불러오는 중입니다."
-      : weather?.region_code
+      : weather?.latitude != null || weather?.longitude != null
         ? "정보 없음"
         : "날씨 조회 위치가 설정되지 않았습니다.";
 
@@ -62,7 +62,8 @@ function FarmCard({
               <span>{weather.temperature_c != null ? `${weather.temperature_c.toFixed(1)}°` : "—"}</span>
             </>
           ) : (
-            <span>{weather?.region_code && !isValidWeatherRegionCode(weather.region_code) ? "정보 없음" : "날씨 —"}</span>
+            <span>{(weather?.latitude != null || weather?.longitude != null)
+              && !isValidWeatherLocation(weather.latitude, weather.longitude) ? "정보 없음" : "날씨 —"}</span>
           )}
         </span>
         <span className={`rounded-lg px-2 py-0.5 text-[11.5px] font-extrabold ${s.bg} ${s.text}`}>

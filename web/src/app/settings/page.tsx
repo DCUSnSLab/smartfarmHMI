@@ -319,10 +319,10 @@ function FarmModal({
           {locationMessage && <p className="mt-1.5 text-[12px] font-bold text-status-warningDark" role="alert">{locationMessage}</p>}
           <p className="mt-1 text-[11.5px] font-semibold text-muted">
             {edit && !position
-              ? `위치를 지정하지 않으면 기존 위치${edit.region_code ? ` (${edit.region_code})` : ""}를 유지합니다.`
+              ? `위치를 지정하지 않으면 기존 위치${edit.latitude != null && edit.longitude != null ? ` (${edit.latitude.toFixed(3)}-${edit.longitude.toFixed(3)})` : ""}를 유지합니다.`
               : locationMethod === "manual"
                 ? "선택한 읍·면·동의 기상청 대표 좌표가 저장됩니다."
-                : "브라우저에서 확인한 위도·경도가 소수점 셋째 자리로 저장됩니다."}
+                : "브라우저에서 확인한 위도·경도가 농장 위치로 저장됩니다."}
           </p>
         </div>
 

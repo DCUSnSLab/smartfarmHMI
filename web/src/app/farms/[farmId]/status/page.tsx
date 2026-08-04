@@ -14,7 +14,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { isValidWeatherRegionCode, solarLevelLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { isValidWeatherLocation, solarLevelLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -149,8 +149,8 @@ function FarmWeather({ farmId }: { farmId: string }) {
         </>
       ) : (
         <div className="py-10 text-center text-[15px] font-extrabold text-[#3A5A86]">
-          {weather?.region_code
-            ? isValidWeatherRegionCode(weather.region_code) ? "로딩중" : "정보 없음"
+          {weather?.latitude != null || weather?.longitude != null
+            ? isValidWeatherLocation(weather.latitude, weather.longitude) ? "로딩중" : "정보 없음"
             : "날씨 조회 위치가 설정되지 않았습니다."}
         </div>
       )}

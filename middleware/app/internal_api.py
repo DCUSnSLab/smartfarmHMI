@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from middleware.app.weather import collect_farm_weather, make_region_code
+from middleware.app.weather import collect_farm_weather, validate_coordinates
 
 router = APIRouter(prefix="/internal")
 
@@ -19,7 +19,7 @@ class FarmUpsert(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
-    # 위도·경도는 region_code 문자열로 저장한다.
+    # 위도·경도는 farm 전용 컬럼에 저장한다.
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None
@@ -37,22 +37,28 @@ async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
     if (req.latitude is None) != (req.longitude is None):
         raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
     try:
-        region_code = make_region_code(req.latitude, req.longitude) if req.latitude is not None and req.longitude is not None else None
+        if req.latitude is not None and req.longitude is not None:
+            validate_coordinates(req.latitude, req.longitude)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         await conn.execute(
             insert(m.farm)
             .values(farm_id=req.farm_id, name=req.name,
-                    farm_type=req.farm_type, crop=req.crop, region_code=region_code)
+                    farm_type=req.farm_type, crop=req.crop, region_code=None,
+                    latitude=req.latitude, longitude=req.longitude)
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 재등록하면 재활성화한다.
-                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "region_code": region_code, "is_active": True},
+                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop,
+                      "region_code": None, "latitude": req.latitude,
+                      "longitude": req.longitude, "is_active": True},
             )
         )
-    if region_code is not None:
-        background_tasks.add_task(collect_farm_weather, _engine(), req.farm_id, region_code)
+    if req.latitude is not None and req.longitude is not None:
+        background_tasks.add_task(
+            collect_farm_weather, _engine(), req.farm_id, req.latitude, req.longitude
+        )
     return {"ok": True, "farm_id": req.farm_id}
 
 
@@ -76,7 +82,8 @@ async def list_farms():
     return [
         {
             "farm_id": f["farm_id"], "name": f["name"], "farm_type": f["farm_type"],
-            "crop": f["crop"],
+            "crop": f["crop"], "region_code": f["region_code"],
+            "latitude": f["latitude"], "longitude": f["longitude"],
             "devices_total": len(by_farm.get(f["farm_id"], [])),
             "devices_online": by_farm.get(f["farm_id"], []).count("online"),
         }
@@ -90,11 +97,11 @@ async def latest_weather():
     async with _engine().connect() as conn:
         rows = (
             await conn.execute(text(
-                "SELECT f.farm_id, f.name, f.region_code, w.ts, w.received_at, "
+                "SELECT f.farm_id, f.name, f.region_code, f.latitude, f.longitude, w.ts, w.received_at, "
                 "w.temperature_c, w.humidity_pct, w.precipitation_mm, "
                 "w.wind_ms, w.condition, w.solar_level, w.provider "
                 "FROM mw.farm f LEFT JOIN LATERAL ("
-                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id AND f.region_code IS NOT NULL "
+                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id AND f.latitude IS NOT NULL AND f.longitude IS NOT NULL "
                 " ORDER BY wr.ts DESC LIMIT 1"
                 ") w ON true WHERE f.is_active ORDER BY f.created_at"
             ))

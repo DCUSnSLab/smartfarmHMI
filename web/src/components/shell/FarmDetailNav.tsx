@@ -11,6 +11,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFarmData } from "@/lib/farmData";
 
+
 const TABS = [
   { seg: "status", label: "상태" },
   { seg: "env", label: "생육기·센서" },

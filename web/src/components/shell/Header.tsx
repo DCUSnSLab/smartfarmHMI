@@ -201,7 +201,9 @@ export function Header() {
     <>
       {/* flex-wrap 없음 — 넘칠 때 줄바꿈이 아니라 접어야 한다.
           모든 컨트롤이 같은 높이(CONTROL)라 접힘 여부와 무관하게 행 높이가 같다 */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
+      {/* 고정은 AppShell 의 sticky 컨테이너가 맡는다 — 정지 배너와 함께 묶여야
+          스크롤 시 배너가 이 바를 덮지 않는다 */}
+      <header className="border-b border-gray-100 bg-white/95 backdrop-blur">
         <div ref={rowRef} className="mx-auto flex max-w-7xl items-center gap-3 px-6 py-2">
           {collapsed && (
             <button

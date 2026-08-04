@@ -22,7 +22,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
   const { farmId } = useParams<{ farmId: string }>();
   const pathname = usePathname();
   useScope(farmId);
-  const { farms, farmName, conns, alerts } = useFarmData();
+  const { farmName, conns, alerts } = useFarmData();
 
   const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
   const unacked = Object.values(alerts).filter((a) => !a.acked_at).length;
@@ -30,29 +30,6 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-5">
-      {/* 스코프 스위처 */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link
-          href="/"
-          className="rounded-xl border border-gray-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-gray-600"
-        >
-          전체 현황
-        </Link>
-        {farms.map((f) => (
-          <Link
-            key={f.farm_id}
-            href={`/farms/${f.farm_id}/${current}`}
-            className={`rounded-xl border px-3.5 py-1.5 text-[13px] ${
-              f.farm_id === farmId
-                ? "border-primary bg-primary font-extrabold text-white"
-                : "border-gray-200 bg-white font-bold text-gray-600"
-            }`}
-          >
-            {f.name}
-          </Link>
-        ))}
-      </div>
-
       {/* 농장 헤더 */}
       <div className="mb-3 flex flex-wrap items-baseline gap-3">
         <h1 className="text-[20px] font-extrabold">{farmName || farmId}</h1>

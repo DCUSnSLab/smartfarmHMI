@@ -201,6 +201,29 @@ export function useMonitor(scope: string) {
   return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
 }
 
+/**
+ * 헤더 전용 전체 알림 조회.
+ * 현재 화면의 농장 스코프와 무관하게 전 농장 알림을 유지한다.
+ */
+export function useGlobalAlerts(intervalMs = 15000) {
+  const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/alerts?limit=100");
+    if (!res.ok) return;
+    const list: AlertItem[] = await res.json();
+    setAlerts(Object.fromEntries(list.map((alert) => [alert.id, alert])));
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs, load]);
+
+  return alerts;
+}
+
 export async function engageStop(reason?: string) {
   const r = await fetch("/api/stop", {
     method: "POST", headers: { "Content-Type": "application/json" },

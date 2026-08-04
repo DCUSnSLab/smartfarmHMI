@@ -11,6 +11,7 @@ import { AlertPanel } from "@/components/AlertPanel";
 import { StopButton } from "@/components/StopControls";
 import { ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
+import { useGlobalAlerts } from "@/lib/monitor";
 import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
 const NAV = [
@@ -25,7 +26,8 @@ export function Header() {
   const pathname = usePathname();
   const user = useUser();
   const { level, inc, dec } = useFontLevel();
-  const { scope, alerts, stops, wsOpen } = useFarmData();
+  const { stops, wsOpen } = useFarmData();
+  const globalAlerts = useGlobalAlerts();
 
   return (
     <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
@@ -80,7 +82,7 @@ export function Header() {
           </span>
 
           {/* 알림 — 전역 벨 (스코프 무관: 전체 알림) */}
-          <AlertPanel farmId={scope === "all" ? null : scope} alerts={alerts} />
+          <AlertPanel key={pathname} farmId={null} alerts={globalAlerts} />
 
           {user && (
             <>

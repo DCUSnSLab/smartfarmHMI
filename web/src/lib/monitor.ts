@@ -70,6 +70,31 @@ export interface AlertItem {
   acked_at: string | null;
 }
 
+/** 헤더 전용 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다. */
+export function useGlobalAlerts(intervalMs = 15_000) {
+  const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      const res = await apiFetch("/api/alerts?limit=100");
+      if (!res.ok || !active) return;
+      const list: AlertItem[] = await res.json();
+      setAlerts(Object.fromEntries(list.map((alert) => [alert.id, alert])));
+    };
+
+    void load();
+    const timer = window.setInterval(() => void load(), intervalMs);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [intervalMs]);
+
+  return alerts;
+}
 export interface CommandState {
   command_id: string;
   device_id: string;

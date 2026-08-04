@@ -41,8 +41,7 @@ export function AlertPanel({
     () =>
       Object.values(alerts)
         .filter((a) => filter === "all" || a.severity === filter)
-        .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
-        .slice(0, 30),
+        .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)),
     [alerts, filter],
   );
   const unacked = Object.values(alerts).filter((a) => !a.acked_at).length;
@@ -117,7 +116,7 @@ export function AlertPanel({
               </button>
             ))}
           </div>
-          <div className="max-h-[360px] overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {list.length === 0 && (
               <div className="py-8 text-center text-[13px] font-semibold text-muted">알림이 없어요</div>
             )}
@@ -125,18 +124,18 @@ export function AlertPanel({
               <button
                 key={a.id}
                 onClick={() => jump(a)}
-                className={`block w-full border-b border-gray-50 px-1 py-2.5 text-left last:border-0 ${
+                className={`block h-16 w-full border-b border-gray-50 px-1 py-2.5 text-left last:border-0 ${
                   a.acked_at ? "opacity-50" : ""
                 }`}
               >
-                <span className="flex items-center gap-2">
+                <span className="flex min-w-0 items-center gap-2">
                   <span className={`h-2 w-2 flex-none rounded-full ${SEV[a.severity].dot}`} />
-                  <span className="flex-1 text-[13.5px] font-bold">{a.title}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-bold">{a.title}</span>
                   <span className={`text-[11px] font-extrabold ${SEV[a.severity].text}`}>
                     {SEV[a.severity].label}
                   </span>
                 </span>
-                <span className="mt-0.5 block pl-4 text-[12px] font-semibold text-muted">
+                <span className="mt-0.5 block truncate pl-4 text-[12px] font-semibold text-muted">
                   {a.body} · {timeAgo(a.occurred_at)}
                 </span>
               </button>

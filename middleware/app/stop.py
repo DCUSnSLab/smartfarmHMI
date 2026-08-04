@@ -62,6 +62,12 @@ async def _all_farm_ids(conn) -> list[str]:
     return [r[0] for r in (await conn.execute(select(m.farm.c.farm_id))).all()]
 
 
+def _publish_outbox(publisher, outbox: list[tuple[str, str]]) -> None:
+    """모아둔 엣지 명령을 발행 — 호출 시점이 커밋 이후여야 한다."""
+    for topic_str, payload in outbox:
+        publisher.publish_raw(topic_str, payload, retain=False)
+
+
 def _stream_payload(kind: str, active: bool, *, scope: str | None = None,
                     engaged_at=None, released_at=None, by=None, reason=None) -> dict:
     return {"stop_kind": kind, "active": active, "scope": scope,
@@ -83,7 +89,7 @@ async def engage_remote_stop(req: StopRequest):
         raise HTTPException(400, "scope=all 또는 scope=farm+farm_id")
     engine, publisher = _deps()
     now = datetime.now(timezone.utc)
-    command_id = f"cmd-{uuid.uuid4().hex[:12]}"
+    outbox: list[tuple[str, str]] = []
 
     async with engine.begin() as conn:
         # 같은 범위 미해제 정지 중복 방지 (부분 UNIQUE 인덱스와 이중 방어).
@@ -105,23 +111,30 @@ async def engage_remote_stop(req: StopRequest):
             insert(m.stop_event).values(
                 stop_kind="remote", scope=req.scope, farm_id=req.farm_id,
                 engaged_at=now, engaged_by=req.by, reason=req.reason,
-                command_id=None,
+                command_id=None,  # 명령은 엣지마다 개별 발급 — 단일 참조가 성립하지 않는다
             )
         )
         edges = await _edge_devices(conn, req.farm_id if req.scope == "farm" else None)
         farms = [req.farm_id] if req.scope == "farm" else await _all_farm_ids(conn)
         for farm_id, device_id in edges:
-            msg = RemoteStop(command_id=command_id, farm_id=farm_id, scope=req.scope,
+            # 엣지 1대 = 명령 1건. device_id 는 농장 내에서만 유일해 키 재료로 쓸 수 없고
+            # (농장 간 PK 충돌), 발행 id 와 저장 id 가 같아야 ack 가 대조된다 (handle_ack)
+            cid = f"cmd-{uuid.uuid4().hex[:12]}"
+            msg = RemoteStop(command_id=cid, farm_id=farm_id, scope=req.scope,
                              reason=req.reason, issued_by=req.by, timestamp=now)
             await conn.execute(
                 insert(m.command_log).values(
-                    command_id=f"{command_id}-{device_id}", farm_id=farm_id,
+                    command_id=cid, farm_id=farm_id,
                     device_id=device_id, command_type="remote_stop",
                     payload=msg.model_dump(mode="json"), issued_by=req.by, timeout_sec=30,
                 )
             )
-            publisher.publish_raw(topic(farm_id, "edge", device_id, "command"),
-                                  msg.model_dump_json(), retain=False)
+            outbox.append((topic(farm_id, "edge", device_id, "command"),
+                           msg.model_dump_json()))
+
+    # 커밋 이후 발행 — 트랜잭션 안에서 발행하면 롤백 시 엣지만 멈추고 기록이 남지 않는다.
+    # 반대 방향(기록만 남고 미발행)은 ack 타임아웃이 실패로 잡아 알림을 낸다
+    _publish_outbox(publisher, outbox)
 
     from middleware.app.alerts import create_alert
     async with engine.begin() as conn:
@@ -143,6 +156,7 @@ async def release_remote_stop(req: StopRequest):
     (역할 검사는 앱서버 프록시에서 admin/manager 로 제한)."""
     engine, publisher = _deps()
     now = datetime.now(timezone.utc)
+    outbox: list[tuple[str, str]] = []
     async with engine.begin() as conn:
         rel_cond = [
             m.stop_event.c.stop_kind == "remote",
@@ -164,12 +178,24 @@ async def release_remote_stop(req: StopRequest):
             raise HTTPException(404, "발동 중인 원격 전체 정지가 없습니다")
         edges = await _edge_devices(conn, row[0])
         farms = [row[0]] if row[0] else await _all_farm_ids(conn)
-        command_id = f"cmd-{uuid.uuid4().hex[:12]}"
         for farm_id, device_id in edges:
-            msg = RemoteStopRelease(command_id=command_id, farm_id=farm_id,
-                                    scope=req.scope, issued_by=req.by, timestamp=now)
-            publisher.publish_raw(topic(farm_id, "edge", device_id, "command"),
-                                  msg.model_dump_json(), retain=False)
+            # 발동과 같은 규칙 — 엣지마다 개별 id (엣지는 command_id 로 멱등 판정한다)
+            cid = f"cmd-{uuid.uuid4().hex[:12]}"
+            msg = RemoteStopRelease(command_id=cid, farm_id=farm_id, scope=req.scope,
+                                    issued_by=req.by, timestamp=now)
+            # 해제도 명령 대장에 남긴다 — 없으면 ack 를 대조할 행이 없어 미도달을 알 수
+            # 없다. 엣지 단절 중 해제하면 화면만 풀리고 현장은 멈춘 채로 남는다
+            await conn.execute(
+                insert(m.command_log).values(
+                    command_id=cid, farm_id=farm_id, device_id=device_id,
+                    command_type="remote_stop_release",
+                    payload=msg.model_dump(mode="json"), issued_by=req.by, timeout_sec=30,
+                )
+            )
+            outbox.append((topic(farm_id, "edge", device_id, "command"),
+                           msg.model_dump_json()))
+
+    _publish_outbox(publisher, outbox)  # 커밋 이후 — 해제 실패 시 상태 불일치 방지
 
     from middleware.app.alerts import create_alert
     async with engine.begin() as conn:
@@ -183,26 +209,45 @@ async def release_remote_stop(req: StopRequest):
     return {"ok": True, "released_at": now.isoformat()}
 
 
-@router.get("/farms/{farm_id}/stop-state")
-async def stop_state(farm_id: str):
-    """활성 정지 상태 — 원격·물리 각각 독립 표시 (동시 성립 가능)."""
-    engine, _ = _deps()
-    async with engine.connect() as conn:
-        rows = (
-            (await conn.execute(
-                select(m.stop_event).where(
-                    m.stop_event.c.released_at.is_(None),
-                    (m.stop_event.c.scope == "all") | (m.stop_event.c.farm_id == farm_id),
-                )
-            )).mappings().all()
-        )
-    out = {"remote": None, "physical_estop": None}
+async def _active_stops(conn, farm_id: str | None) -> dict:
+    """활성 정지 상태 — 원격·물리 각각 독립 표시 (동시 성립 가능).
+
+    farm_id 가 None 이면 전체 스코프 — 어느 농장이든 발동 중이면 표시한다.
+    물리 비상정지는 농장별이라 여러 건일 수 있어 **최초 발동 건**을 대표로 둔다.
+    """
+    cond = [m.stop_event.c.released_at.is_(None)]
+    if farm_id:
+        cond.append((m.stop_event.c.scope == "all") | (m.stop_event.c.farm_id == farm_id))
+    rows = (
+        (await conn.execute(
+            select(m.stop_event).where(*cond).order_by(m.stop_event.c.engaged_at)
+        )).mappings().all()
+    )
+    out: dict = {"remote": None, "physical_estop": None}
     for r in rows:
+        if out[r["stop_kind"]] is not None:
+            continue
         out[r["stop_kind"]] = {
             "scope": r["scope"], "engaged_at": r["engaged_at"].isoformat(),
             "by": r["engaged_by"], "reason": r["reason"],
         }
     return out
+
+
+@router.get("/stop-state")
+async def stop_state_all():
+    """전체 스코프 활성 정지 (통합 대시보드 초기 로드) — 응답 형태는 농장별과 같다."""
+    engine, _ = _deps()
+    async with engine.connect() as conn:
+        return await _active_stops(conn, None)
+
+
+@router.get("/farms/{farm_id}/stop-state")
+async def stop_state(farm_id: str):
+    """농장 스코프 활성 정지 — 전 농장 정지(scope=all)도 함께 반영한다."""
+    engine, _ = _deps()
+    async with engine.connect() as conn:
+        return await _active_stops(conn, farm_id)
 
 
 async def handle_estop_state(conn, msg: EstopState, received_at: datetime,

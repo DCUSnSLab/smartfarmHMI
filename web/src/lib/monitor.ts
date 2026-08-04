@@ -103,6 +103,9 @@ export function useMonitor(scope: string) {
 
   useEffect(() => {
     apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
+    // 정지는 전 스코프 표시 대상 — WS 이벤트는 발동 순간에만 오므로 초기 로드가 필요하다
+    const stopUrl = scope === "all" ? "/api/stop-state" : `/api/farms/${scope}/stop-state`;
+    apiFetch(stopUrl).then(async (r) => r.ok && setStops(await r.json()));
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
       apiFetch("/api/alerts?limit=100").then(async (r) => {
@@ -123,7 +126,6 @@ export function useMonitor(scope: string) {
         const list: AlertItem[] = await r.json();
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
-      apiFetch(`/api/farms/${scope}/stop-state`).then(async (r) => r.ok && setStops(await r.json()));
     }
   }, [scope, loadSnapshot]);
 
@@ -223,20 +225,28 @@ export function useMonitor(scope: string) {
   return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
 }
 
-export async function engageStop(reason?: string) {
+/** 실패 문구를 돌려준다 (성공 null) — 정지는 조용히 실패하면 안 되는 조작이다 */
+function stopError(status: number, action: string): string {
+  if (status === 403) return `${action} 권한이 없습니다`;
+  if (status === 409) return "이미 원격 전체 정지가 발동 중입니다";
+  if (status === 404) return "발동 중인 원격 전체 정지가 없습니다";
+  return `${action} 실패 — 잠시 후 다시 시도해 주세요 (${status})`;
+}
+
+export async function engageStop(reason?: string): Promise<string | null> {
   const r = await apiFetch("/api/stop", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all", reason }),
   });
-  return r.ok;
+  return r.ok ? null : stopError(r.status, "원격 전체 정지");
 }
 
-export async function releaseStop() {
+export async function releaseStop(): Promise<string | null> {
   const r = await apiFetch("/api/stop/release", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all" }),
   });
-  return r.ok;
+  return r.ok ? null : stopError(r.status, "정지 해제");
 }
 
 export async function ackAlert(id: number) {

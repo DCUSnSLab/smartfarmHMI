@@ -24,6 +24,7 @@ from apps.core.views import (
     health,
     stop_engage,
     stop_release,
+    stop_state_all,
 )
 
 urlpatterns = [
@@ -53,6 +54,7 @@ urlpatterns = [
     path("api/farms/<str:farm_id>/alert-rules", alert_rules),
     path("api/alert-rules/<int:rule_id>", alert_rule_update),
     path("api/farms/<str:farm_id>/stop-state", farm_stop_state),
+    path("api/stop-state", stop_state_all),
     path("api/stop", stop_engage),
     path("api/stop/release", stop_release),
 ]

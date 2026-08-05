@@ -70,7 +70,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-[16px] font-extrabold">{title}</h3>
+        <h3 className="mb-4 text-16 font-extrabold">{title}</h3>
         {children}
       </div>
     </div>
@@ -78,8 +78,8 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-[13.5px] font-semibold focus:border-primary focus:outline-none";
-const labelCls = "block text-[12.5px] font-bold text-gray-600";
+  "w-full rounded-lg border border-gray-200 px-3 py-2 text-13.5 font-semibold focus:border-primary focus:outline-none";
+const labelCls = "block text-12.5 font-bold text-gray-600";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -93,10 +93,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Actions({ onCancel, submitLabel, busy }: { onCancel: () => void; submitLabel: string; busy: boolean }) {
   return (
     <div className="mt-4 flex justify-end gap-2">
-      <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-[13px] font-bold text-gray-500">
+      <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500">
         취소
       </button>
-      <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-[13px] font-extrabold text-white disabled:opacity-50">
+      <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-13 font-extrabold text-white disabled:opacity-50">
         {busy ? "처리 중…" : submitLabel}
       </button>
     </div>
@@ -267,14 +267,14 @@ function FarmModal({
             <button
               type="button"
               onClick={() => selectLocationMethod("current")}
-              className={`rounded-md px-3 py-2 text-[12.5px] font-extrabold ${locationMethod === "current" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
+              className={`rounded-md px-3 py-2 text-12.5 font-extrabold ${locationMethod === "current" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
             >
               자동 · 현재 위치
             </button>
             <button
               type="button"
               onClick={() => selectLocationMethod("manual")}
-              className={`rounded-md px-3 py-2 text-[12.5px] font-extrabold ${locationMethod === "manual" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
+              className={`rounded-md px-3 py-2 text-12.5 font-extrabold ${locationMethod === "manual" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
             >
               수동 · 주소 선택
             </button>
@@ -285,7 +285,7 @@ function FarmModal({
               type="button"
               onClick={requestCurrentLocation}
               disabled={locating}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2.5 text-[13.5px] font-extrabold text-primary-dark hover:bg-primary-bg disabled:cursor-wait disabled:opacity-60"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2.5 text-13.5 font-extrabold text-primary-dark hover:bg-primary-bg disabled:cursor-wait disabled:opacity-60"
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" stroke="currentColor" strokeWidth="2" />
@@ -311,13 +311,13 @@ function FarmModal({
           )}
 
           {position && (
-            <p className="mt-2 text-[12px] font-bold text-primary-dark" role="status">
+            <p className="mt-2 text-12 font-bold text-primary-dark" role="status">
               위치 지정 완료 · {position.label} · {position.latitude.toFixed(3)}-{position.longitude.toFixed(3)}
               {position.accuracy != null && ` · 예상 정확도 약 ${Math.round(position.accuracy).toLocaleString()}m`}
             </p>
           )}
-          {locationMessage && <p className="mt-1.5 text-[12px] font-bold text-status-warningDark" role="alert">{locationMessage}</p>}
-          <p className="mt-1 text-[11.5px] font-semibold text-muted">
+          {locationMessage && <p className="mt-1.5 text-12 font-bold text-status-warningDark" role="alert">{locationMessage}</p>}
+          <p className="mt-1 text-11.5 font-semibold text-muted">
             {edit && !position
               ? `위치를 지정하지 않으면 기존 위치${edit.latitude != null && edit.longitude != null ? ` (${edit.latitude.toFixed(3)}-${edit.longitude.toFixed(3)})` : ""}를 유지합니다.`
               : locationMethod === "manual"
@@ -326,7 +326,7 @@ function FarmModal({
           </p>
         </div>
 
-        {err && <p className="text-[12.5px] font-bold text-status-warningDark">{err}</p>}
+        {err && <p className="text-12.5 font-bold text-status-warningDark">{err}</p>}
         <Actions onCancel={onClose} submitLabel={edit ? "수정" : "추가"} busy={busy} />
       </form>
     </Modal>
@@ -460,7 +460,7 @@ function DeviceModal({
             </Field>
           </>
         )}
-        {err && <p className="text-[12.5px] font-bold text-status-warningDark">{err}</p>}
+        {err && <p className="text-12.5 font-bold text-status-warningDark">{err}</p>}
         <Actions onCancel={onClose} submitLabel={edit ? "수정" : "추가"} busy={busy} />
       </form>
     </Modal>
@@ -472,13 +472,13 @@ function ConfirmModal({ message, onCancel, onConfirm }: { message: string; onCan
   const [busy, setBusy] = useState(false);
   return (
     <Modal title="삭제 확인" onClose={onCancel}>
-      <p className="text-[13.5px] font-semibold text-gray-700">{message}</p>
+      <p className="text-13.5 font-semibold text-gray-700">{message}</p>
       <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-[13px] font-bold text-gray-500">취소</button>
+        <button onClick={onCancel} className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500">취소</button>
         <button
           disabled={busy}
           onClick={async () => { setBusy(true); await onConfirm(); }}
-          className="rounded-lg bg-status-warning px-4 py-2 text-[13px] font-extrabold text-white disabled:opacity-50"
+          className="rounded-lg bg-status-warning px-4 py-2 text-13 font-extrabold text-white disabled:opacity-50"
         >
           {busy ? "삭제 중…" : "삭제"}
         </button>
@@ -504,21 +504,21 @@ function FarmDevices({ farmId }: { farmId: string }) {
   return (
     <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[13px] font-bold text-gray-600">장치 {devices.length}대</span>
-        <button onClick={() => setAdding(true)} className="rounded-lg bg-primary-bg px-3 py-1 text-[12.5px] font-extrabold text-primary-dark">+ 장치 추가</button>
+        <span className="text-13 font-bold text-gray-600">장치 {devices.length}대</span>
+        <button onClick={() => setAdding(true)} className="rounded-lg bg-primary-bg px-3 py-1 text-12.5 font-extrabold text-primary-dark">+ 장치 추가</button>
       </div>
-      {grouped.length === 0 && <p className="py-2 text-[12.5px] font-semibold text-muted">등록된 장치가 없습니다.</p>}
+      {grouped.length === 0 && <p className="py-2 text-12.5 font-semibold text-muted">등록된 장치가 없습니다.</p>}
       {grouped.map((g) => (
         <div key={g.type.value} className="mb-2">
-          <div className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wide text-muted">{g.type.label}</div>
+          <div className="mb-1 text-11.5 font-extrabold uppercase tracking-wide text-muted">{g.type.label}</div>
           {g.rows.map((d) => (
             <div key={d.device_id} className="flex items-center gap-2 border-b border-gray-100 py-1.5 last:border-0">
-              <span className="flex-1 text-[13px] font-bold">
+              <span className="flex-1 text-13 font-bold">
                 {d.name} <span className="font-semibold text-muted">· {d.device_id}</span>
                 {d.location && <span className="font-semibold text-muted"> · {d.location}</span>}
               </span>
-              <button onClick={() => setEditing(d)} className="rounded-md px-2 py-1 text-[12px] font-bold text-gray-500 hover:bg-gray-100">수정</button>
-              <button onClick={() => setDeleting(d)} className="rounded-md px-2 py-1 text-[12px] font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
+              <button onClick={() => setEditing(d)} className="rounded-md px-2 py-1 text-12 font-bold text-gray-500 hover:bg-gray-100">수정</button>
+              <button onClick={() => setDeleting(d)} className="rounded-md px-2 py-1 text-12 font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
             </div>
           ))}
         </div>
@@ -556,23 +556,23 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
 
   return (
     <section className="mb-8">
-      <h2 className="mb-1 text-[16px] font-extrabold">발견된 스마트팜</h2>
-      <p className="mb-3 text-[12.5px] font-semibold text-muted">
+      <h2 className="mb-1 text-16 font-extrabold">발견된 스마트팜</h2>
+      <p className="mb-3 text-12.5 font-semibold text-muted">
         미들웨어에 등록되지 않았지만 데이터가 들어오고 있는 팜입니다. 등록하면 장치·센서까지 자동으로 함께 등록됩니다.
       </p>
       {farms.length === 0 ? (
-        <div className="rounded-2xl bg-white p-5 text-[13px] font-semibold text-muted shadow-sm">발견된 미등록 팜이 없습니다.</div>
+        <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">발견된 미등록 팜이 없습니다.</div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {farms.map((f) => (
             <div key={f.farm_id} className="rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-status-caution" />
-                <span className="text-[15px] font-extrabold">{f.farm_id}</span>
-                <button onClick={() => openRegister(f)} className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-[12.5px] font-extrabold text-white">등록</button>
+                <span className="text-15 font-extrabold">{f.farm_id}</span>
+                <button onClick={() => openRegister(f)} className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-12.5 font-extrabold text-white">등록</button>
               </div>
-              <div className="mt-2 text-[12.5px] font-semibold text-muted">장치 {f.device_count}대 · 센서 {f.sensor_count}종 발견</div>
-              <div className="mt-1 text-[12px] font-medium text-muted">
+              <div className="mt-2 text-12.5 font-semibold text-muted">장치 {f.device_count}대 · 센서 {f.sensor_count}종 발견</div>
+              <div className="mt-1 text-12 font-medium text-muted">
                 {f.devices.map((d) => `${DEVICE_TYPE_LABEL[d.device_type] ?? d.device_type}:${d.device_id}`).join(" · ")}
               </div>
             </div>
@@ -591,7 +591,7 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
               if (ok) { setTarget(null); reload(); onRegistered(); }
             }}
           >
-            <p className="mb-3 text-[12.5px] font-semibold text-muted">
+            <p className="mb-3 text-12.5 font-semibold text-muted">
               장치 {target.device_count}대 · 센서 {target.sensor_count}종이 함께 등록됩니다.
             </p>
             <Field label="농장 이름">
@@ -637,35 +637,35 @@ export default function SettingsPage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">설정</h1>
-        <span className="text-[13px] font-semibold text-muted">
+        <h1 className="text-22 font-extrabold">설정</h1>
+        <span className="text-13 font-semibold text-muted">
           계정·권한 / 농장·설비 관리 / 알림 규칙
         </span>
       </div>
 
       {/* 계정 · 권한 (디자인 설정 화면 첫 섹션) */}
       <section className="mb-8">
-        <h2 className="mb-3 text-[16px] font-extrabold">계정 · 권한</h2>
+        <h2 className="mb-3 text-16 font-extrabold">계정 · 권한</h2>
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           {user ? (
             <div className="flex flex-wrap items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-bg text-[16px] font-extrabold text-primary-dark">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-bg text-16 font-extrabold text-primary-dark">
                 {user.name.slice(0, 1)}
               </span>
               <span>
-                <span className="block text-[14.5px] font-extrabold">{user.name}</span>
-                <span className="block text-[12.5px] font-semibold text-muted">{user.email}</span>
+                <span className="block text-14.5 font-extrabold">{user.name}</span>
+                <span className="block text-12.5 font-semibold text-muted">{user.email}</span>
               </span>
-              <span className="rounded-lg bg-primary-bg px-2.5 py-1 text-[12px] font-extrabold text-primary-dark">
+              <span className="rounded-lg bg-primary-bg px-2.5 py-1 text-12 font-extrabold text-primary-dark">
                 {ROLE_LABEL[user.role]}
               </span>
               <span className="ml-auto flex items-center gap-2">
-                <span className="text-[12.5px] font-bold text-gray-400">2단계 인증 · 원격 접근 설정</span>
+                <span className="text-12.5 font-bold text-gray-400">2단계 인증 · 원격 접근 설정</span>
                 <PlannedChip basis="FR-31 · OPN-07" />
               </span>
             </div>
           ) : (
-            <div className="text-[13px] font-semibold text-muted">계정 정보를 불러오는 중…</div>
+            <div className="text-13 font-semibold text-muted">계정 정보를 불러오는 중…</div>
           )}
         </div>
       </section>
@@ -674,25 +674,25 @@ export default function SettingsPage() {
 
       <section>
         <div className="mb-3 flex items-center gap-3">
-          <h2 className="text-[16px] font-extrabold">등록된 스마트팜</h2>
-          <button onClick={() => setAddingFarm(true)} className="ml-auto rounded-xl border border-dashed border-gray-300 px-4 py-2 text-[13px] font-extrabold text-primary-dark">
+          <h2 className="text-16 font-extrabold">등록된 스마트팜</h2>
+          <button onClick={() => setAddingFarm(true)} className="ml-auto rounded-xl border border-dashed border-gray-300 px-4 py-2 text-13 font-extrabold text-primary-dark">
             + 스마트팜 추가
           </button>
         </div>
         {farms.length === 0 ? (
-          <div className="rounded-2xl bg-white p-5 text-[13px] font-semibold text-muted shadow-sm">등록된 팜이 없습니다.</div>
+          <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">등록된 팜이 없습니다.</div>
         ) : (
           farms.map((f) => (
             <div key={f.farm_id} className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2">
-                <span className="text-[15px] font-extrabold">{f.name}</span>
-                <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-[11px] font-bold text-primary-dark">{f.farm_id}</span>
-                <span className="text-[12.5px] font-semibold text-muted">{farmTypeLabel(f.farm_type)} · {f.crop ?? "—"} · {f.devices_online}/{f.devices_total} 온라인</span>
-                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="ml-auto rounded-md px-2 py-1 text-[12.5px] font-bold text-gray-500 hover:bg-gray-100">
+                <span className="text-15 font-extrabold">{f.name}</span>
+                <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-bold text-primary-dark">{f.farm_id}</span>
+                <span className="text-12.5 font-semibold text-muted">{farmTypeLabel(f.farm_type)} · {f.crop ?? "—"} · {f.devices_online}/{f.devices_total} 온라인</span>
+                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="ml-auto rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
                   {expanded === f.farm_id ? "접기" : "장치 관리"}
                 </button>
-                <button onClick={() => setEditingFarm(f)} className="rounded-md px-2 py-1 text-[12.5px] font-bold text-gray-500 hover:bg-gray-100">수정</button>
-                <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-[12.5px] font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
+                <button onClick={() => setEditingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">수정</button>
+                <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
               </div>
               {expanded === f.farm_id && <FarmDevices farmId={f.farm_id} />}
             </div>
@@ -702,15 +702,15 @@ export default function SettingsPage() {
 
       {/* 알림 규칙 (FR-34) — 디자인 설정 화면의 알림 섹션 */}
       <section className="mt-8">
-        <h2 className="mb-3 text-[16px] font-extrabold">알림 규칙</h2>
+        <h2 className="mb-3 text-16 font-extrabold">알림 규칙</h2>
         {farms.length === 0 ? (
-          <div className="rounded-2xl bg-white p-5 text-[13px] font-semibold text-muted shadow-sm">
+          <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">
             팜을 먼저 등록하세요.
           </div>
         ) : (
           farms.map((f) => (
             <div key={f.farm_id} className="mb-3">
-              <div className="mb-1.5 text-[13px] font-extrabold text-gray-600">{f.name}</div>
+              <div className="mb-1.5 text-13 font-extrabold text-gray-600">{f.name}</div>
               <AlertRules farmId={f.farm_id} editable={canControl(user)} />
             </div>
           ))

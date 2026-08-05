@@ -52,12 +52,12 @@ export default function EnvTab() {
             const bad = outOfRange(s);
             return (
               <Card key={s.sensor_id} className={!farmOnline ? "opacity-60" : ""}>
-                <div className="text-[13px] font-bold text-gray-500">{meta.name}</div>
-                <div className={`mt-1 text-[22px] font-extrabold ${bad ? "text-status-cautionDark" : ""}`}>
+                <div className="text-13 font-bold text-gray-500">{meta.name}</div>
+                <div className={`mt-1 text-22 font-extrabold ${bad ? "text-status-cautionDark" : ""}`}>
                   {s.value != null ? s.value.toFixed(1) : "—"}
-                  <span className="ml-0.5 text-[12px] font-bold text-muted">{meta.unit}</span>
+                  <span className="ml-0.5 text-12 font-bold text-muted">{meta.unit}</span>
                 </div>
-                <div className="mt-1 text-[11.5px] font-semibold text-muted">
+                <div className="mt-1 text-11.5 font-semibold text-muted">
                   {bad ? "범위 밖" : "적정"} · {timeAgo(s.ts)}
                 </div>
               </Card>
@@ -65,7 +65,7 @@ export default function EnvTab() {
           })}
           {envList.length === 0 && (
             <Card className="col-span-full">
-              <div className="text-[13px] font-semibold text-muted">
+              <div className="text-13 font-semibold text-muted">
                 센서 데이터가 없어요. 장비가 등록되고 데이터가 수신되면 표시됩니다.
               </div>
             </Card>
@@ -102,7 +102,7 @@ export default function EnvTab() {
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-gray-100 text-[11.5px] font-extrabold text-gray-500">
+              <tr className="border-b border-gray-100 text-11.5 font-extrabold text-gray-500">
                 <th className="px-4 py-2.5">센서</th>
                 <th className="px-4 py-2.5">위치</th>
                 <th className="px-4 py-2.5 text-right">현재값</th>
@@ -118,11 +118,11 @@ export default function EnvTab() {
                   <tr
                     key={s.sensor_id}
                     onClick={() => setSelected(s)}
-                    className="cursor-pointer border-b border-gray-50 text-[13px] last:border-0 hover:bg-surface"
+                    className="cursor-pointer border-b border-gray-50 text-13 last:border-0 hover:bg-surface"
                   >
                     <td className="px-4 py-2.5 font-bold">
                       {meta.name}
-                      <span className="ml-1.5 text-[11.5px] font-semibold text-muted">{s.sensor_id}</span>
+                      <span className="ml-1.5 text-11.5 font-semibold text-muted">{s.sensor_id}</span>
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-gray-600">{s.location ?? "—"}</td>
                     <td className="px-4 py-2.5 text-right font-extrabold">
@@ -140,7 +140,7 @@ export default function EnvTab() {
               })}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[13px] font-semibold text-muted">
+                  <td colSpan={5} className="px-4 py-8 text-center text-13 font-semibold text-muted">
                     등록된 센서가 없어요
                   </td>
                 </tr>

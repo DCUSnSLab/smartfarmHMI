@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import { useFarmData } from "@/lib/farmData";
 import { farmSeverity, useFleetSnapshots } from "@/lib/fleet";
 import { SEV_STYLE } from "@/components/ui";
@@ -25,7 +26,7 @@ export function FarmScopeNav() {
   const [warnByFarm, setWarnByFarm] = useState<Record<string, number>>({});
   useEffect(() => {
     const load = async () => {
-      const r = await fetch("/api/alerts?limit=100");
+      const r = await apiFetch("/api/alerts?limit=100");
       if (!r.ok) return;
       const list: { farm_id?: string; severity: string; acked_at: string | null }[] = await r.json();
       const counts: Record<string, number> = {};
@@ -58,7 +59,7 @@ export function FarmScopeNav() {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2.5">
         <Link
           href="/"
-          className={`rounded-full border px-4 py-2 text-[13px] ${
+          className={`rounded-full border px-4 py-2 text-13 ${
             isDashboard
               ? "border-primary bg-primary font-extrabold text-white"
               : "border-gray-200 bg-white font-bold text-gray-600"
@@ -76,7 +77,7 @@ export function FarmScopeNav() {
               <Link
                   key={farm.farm_id}
                   href={`/farms/${farm.farm_id}/${currentTab}`}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] focus:outline-none ${
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-13 focus:outline-none ${
                       active
                           ? "border-primary bg-primary font-extrabold text-white"
                           : "border-gray-200 bg-white font-bold text-gray-600 hover:border-primary hover:text-primary-dark"
@@ -88,7 +89,7 @@ export function FarmScopeNav() {
                 <span>{farm.name}</span>
 
                 {farm.farm_type === "open_field" && (
-                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-extrabold text-blue-600">
+                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-10.5 font-extrabold text-blue-600">
                   실외
                 </span>
                 )}

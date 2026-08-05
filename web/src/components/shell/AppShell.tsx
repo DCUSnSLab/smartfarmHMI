@@ -7,13 +7,13 @@
 
 import { usePathname } from "next/navigation";
 import { Assistant } from "@/components/shell/Assistant";
+import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
+import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
 import { Header } from "@/components/shell/Header";
 import { StopBanners } from "@/components/StopControls";
 import { canControl, useUser } from "@/lib/auth";
 import { FarmDataProvider, useFarmData } from "@/lib/farmData";
 import { PrefsProvider } from "@/lib/prefs";
-import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
-import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
 
 const BARE_PATHS = ["/login", "/forbidden"];
 
@@ -24,10 +24,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
     <>
       <Header />
       <StopBanners stops={stops} canRelease={canControl(user)} />
-
       <FarmScopeNav />
-       <FarmDetailNav />
-      
+      <FarmDetailNav />
       {children}
       <Assistant />
     </>

@@ -50,7 +50,7 @@ export function FarmDetailNav() {
             <Link
               key={tab.seg}
               href={`/farms/${farmId}/${tab.seg}`}
-              className={`-mb-px border-b-[3px] px-3.5 py-3 text-[13.5px] focus:outline-none ${
+              className={`-mb-px border-b-[3px] px-3.5 py-3 text-13.5 focus:outline-none ${
                 active
                   ? "border-primary font-extrabold text-primary-dark"
                   : "border-transparent font-semibold text-gray-500 hover:text-primary-dark"
@@ -59,7 +59,7 @@ export function FarmDetailNav() {
               {tab.label}
 
               {tab.seg === "alerts" && unacked > 0 && (
-                <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-[11px] font-extrabold text-white">
+                <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-11 font-extrabold text-white">
                   {unacked}
                 </span>
               )}

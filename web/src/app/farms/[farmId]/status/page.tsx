@@ -14,7 +14,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { isValidWeatherLocation, solarLevelLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { isValidWeatherLocation, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -136,9 +136,9 @@ function FarmWeather({ farmId }: { farmId: string }) {
               </div>
             </div>
             <div className={`rounded-xl px-3 py-2.5 ${weatherTheme.metric}`}>
-              <div className="text-11 font-bold text-[#8B95A1]">일사량</div>
+              <div className="text-11 font-bold text-[#8B95A1]">자외선 지수</div>
               <div className="mt-0.5 text-16 font-extrabold text-[#F27A00]">
-                {solarLevelLabel(weather.solar_level)}
+                {uvIndexLabel(weather.solar_level)}
               </div>
             </div>
           </div>

@@ -55,14 +55,14 @@ export function isValidWeatherLocation(
     && longitude >= 123 && longitude <= 133;
 }
 
-export function solarLevelLabel(ghiValue: string | null): string {
-  const ghi = ghiValue == null ? Number.NaN : Number(ghiValue);
-  if (!Number.isFinite(ghi) || ghi < 0) return "정보 없음";
-  if (ghi < 100) return "매우 낮음";
-  if (ghi < 300) return "낮음";
-  if (ghi < 600) return "보통";
-  if (ghi < 800) return "높음";
-  return "매우 높음";
+export function uvIndexLabel(value: string | null): string {
+  const index = value == null ? Number.NaN : Number(value);
+  if (!Number.isFinite(index) || index < 0) return "정보 없음";
+  if (index <= 2) return "낮음";
+  if (index <= 5) return "보통";
+  if (index <= 7) return "높음";
+  if (index <= 10) return "매우높음";
+  return "위험";
 }
 
 export function weatherIcon(condition: string | null, precipitationMm: number | null): string {

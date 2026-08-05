@@ -53,8 +53,9 @@ export interface FarmInput {
   name: string;
   farm_type: string;
   crop?: string | null;
-  latitude?: number;
-  longitude?: number;
+  region_code: string;
+  latitude: number;
+  longitude: number;
   accuracy_m?: number;
 }
 
@@ -98,6 +99,7 @@ export async function updateFarm(
     name?: string;
     farm_type?: string;
     crop?: string | null;
+    region_code?: string;
     latitude?: number;
     longitude?: number;
     accuracy_m?: number;

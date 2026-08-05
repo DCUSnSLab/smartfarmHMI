@@ -41,7 +41,7 @@ class FarmUpdate(BaseModel):
     name: str | None = None
     farm_type: str | None = None
     crop: str | None = None
-    # 위도·경도는 farm 전용 컬럼에 저장한다.
+    region_code: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None
@@ -188,17 +188,22 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
         raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
     patch = {
         k: v
-        for k, v in req.model_dump(exclude={"latitude", "longitude", "accuracy_m"}).items()
+        for k, v in req.model_dump(exclude={"region_code", "latitude", "longitude", "accuracy_m"}).items()
         if v is not None
     }
-    if req.latitude is not None and req.longitude is not None:
+    location_values = (req.region_code, req.latitude, req.longitude)
+    if any(value is not None for value in location_values):
+        if not all(value is not None for value in location_values):
+            raise HTTPException(400, "region_code, latitude, longitude는 함께 전달해야 합니다")
+        if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+            raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
         try:
             validate_coordinates(req.latitude, req.longitude)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         patch["latitude"] = req.latitude
         patch["longitude"] = req.longitude
-        patch["region_code"] = None
+        patch["region_code"] = req.region_code
     if not patch:
         raise HTTPException(400, "수정할 필드가 없습니다")
     patch["updated_at"] = _now()
@@ -207,7 +212,7 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
         await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
     if "latitude" in patch and "longitude" in patch:
         background_tasks.add_task(
-            collect_farm_weather, _engine(), farm_id,
+            collect_farm_weather, _engine(), farm_id, patch["region_code"],
             patch["latitude"], patch["longitude"]
         )
     return {"ok": True, "farm_id": farm_id}

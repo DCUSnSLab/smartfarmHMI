@@ -34,7 +34,6 @@ type FarmPosition = {
   latitude: number;
   longitude: number;
   accuracy?: number;
-  source: "current" | "manual";
   label: string;
 };
 
@@ -118,8 +117,9 @@ function FarmModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [locating, setLocating] = useState(false);
-  const [locationMethod, setLocationMethod] = useState<"current" | "manual">("current");
+  const [atFarm, setAtFarm] = useState(false);
   const [position, setPosition] = useState<FarmPosition | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<RegionRow | null>(null);
   const [locationMessage, setLocationMessage] = useState("");
   const [regions, setRegions] = useState<RegionRow[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -128,7 +128,6 @@ function FarmModal({
   const [level3, setLevel3] = useState("");
 
   useEffect(() => {
-    if (locationMethod !== "manual" || regions.length) return;
     setRegionsLoading(true);
     loadRegionRows()
       .then(setRegions)
@@ -136,7 +135,22 @@ function FarmModal({
         setLocationMessage(error instanceof Error ? error.message : "행정구역 자료를 불러오지 못했습니다.");
       })
       .finally(() => setRegionsLoading(false));
-  }, [locationMethod, regions.length]);
+  }, []);
+
+  useEffect(() => {
+    if (!edit?.region_code || !regions.length) return;
+    const row = regions.find((candidate) => candidate.code === edit.region_code);
+    if (!row) return;
+    setLevel1(row.level1);
+    setLevel2(row.level2 || NO_DISTRICT);
+    setLevel3(row.level3);
+    setSelectedRegion(row);
+    setPosition({
+      latitude: edit.latitude ?? row.latitude,
+      longitude: edit.longitude ?? row.longitude,
+      label: [row.level1, row.level2, row.level3].filter(Boolean).join(" "),
+    });
+  }, [edit, regions]);
 
   const level1Options = unique(regions.map((row) => row.level1));
   const rowsAtLevel1 = regions.filter((row) => row.level1 === level1);
@@ -149,15 +163,22 @@ function FarmModal({
       .map((row) => row.level3),
   );
 
-  const selectLocationMethod = (method: "current" | "manual") => {
-    setLocationMethod(method);
-    setPosition(null);
-    setLocationMessage("");
-  };
+  const regionLabel = (row: RegionRow) =>
+    [row.level1, row.level2, row.level3].filter(Boolean).join(" ");
+
+  const representativePosition = (row: RegionRow): FarmPosition => ({
+    latitude: row.latitude,
+    longitude: row.longitude,
+    label: regionLabel(row),
+  });
 
   const requestCurrentLocation = () => {
     setErr("");
     setLocationMessage("");
+    if (!selectedRegion) {
+      setLocationMessage("행정구역을 먼저 선택해 주세요.");
+      return;
+    }
     if (!("geolocation" in navigator)) {
       setLocationMessage("이 브라우저는 현재 위치 확인을 지원하지 않습니다.");
       return;
@@ -169,8 +190,7 @@ function FarmModal({
           latitude: coords.latitude,
           longitude: coords.longitude,
           accuracy: coords.accuracy,
-          source: "current",
-          label: "현재 위치",
+          label: `${regionLabel(selectedRegion)} · 현재 위치`,
         });
         setLocating(false);
       },
@@ -192,42 +212,69 @@ function FarmModal({
     setLevel1(value);
     setLevel2("");
     setLevel3("");
+    setSelectedRegion(null);
+    setAtFarm(false);
     setPosition(null);
+    setLocationMessage("");
   };
 
   const selectLevel2 = (value: string) => {
     setLevel2(value);
     setLevel3("");
+    setSelectedRegion(null);
+    setAtFarm(false);
     setPosition(null);
+    setLocationMessage("");
   };
 
   const selectLevel3 = (value: string) => {
     setLevel3(value);
     const district = level2 === NO_DISTRICT ? "" : level2;
-    const selected = regions.find(
-      (row) => row.level1 === level1 && row.level2 === district && row.level3 === value,
-    );
-    setPosition(selected ? {
-      latitude: selected.latitude,
-      longitude: selected.longitude,
-      source: "manual",
-      label: [selected.level1, selected.level2, selected.level3].filter(Boolean).join(" "),
-    } : null);
+    const row = regions.find(
+      (candidate) =>
+        candidate.level1 === level1
+        && candidate.level2 === district
+        && candidate.level3 === value,
+    ) ?? null;
+    setSelectedRegion(row);
+    setAtFarm(false);
+    setPosition(row ? representativePosition(row) : null);
+    setLocationMessage("");
+  };
+
+  const toggleAtFarm = (checked: boolean) => {
+    setAtFarm(checked);
+    setLocationMessage("");
+    if (!selectedRegion) {
+      setPosition(null);
+      return;
+    }
+    if (checked) {
+      setPosition(null);
+      setTimeout(requestCurrentLocation, 0);
+    } else {
+      setPosition(representativePosition(selectedRegion));
+    }
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!edit && !position) {
-      setErr("농장의 위치를 먼저 지정해 주세요.");
+    if (!selectedRegion) {
+      setErr("시·도, 시·군·구, 읍·면·동을 모두 선택해 주세요.");
+      return;
+    }
+    if (!position) {
+      setErr(atFarm ? "현재 위치 확인을 완료해 주세요." : "농장의 위치를 지정해 주세요.");
       return;
     }
     setBusy(true);
     setErr("");
-    const locationPatch = position ? {
+    const locationPatch = {
+      region_code: selectedRegion.code,
       latitude: position.latitude,
       longitude: position.longitude,
       ...(position.accuracy != null ? { accuracy_m: position.accuracy } : {}),
-    } : {};
+    };
     const ok = edit
       ? await updateFarm(edit.farm_id, {
           name, farm_type: farmType, crop: crop || null, ...locationPatch,
@@ -254,7 +301,7 @@ function FarmModal({
         </Field>
         <Field label="유형">
           <select className={inputCls} value={farmType} onChange={(e) => setFarmType(e.target.value)}>
-            {FARM_TYPES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            {FARM_TYPES.map((farm) => <option key={farm.value} value={farm.value}>{farm.label}</option>)}
           </select>
         </Field>
         <Field label="작물 (선택)">
@@ -262,68 +309,55 @@ function FarmModal({
         </Field>
 
         <div className="mb-3">
-          <span className={labelCls}>농장 위치</span>
-          <div className="mt-1 grid grid-cols-2 rounded-lg bg-gray-100 p-1">
-            <button
-              type="button"
-              onClick={() => selectLocationMethod("current")}
-              className={`rounded-md px-3 py-2 text-12.5 font-extrabold ${locationMethod === "current" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
-            >
-              자동 · 현재 위치
-            </button>
-            <button
-              type="button"
-              onClick={() => selectLocationMethod("manual")}
-              className={`rounded-md px-3 py-2 text-12.5 font-extrabold ${locationMethod === "manual" ? "bg-white text-primary-dark shadow-sm" : "text-gray-500"}`}
-            >
-              수동 · 주소 선택
-            </button>
+          <span className={labelCls}>농장 행정구역 (필수)</span>
+          <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <select className={inputCls} value={level1} onChange={(e) => selectLevel1(e.target.value)} disabled={regionsLoading} required>
+              <option value="">{regionsLoading ? "불러오는 중…" : "시·도"}</option>
+              {level1Options.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+            <select className={inputCls} value={level2} onChange={(e) => selectLevel2(e.target.value)} disabled={!level1} required>
+              <option value="">시·군·구</option>
+              {level2Options.map((value) => <option key={value} value={value}>{value === NO_DISTRICT ? "해당 없음" : value}</option>)}
+            </select>
+            <select className={inputCls} value={level3} onChange={(e) => selectLevel3(e.target.value)} disabled={!level2} required>
+              <option value="">읍·면·동</option>
+              {level3Options.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
           </div>
 
-          {locationMethod === "current" ? (
+          <label className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2.5 ${selectedRegion ? "cursor-pointer border-gray-200" : "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-400"}`}>
+            <input
+              type="checkbox"
+              checked={atFarm}
+              disabled={!selectedRegion || locating}
+              onChange={(event) => toggleAtFarm(event.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-13 font-extrabold">지금 농장에 있어요</span>
+          </label>
+          <p className="mt-1 text-11.5 font-semibold text-muted">
+            체크하면 브라우저의 정확한 현재 위치를, 체크하지 않으면 선택한 행정구역의 대표 좌표를 저장합니다.
+          </p>
+
+          {atFarm && (
             <button
               type="button"
               onClick={requestCurrentLocation}
-              disabled={locating}
+              disabled={locating || !selectedRegion}
               className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2.5 text-13.5 font-extrabold text-primary-dark hover:bg-primary-bg disabled:cursor-wait disabled:opacity-60"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" stroke="currentColor" strokeWidth="2" />
-                <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="2" />
-              </svg>
-              {locating ? "현재 위치 확인 중…" : position?.source === "current" ? "현재 위치 다시 지정" : "현재 위치로 지정"}
+              {locating ? "현재 위치 확인 중…" : position ? "현재 위치 다시 확인" : "현재 위치 확인"}
             </button>
-          ) : (
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <select className={inputCls} value={level1} onChange={(e) => selectLevel1(e.target.value)} disabled={regionsLoading}>
-                <option value="">{regionsLoading ? "불러오는 중…" : "시·도"}</option>
-                {level1Options.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select className={inputCls} value={level2} onChange={(e) => selectLevel2(e.target.value)} disabled={!level1}>
-                <option value="">시·군·구</option>
-                {level2Options.map((value) => <option key={value} value={value}>{value === NO_DISTRICT ? "해당 없음" : value}</option>)}
-              </select>
-              <select className={inputCls} value={level3} onChange={(e) => selectLevel3(e.target.value)} disabled={!level2}>
-                <option value="">읍·면·동</option>
-                {level3Options.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </div>
           )}
 
-          {position && (
+          {position && selectedRegion && (
             <p className="mt-2 text-12 font-bold text-primary-dark" role="status">
-              위치 지정 완료 · {position.label} · {position.latitude.toFixed(3)}-{position.longitude.toFixed(3)}
+              위치 지정 완료 · {position.label} · 코드 {selectedRegion.code}
+              {" · "}{position.latitude.toFixed(3)}-{position.longitude.toFixed(3)}
               {position.accuracy != null && ` · 예상 정확도 약 ${Math.round(position.accuracy).toLocaleString()}m`}
             </p>
           )}
           {locationMessage && <p className="mt-1.5 text-12 font-bold text-status-warningDark" role="alert">{locationMessage}</p>}
-          <p className="mt-1 text-11.5 font-semibold text-muted">
-            {edit && !position
-              ? `위치를 지정하지 않으면 기존 위치${edit.latitude != null && edit.longitude != null ? ` (${edit.latitude.toFixed(3)}-${edit.longitude.toFixed(3)})` : ""}를 유지합니다.`
-              : locationMethod === "manual"
-                ? "선택한 읍·면·동의 기상청 대표 좌표가 저장됩니다."
-                : "브라우저에서 확인한 위도·경도가 농장 위치로 저장됩니다."}
-          </p>
         </div>
 
         {err && <p className="text-12.5 font-bold text-status-warningDark">{err}</p>}

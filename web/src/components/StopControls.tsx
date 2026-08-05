@@ -8,8 +8,10 @@
  * 두 배너는 독립적으로 동시 표시될 수 있다 (겹쳐 쌓인다).
  * 색+도형+문구 병기 — 물리가 상위 심각도라 더 강한 표현 (접근성 §5).
  *
- * 배너는 헤더와 함께 화면에 고정되므로(AppShell) 높이가 곧 본문 손실이다.
- * 좁은 폭에서는 한 줄로 접고 상세를 「자세히」로 펼친다 (비기능 §5 모바일·태블릿).
+ * 배너는 **표시 전용**이고 발동·해제 조작은 네비의 정지 자리에 둔다 — 정지 중에도
+ * 그 자리가 비지 않아 우측 구성이 유지되고, 두 버튼이 같은 치수를 공유한다.
+ * 배너는 헤더와 함께 화면에 고정되므로(AppShell) 높이가 곧 본문 손실이다 —
+ * 어느 폭에서도 한 줄로 접고 상세는 셰브론으로 펼친다 (비기능 §5 모바일·태블릿).
  */
 
 import { useState } from "react";
@@ -41,46 +43,24 @@ function EstopIcon({ size = 17 }: { size?: number }) {
   );
 }
 
-/** 해제 버튼의 상자 — 아래 자리끼움도 같은 값을 쓰므로 두 배너의 제목 가용 폭이 같아진다 */
-const RELEASE_BOX = `${CONTROL} justify-center border font-extrabold`;
-
-/**
- * 헤더 사용자 버튼과 폭을 맞춘다 — 두 바에서 세로로 겹치는 자리라 어긋나면 눈에 띈다.
- *
- * 사용자 버튼은 내용 크기이고, 그 구성이 **rem(배율 영향)과 px(고정)의 혼합**이다:
- *   좌우 여백 px-3 + 간격 gap-1.5 + 이름 글자(text-13.5) = 4.406rem  (배율에 따라 커짐)
- *   아이콘 17px + 테두리 2px                              = 19px (고정)
- * GEN-1246 이 글자 크기를 rem 토큰으로 옮기면서 글자도 배율을 받게 됐다 — 그전 기준
- * (59.1px + 1.875rem)은 이제 맞지 않는다. 한쪽만 rem·px 로 박으면 배율마다 어긋난다.
- *
- * minWidth 를 함께 지정해야 한다: flex 항목의 `min-width: auto` 가 내용 최소 폭을
- * 하한으로 삼아, width 만 주면 긴 라벨이 지정 폭을 밀어낸다.
- * 인라인 스타일인 이유는 calc 조합을 Tailwind 임의값으로 두면 가독성이 떨어지기 때문.
- */
-const RELEASE_W = {
-  width: "calc(19px + 4.406rem)",
-  minWidth: "calc(19px + 4.406rem)",
-} as const;
-
 /** 발동자 표기 — 배너에 이메일 전문을 노출하지 않는다 */
 const actor = (v?: string | null) => v?.split("@")[0] || "-";
 
 /**
  * 배너 한 종 — **폭과 무관하게 접힌 상태는 항상 한 줄**이고 상세는 셰브론으로 펼친다.
  *
- * 폭으로 분기하면(sm: 등) 그 경계 바로 위 폭에서 긴 문구가 다시 2~3줄로 늘어난다.
- * 배너는 헤더와 함께 고정되므로 높이가 곧 본문 손실이라, 어느 폭에서도 한 줄을 유지한다.
- * 제목은 truncate — 글자 크기를 키워도 줄이 늘지 않는다.
+ * 폭으로 분기하면(sm: 등) 그 경계 바로 위 폭에서 긴 문구가 다시 2~3줄로 늘어나고,
+ * 경계에서 높이·글자·버튼 크기가 한꺼번에 점프해 보인다.
+ * 넘침은 제목 truncate 로만 흡수한다 — 글자 크기를 키워도 줄이 늘지 않는다.
  */
 function Banner({
-  bar, icon, title, meta, detail, action,
+  bar, icon, title, meta, detail,
 }: {
   bar: string;
   icon: React.ReactNode;
   title: string;                 // 넘치면 말줄임되는 부분
   meta: string;                  // 항상 보여야 하는 짧은 값 (경과 시간)
   detail: React.ReactNode;
-  action?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -101,39 +81,28 @@ function Banner({
             <span className="shrink-0 text-13 font-semibold opacity-90">{meta}</span>
           </span>
 
-          {/* 우측 그룹 — 간격을 헤더 우측 그룹(gap-2)과 같게 둬야 해제 버튼과
-              사용자 버튼의 좌우 위치가 맞는다. 폭만 같고 간격이 다르면 어긋난다 */}
-          <span className="flex shrink-0 items-center gap-2">
-            {/* 해제 버튼이 없는 배너에는 같은 상자를 투명하게 둔다 — 두 배너의 제목
-                가용 폭이 같아져 좁은 폭에서 말줄임 시점과 경과 시간 위치가 어긋나지 않는다 */}
-            {action ?? (
-              <span aria-hidden="true" style={RELEASE_W} className={`${RELEASE_BOX} invisible`}>
-                정지 해제
-              </span>
-            )}
-
-            {/* 펼침 버튼은 두 배너 모두 맨 오른쪽 — 배너 종류에 따라 위치가 흔들리지 않는다 */}
-            <button
-              onClick={() => setOpen(!open)}
-              aria-expanded={open}
-              aria-label={open ? "정지 상세 닫기" : "정지 상세 보기"}
-              className={`${CONTROL} w-9 justify-center border border-white/40 bg-white/15`}
+          {/* 배너는 표시 전용 — 해제는 네비의 정지 버튼 자리에 둔다 (StopRelease).
+              그래서 두 배너의 구조가 같아지고 제목 가용 폭·경과 시간 위치가 자동으로 맞는다 */}
+          <button
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-label={open ? "정지 상세 닫기" : "정지 상세 보기"}
+            className={`${CONTROL} w-9 justify-center border border-white/40 bg-white/15`}
+          >
+            {/* 셰브론 — 디자인 전달본(.dc.html) FAQ 원본 path.
+                전환 없이 즉시 뒤집는다 — 애니메이션을 걸면 반복 클릭 시 중간 각도에서
+                다시 시작해 기울어진 상태로 보인다. 각도는 항상 0 또는 180 */}
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              className={open ? "rotate-180" : ""}
             >
-              {/* 셰브론 — 디자인 전달본(.dc.html) FAQ 원본 path.
-                  전환 없이 즉시 뒤집는다 — 애니메이션을 걸면 반복 클릭 시 중간 각도에서
-                  다시 시작해 기울어진 상태로 보인다. 각도는 항상 0 또는 180 */}
-              <svg
-                width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                className={open ? "rotate-180" : ""}
-              >
-                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </span>
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
         {open && (
-          <div className="pb-1 text-12.5 font-semibold leading-relaxed opacity-95">
+          <div className="mt-2 pb-1 text-12.5 font-semibold leading-relaxed opacity-95">
             {detail}
           </div>
         )}
@@ -142,7 +111,10 @@ function Banner({
   );
 }
 
-export function StopButton({ canStop }: { canStop: boolean }) {
+export function StopButton({ canStop, short }: {
+  canStop: boolean;
+  short: boolean;   // 헤더의 압축 단계 — 폭이 모자랄 때 라벨을 줄인다
+}) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -150,16 +122,16 @@ export function StopButton({ canStop }: { canStop: boolean }) {
   if (!canStop) return null;
   return (
     <>
-      {/* 라벨은 창 너비 기준으로 줄인다 (글자 크기와 무관 — 줄인 라벨도 함께 커진다).
-          전체 명칭은 aria-label 과 확인 모달이 유지한다 (GEN-1246) */}
+      {/* 라벨은 헤더의 실측 압축 단계에 따라 줄인다 — 뷰포트 분기(sm:)로 두면 여백이
+          남는데도 바뀌거나, 큰글씨에서 모자라도 안 바뀐다.
+          전체 명칭은 aria-label 과 확인 모달이 유지한다 */}
       <button
         onClick={() => { setErr(null); setConfirming(true); }}
         aria-label="원격 전체 정지"
         className={`${CONTROL} gap-1.5 border-[1.5px] border-status-warning bg-status-warning/10 px-4 font-extrabold text-status-warningDark`}
       >
         <WarningIcon />
-        <span className="hidden sm:inline">원격 전체 정지</span>
-        <span className="sm:hidden">정지</span>
+        {short ? "정지" : "원격 전체 정지"}
       </button>
 
       {/* 헤더의 backdrop-blur 가 fixed 의 컨테이닝 블록이 되어 inset-0 이 헤더 박스(높이 약
@@ -211,10 +183,8 @@ export function StopButton({ canStop }: { canStop: boolean }) {
   );
 }
 
-export function StopBanners({ stops, canRelease }: { stops: StopState; canRelease: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
+/** 정지 배너 2종 — 표시 전용. 해제 조작은 네비의 StopRelease 가 담당한다 */
+export function StopBanners({ stops }: { stops: StopState }) {
   return (
     <>
       {/* 물리 비상정지 — 상위 심각도(적색 실선 강조), 해제 경로 없음 */}
@@ -238,28 +208,97 @@ export function StopBanners({ stops, canRelease }: { stops: StopState; canReleas
           meta={timeAgo(stops.remote.engaged_at)}
           detail={
             <>
-              전 농장의 모든 로봇·설비 작동이 중단되었습니다. 안전이 확인되면 해제하세요 —
-              해제 전까지 자동 스케줄과 원격 제어가 차단됩니다 · {actor(stops.remote.by)} 발동
-              {err && ` · ${err}`}
+              전 농장의 모든 로봇·설비 작동이 중단되었습니다. 안전이 확인되면 상단
+              「정지 해제」로 해제하세요 — 해제 전까지 자동 스케줄과 원격 제어가
+              차단됩니다 · {actor(stops.remote.by)} 발동
             </>
           }
-          action={
-            canRelease ? (
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * 정지 해제 — **발동 버튼과 같은 자리**(네비 우측)에 둔다.
+ *
+ * 배너에 두면 (1) 배너 높이·폭 압박이 커지고 (2) 정지 중 네비의 정지 자리가 비어
+ * 우측 구성이 무너지며 (3) 두 버튼의 폭을 맞추려 실측값을 박아야 한다.
+ * 같은 자리에 두면 CONTROL 치수를 공유하므로 정렬 문제가 생기지 않는다.
+ *
+ * 해제도 확인 절차를 거친다 — 발동은 기계를 멈추지만 **해제는 다시 움직이게 하므로**
+ * 오조작 위험이 더 크다 (design-change-spec §1 「안전이 확인되면 해제」).
+ */
+export function StopRelease({ canRelease, estopActive, short }: {
+  canRelease: boolean;
+  estopActive: boolean;   // 현장 비상정지 동시 성립 — 해제 범위를 오해하지 않게 안내한다
+  short: boolean;         // 헤더의 압축 단계
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  if (!canRelease) return null;
+  return (
+    <>
+      {/* 라벨 축약 기준은 발동 버튼과 동일 */}
+      <button
+        onClick={() => { setErr(null); setConfirming(true); }}
+        aria-label="원격 정지 해제"
+        className={`${CONTROL} gap-1.5 border-[1.5px] border-status-caution bg-status-caution/10 px-4 font-extrabold text-status-cautionDark`}
+      >
+        <WarningIcon />
+        {short ? "해제" : "원격 정지 해제"}
+      </button>
+
+      {confirming && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-6">
+          <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-xl">
+            <div className="mx-auto mb-4 flex h-[68px] w-[68px] items-center justify-center rounded-[20px] bg-status-caution/10 text-status-cautionDark">
+              <WarningIcon size={36} />
+            </div>
+            <h2 className="mb-2 text-22 font-extrabold">원격 전체 정지를 해제할까요?</h2>
+            <p className="mb-6 text-14.5 font-semibold leading-relaxed text-gray-600">
+              해제하면 <b>로봇·설비가 다시 작동</b>하고 자동 스케줄이 재개됩니다.<br />
+              <b>현장 안전을 확인한 뒤</b> 해제하세요.
+              {estopActive && (
+                <>
+                  <br />
+                  <span className="text-12.5 text-muted">
+                    현장 비상정지는 이 조작으로 풀리지 않습니다
+                  </span>
+                </>
+              )}
+            </p>
+            {err && (
+              <p className="mb-4 rounded-xl bg-status-warning/10 px-4 py-3 text-13.5 font-bold text-status-warningDark">
+                {err}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirming(false)}
+                className="flex-1 rounded-2xl bg-gray-100 py-3.5 text-16 font-extrabold text-gray-600"
+              >
+                취소
+              </button>
               <button
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
-                  setErr(await releaseStop());
+                  const failed = await releaseStop();
                   setBusy(false);
+                  setErr(failed);
+                  if (!failed) setConfirming(false);  // 실패하면 닫지 않는다 — 배너가 남아 성공과 구분 안 됨
                 }}
-                style={RELEASE_W}
-                className={`${RELEASE_BOX} border-[#C05600]/20 bg-white text-[#C05600] disabled:opacity-60`}
+                className="flex-1 rounded-2xl bg-status-cautionDark py-3.5 text-16 font-extrabold text-white disabled:opacity-60"
               >
                 {busy ? "해제 중…" : "정지 해제"}
               </button>
-            ) : undefined
-          }
-        />
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   );

@@ -56,8 +56,8 @@ export default function StatsPage() {
   return (
     <main className="mx-auto max-w-7xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">통계·분석</h1>
-        <span className="text-[13px] font-semibold text-muted">생육환경 집계 및 조회</span>
+        <h1 className="text-22 font-extrabold">통계·분석</h1>
+        <span className="text-13 font-semibold text-muted">생육환경 집계 및 조회</span>
       </div>
 
       {/* 기간 · 농장 선택 */}
@@ -67,7 +67,7 @@ export default function StatsPage() {
             <button
               key={p.key}
               onClick={() => setPeriod(p)}
-              className={`rounded-lg px-3 py-1.5 text-[12.5px] ${
+              className={`rounded-lg px-3 py-1.5 text-12.5 ${
                 period.key === p.key ? "bg-primary font-extrabold text-white" : "font-bold text-gray-500"
               }`}
             >
@@ -75,7 +75,7 @@ export default function StatsPage() {
             </button>
           ))}
           <span className="flex items-center gap-1 pl-1.5">
-            <span className="text-[12px] font-bold text-gray-300">주·월</span>
+            <span className="text-12 font-bold text-gray-300">주·월</span>
             <PlannedChip basis="FR-14 집계" />
           </span>
         </span>
@@ -85,7 +85,7 @@ export default function StatsPage() {
             <button
               key={f.farm_id}
               onClick={() => setFarmId(f.farm_id)}
-              className={`rounded-xl border px-3 py-1.5 text-[12.5px] ${
+              className={`rounded-xl border px-3 py-1.5 text-12.5 ${
                 farmId === f.farm_id
                   ? "border-primary bg-primary-bg font-extrabold text-primary-dark"
                   : "border-gray-200 bg-white font-bold text-gray-500"
@@ -108,24 +108,24 @@ export default function StatsPage() {
           const meta = SENSOR_META[type];
           return (
             <Card key={type}>
-              <div className="text-[13px] font-bold text-gray-500">{label}</div>
-              <div className="mt-1 text-[24px] font-extrabold">
+              <div className="text-13 font-bold text-gray-500">{label}</div>
+              <div className="mt-1 text-24 font-extrabold">
                 {s ? s.avg.toFixed(1) : "—"}
-                <span className="ml-0.5 text-[12px] font-bold text-muted">{meta.unit}</span>
+                <span className="ml-0.5 text-12 font-bold text-muted">{meta.unit}</span>
               </div>
-              <div className="mt-1 text-[11.5px] font-semibold text-muted">
+              <div className="mt-1 text-11.5 font-semibold text-muted">
                 {s ? `최저 ${s.min.toFixed(1)} · 최고 ${s.max.toFixed(1)}` : "데이터 없음"}
               </div>
             </Card>
           );
         })}
         <Card>
-          <div className="text-[13px] font-bold text-gray-500">평균 소모전력</div>
-          <div className="mt-1 text-[24px] font-extrabold">
+          <div className="text-13 font-bold text-gray-500">평균 소모전력</div>
+          <div className="mt-1 text-24 font-extrabold">
             {power ? power.avg.toFixed(2) : "—"}
-            <span className="ml-0.5 text-[12px] font-bold text-muted">kW</span>
+            <span className="ml-0.5 text-12 font-bold text-muted">kW</span>
           </div>
-          <div className="mt-1 text-[11.5px] font-semibold text-muted">
+          <div className="mt-1 text-11.5 font-semibold text-muted">
             {power ? `표본 ${power.count.toLocaleString()}건` : "데이터 없음"}
           </div>
         </Card>
@@ -137,7 +137,7 @@ export default function StatsPage() {
           <SectionTitle
             title="온·습도 추이"
             sub={`${period.label} · ${period.bucket}분 평균`}
-            right={loading ? <span className="text-[12px] font-semibold text-muted">불러오는 중…</span> : undefined}
+            right={loading ? <span className="text-12 font-semibold text-muted">불러오는 중…</span> : undefined}
           />
           <LineChart
             height={240}
@@ -152,7 +152,7 @@ export default function StatsPage() {
               },
             ]}
           />
-          <p className="mt-2 text-[11.5px] font-semibold text-muted">
+          <p className="mt-2 text-11.5 font-semibold text-muted">
             온도는 좌축, 습도는 우축 — 값 범위가 다른 계열을 각각의 축으로 표시합니다.
           </p>
         </Card>

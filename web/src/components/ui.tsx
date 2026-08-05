@@ -5,11 +5,11 @@
  * 상태는 색 + 도형·문자 병기 (비기능 §5 접근성: 색 단독 구분 금지).
  */
 
-import { CSSProperties, RefObject, useEffect, useRef, useState } from "react";
+import { CSSProperties, RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 // 헤더 컨트롤 공통 — 높이·글자·정렬 통일. 터치 기기에서만 40px 로 키운다 (비기능 §5)
 export const CONTROL =
-  "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-xl text-[13.5px] [@media(pointer:coarse)]:h-10";
+  "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-xl text-13.5 [@media(pointer:coarse)]:h-10";
 
 /** 아이콘 전용 정사각 컨트롤 */
 export const CONTROL_ICON = `${CONTROL} w-9 justify-center [@media(pointer:coarse)]:w-10`;
@@ -22,21 +22,40 @@ export function useAnchoredPanel(open: boolean, maxWidth: number) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [style, setStyle] = useState<CSSProperties>();
 
+  const place = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const w = Math.min(maxWidth, window.innerWidth - margin * 2);
+    const left = Math.max(margin, Math.min(r.right - w, window.innerWidth - w - margin)) - r.left;
+    // 값이 같으면 상태를 갱신하지 않는다 — 매 렌더 재계산이 무한 루프가 되지 않게
+    setStyle((prev) =>
+      prev?.left === left && prev?.width === w ? prev : { left, width: w },
+    );
+  }, [maxWidth]);
+
+  // 열린 동안 매 렌더 재계산 — 글자 크기 변경처럼 앵커가 움직이는 경우를 잡는다.
+  // 이펙트는 자식 → 부모 순이라 즉시 계산은 부모(PrefsProvider)의 DOM 변경 전에
+  // 돌 수 있다. 다음 프레임에 한 번 더 재서 최종 레이아웃을 반영한다.
   useEffect(() => {
     if (!open) return;
-    const place = () => {
-      const el = anchorRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const margin = 8;
-      const w = Math.min(maxWidth, window.innerWidth - margin * 2);
-      const left = Math.max(margin, Math.min(r.right - w, window.innerWidth - w - margin));
-      setStyle({ left: left - r.left, width: w });  // 앵커 기준 상대 오프셋
-    };
     place();
+    const id = requestAnimationFrame(place);
+    return () => cancelAnimationFrame(id);
+  });
+
+  useEffect(() => {
+    if (!open) return;
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
-  }, [open, maxWidth]);
+  }, [open, place]);
+
+  // 닫힐 때 위치를 버린다 — 닫힌 동안 레이아웃이 바뀌면(리사이즈·글자 크기) 옛 좌표가
+  // 남아 다시 열 때 한 프레임 엉뚱한 자리에 보인다. 리스너도 닫힌 동안은 없다.
+  useEffect(() => {
+    if (!open) setStyle(undefined);
+  }, [open]);
 
   // 위치 계산은 렌더 후라 첫 프레임에 잘못된 자리에 보인다 — 계산 전까지 감춘다
   return { anchorRef, style, unplaced: !style };
@@ -100,8 +119,8 @@ export function SectionTitle({
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-baseline gap-2">
-      <h3 className="text-[15px] font-extrabold">{title}</h3>
-      {sub && <span className="text-[12.5px] font-semibold text-muted">· {sub}</span>}
+      <h3 className="text-15 font-extrabold">{title}</h3>
+      {sub && <span className="text-12.5 font-semibold text-muted">· {sub}</span>}
       {right && <span className="ml-auto">{right}</span>}
     </div>
   );
@@ -110,7 +129,7 @@ export function SectionTitle({
 export function StatusDot({ sev, label }: { sev: string; label?: string }) {
   const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[12.5px] font-bold ${s.text}`}>
+    <span className={`inline-flex items-center gap-1.5 text-12.5 font-bold ${s.text}`}>
       <span className={`h-2 w-2 rounded-full ${s.dot}`} />
       {label ?? s.label}
     </span>
@@ -129,12 +148,12 @@ export function KpiTile({
     : tone === "caution" ? "text-status-cautionDark" : "";
   return (
     <Card>
-      <div className="text-[13px] font-bold text-gray-500">{label}</div>
-      <div className={`mt-1 text-[26px] font-extrabold leading-tight ${valueColor}`}>
+      <div className="text-13 font-bold text-gray-500">{label}</div>
+      <div className={`mt-1 text-26 font-extrabold leading-tight ${valueColor}`}>
         {value}
-        {unit && <span className="ml-0.5 text-[13px] font-bold text-muted">{unit}</span>}
+        {unit && <span className="ml-0.5 text-13 font-bold text-muted">{unit}</span>}
       </div>
-      {detail && <div className="mt-1 text-[12px] font-semibold text-muted">{detail}</div>}
+      {detail && <div className="mt-1 text-12 font-semibold text-muted">{detail}</div>}
     </Card>
   );
 }
@@ -171,7 +190,7 @@ export function Gauge({
         <div className={`relative h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
       </div>
       {!compact && (
-        <div className="mt-1 flex justify-between text-[11px] font-semibold text-muted">
+        <div className="mt-1 flex justify-between text-11 font-semibold text-muted">
           <span>
             {okMin != null && okMax != null ? `적정 ${okMin}~${okMax}${unit}` : `${min}~${max}${unit}`}
           </span>
@@ -203,7 +222,7 @@ export function LineChart({ series, height = 180 }: { series: ChartSeries[]; hei
   const usable = series.filter((s) => s.points.length > 0);
   if (usable.length === 0) {
     return (
-      <div className="flex items-center justify-center text-[13px] font-semibold text-muted" style={{ height }}>
+      <div className="flex items-center justify-center text-13 font-semibold text-muted" style={{ height }}>
         데이터가 없어요
       </div>
     );
@@ -251,12 +270,12 @@ export function LineChart({ series, height = 180 }: { series: ChartSeries[]; hei
       {/* 범례 — 어느 계열이 어느 축인지 명시 */}
       <div className="mb-2 flex flex-wrap gap-3">
         {scaled.map((s, i) => (
-          <span key={s.name} className="flex items-center gap-1.5 text-[12px] font-bold text-gray-600">
+          <span key={s.name} className="flex items-center gap-1.5 text-12 font-bold text-gray-600">
             <span className="h-2 w-3 rounded-sm" style={{ background: s.color }} />
             {s.name}
             {s.unit && <span className="font-semibold text-muted">({s.unit})</span>}
             {scaled.length > 1 && i < 2 && (
-              <span className="rounded bg-gray-100 px-1 text-[10.5px] font-extrabold text-gray-500">
+              <span className="rounded bg-gray-100 px-1 text-10.5 font-extrabold text-gray-500">
                 {i === 0 ? "좌축" : "우축"}
               </span>
             )}
@@ -267,7 +286,7 @@ export function LineChart({ series, height = 180 }: { series: ChartSeries[]; hei
       <div className="flex gap-1.5">
         {/* 좌축 눈금 */}
         <div
-          className="flex w-9 flex-col justify-between text-right text-[10.5px] font-semibold"
+          className="flex w-9 flex-col justify-between text-right text-10.5 font-semibold"
           style={{ height, color: left.color }}
         >
           {ticks(left).map((v, i) => <span key={i}>{v}</span>)}
@@ -293,7 +312,7 @@ export function LineChart({ series, height = 180 }: { series: ChartSeries[]; hei
         {/* 우축 눈금 (둘째 계열이 있을 때만) */}
         {right && (
           <div
-            className="flex w-9 flex-col justify-between text-[10.5px] font-semibold"
+            className="flex w-9 flex-col justify-between text-10.5 font-semibold"
             style={{ height, color: right.color }}
           >
             {ticks(right).map((v, i) => <span key={i}>{v}</span>)}
@@ -303,7 +322,7 @@ export function LineChart({ series, height = 180 }: { series: ChartSeries[]; hei
 
       {timeAxis.length > 1 && (
         <div
-          className="mt-1 flex justify-between text-[11px] font-semibold text-muted"
+          className="mt-1 flex justify-between text-11 font-semibold text-muted"
           style={{ paddingLeft: "2.625rem", paddingRight: right ? "2.625rem" : 0 }}
         >
           <span>{timeLabel(timeAxis[0].ts)}</span>
@@ -332,11 +351,11 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-baseline gap-2">
-          <h3 className="text-[18px] font-extrabold">{title}</h3>
-          {sub && <span className="text-[12.5px] font-semibold text-muted">{sub}</span>}
+          <h3 className="text-18 font-extrabold">{title}</h3>
+          {sub && <span className="text-12.5 font-semibold text-muted">{sub}</span>}
           <button
             onClick={onClose} aria-label="닫기"
-            className="ml-auto text-[20px] leading-none text-gray-400"
+            className="ml-auto text-20 leading-none text-gray-400"
           >
             ×
           </button>

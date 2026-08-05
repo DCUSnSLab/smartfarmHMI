@@ -18,8 +18,14 @@ DB_DSN = os.environ.get("DB_DSN",
 
 # 하네스 전용 팜 — 기본 스택 팜(seongju·jinju)과 farm_id 를 겹치지 않게 유지
 FARMS = {
-    "hwaseong": {"name": "화성 딸기 스마트팜", "farm_type": "greenhouse", "crop": "딸기"},
-    "gimje": {"name": "김제 벼 노지", "farm_type": "open_field", "crop": "벼"},
+    "hwaseong": {
+        "name": "화성 딸기 스마트팜", "farm_type": "greenhouse", "crop": "딸기",
+        "region_code": "4159131000", "latitude": 37.2054787, "longitude": 126.7696365,
+    },
+    "gimje": {
+        "name": "김제 벼 노지", "farm_type": "open_field", "crop": "벼",
+        "region_code": "5221041000", "latitude": 35.8560111, "longitude": 126.7681528,
+    },
 }
 
 # hwaseong config (configs/hwaseong.yaml)와 일치해야 하는 기대값

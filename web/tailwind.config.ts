@@ -28,6 +28,8 @@ const config: Config = {
         "22": "1.375rem",
         "24": "1.5rem",
         "26": "1.625rem",
+        "34": "2.125rem",
+        "56": "3.5rem",
       },
       colors: {
         primary: { DEFAULT: "#00A05A", dark: "#007A44", bg: "#E7F7EF" },

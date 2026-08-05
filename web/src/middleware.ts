@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_COOKIE = "sf_access";
 const REFRESH_COOKIE = "sf_refresh";
-const PUBLIC_PATHS = ["/login", "/forbidden"];
+const PUBLIC_PATHS = ["/login", "/forbidden", "/data"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

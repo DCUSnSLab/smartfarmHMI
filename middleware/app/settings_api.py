@@ -11,12 +11,13 @@ device_meta 와 상세 테이블은 seed.py 의 2단계(device_meta.id 확보 �
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.weather import collect_farm_weather, validate_coordinates
 
 router = APIRouter(prefix="/internal")
 
@@ -41,6 +42,9 @@ class FarmUpdate(BaseModel):
     farm_type: str | None = None
     crop: str | None = None
     region_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_m: float | None = None
 
 
 class DeviceUpsert(BaseModel):
@@ -176,17 +180,41 @@ async def _create_device(conn, farm_id: str, d: DeviceUpsert) -> int:
 # ── 팜 수정/삭제 ──────────────────────────────────────────────
 
 @router.put("/farms/{farm_id}")
-async def update_farm(farm_id: str, req: FarmUpdate):
+async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: BackgroundTasks):
     """팜 메타데이터 수정 — farm_id(자연키·MQTT 토픽)는 불변."""
     if req.farm_type is not None and req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
-    patch = {k: v for k, v in req.model_dump().items() if v is not None}
+    if (req.latitude is None) != (req.longitude is None):
+        raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
+    patch = {
+        k: v
+        for k, v in req.model_dump(exclude={"region_code", "latitude", "longitude", "accuracy_m"}).items()
+        if v is not None
+    }
+    location_values = (req.region_code, req.latitude, req.longitude)
+    if any(value is not None for value in location_values):
+        if not all(value is not None for value in location_values):
+            raise HTTPException(400, "region_code, latitude, longitude는 함께 전달해야 합니다")
+        if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+            raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
+        try:
+            validate_coordinates(req.latitude, req.longitude)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        patch["latitude"] = req.latitude
+        patch["longitude"] = req.longitude
+        patch["region_code"] = req.region_code
     if not patch:
         raise HTTPException(400, "수정할 필드가 없습니다")
     patch["updated_at"] = _now()
     async with _engine().begin() as conn:
         await _require_farm(conn, farm_id)
         await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
+    if "latitude" in patch and "longitude" in patch:
+        background_tasks.add_task(
+            collect_farm_weather, _engine(), farm_id, patch["region_code"],
+            patch["latitude"], patch["longitude"]
+        )
     return {"ok": True, "farm_id": farm_id}
 
 

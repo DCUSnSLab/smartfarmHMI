@@ -3,12 +3,13 @@
 실시간은 내부 MQTT 재발행으로 흐르고, 여기는 초기 로드·이력 조회를 담당한다.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.weather import collect_farm_weather, validate_coordinates
 
 router = APIRouter(prefix="/internal")
 
@@ -18,10 +19,14 @@ class FarmUpsert(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
+    region_code: str
+    latitude: float
+    longitude: float
+    accuracy_m: float | None = None
 
 
 @router.post("/farms")
-async def upsert_farm(req: FarmUpsert):
+async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
     """농장 등록 (멱등 upsert) — FR-38 다농장의 초석.
 
     가상 엣지 연동 테스트가 둘째 농장을 붙일 때 사용한다. 미등록 농장의
@@ -29,17 +34,29 @@ async def upsert_farm(req: FarmUpsert):
     """
     if req.farm_type not in ("greenhouse", "plant_factory", "open_field"):
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
+    if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+        raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
+    try:
+        validate_coordinates(req.latitude, req.longitude)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         await conn.execute(
             insert(m.farm)
             .values(farm_id=req.farm_id, name=req.name,
-                    farm_type=req.farm_type, crop=req.crop)
+                    farm_type=req.farm_type, crop=req.crop, region_code=req.region_code,
+                    latitude=req.latitude, longitude=req.longitude)
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 재등록하면 재활성화한다.
-                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "is_active": True},
+                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop,
+                      "region_code": req.region_code, "latitude": req.latitude,
+                      "longitude": req.longitude, "is_active": True},
             )
         )
+    background_tasks.add_task(
+        collect_farm_weather, _engine(), req.farm_id, req.region_code, req.latitude, req.longitude
+    )
     return {"ok": True, "farm_id": req.farm_id}
 
 
@@ -63,12 +80,31 @@ async def list_farms():
     return [
         {
             "farm_id": f["farm_id"], "name": f["name"], "farm_type": f["farm_type"],
-            "crop": f["crop"],
+            "crop": f["crop"], "region_code": f["region_code"],
+            "latitude": f["latitude"], "longitude": f["longitude"],
             "devices_total": len(by_farm.get(f["farm_id"], [])),
             "devices_online": by_farm.get(f["farm_id"], []).count("online"),
         }
         for f in farms
     ]
+
+
+@router.get("/weather")
+async def latest_weather():
+    """활성 농장별 최신 외부 날씨. 미수집 농장도 null 값으로 포함한다."""
+    async with _engine().connect() as conn:
+        rows = (
+            await conn.execute(text(
+                "SELECT f.farm_id, f.name, f.region_code, f.latitude, f.longitude, w.ts, w.received_at, "
+                "w.temperature_c, w.humidity_pct, w.precipitation_mm, "
+                "w.wind_ms, w.condition, w.solar_level, w.provider "
+                "FROM mw.farm f LEFT JOIN LATERAL ("
+                " SELECT * FROM mw.weather_reading wr WHERE wr.farm_id=f.farm_id AND f.latitude IS NOT NULL AND f.longitude IS NOT NULL "
+                " ORDER BY wr.ts DESC LIMIT 1"
+                ") w ON true WHERE f.is_active ORDER BY f.created_at"
+            ))
+        ).mappings().all()
+    return [dict(row) for row in rows]
 
 
 @router.get("/farms/{farm_id}/snapshot")

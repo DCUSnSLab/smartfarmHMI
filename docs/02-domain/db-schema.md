@@ -44,7 +44,9 @@
 | name | TEXT | NOT NULL |
 | farm_type | TEXT | NOT NULL, CHECK (`greenhouse`\|`plant_factory`\|`open_field`) |
 | crop | TEXT | NULL |
-| region_code | TEXT | NULL — 기상 조회용 지역 식별 (OPN-17 확정 시 형식 구체화) |
+| region_code | TEXT | NULL — 10자리 행정구역코드 |
+| latitude | DOUBLE PRECISION | NULL — WGS84 위도 |
+| longitude | DOUBLE PRECISION | NULL — WGS84 경도 |
 | is_active | BOOLEAN | NOT NULL DEFAULT true |
 | created_at / updated_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 
@@ -281,7 +283,7 @@
 | farm_id | TEXT | NOT NULL |
 | temperature_c / humidity_pct / precipitation_mm / wind_ms | DOUBLE PRECISION | NULL |
 | condition | TEXT | NULL — 맑음·구름많음 등 |
-| solar_level | TEXT | NULL — 일사량 수준 |
+| solar_level | TEXT | NULL — 기상청 자외선지수 |
 | provider | TEXT | NOT NULL — 공급자 식별 (OPN-17) |
 | raw | JSONB | NOT NULL DEFAULT '{}' — 공급자 응답 원문 |
 

@@ -16,6 +16,7 @@ from middleware.app.commands import timeout_watcher
 from middleware.app.config import settings
 from middleware.app.ingest import connection_monitor, ingest_loop
 from middleware.app.republish import InternalPublisher
+from middleware.app.weather import weather_collection_loop
 
 engine = create_async_engine(settings.database_url, pool_size=5)
 publisher = InternalPublisher()
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(ingest_loop(engine, publisher), name="ingest"),
         asyncio.create_task(connection_monitor(engine, publisher), name="conn-monitor"),
         asyncio.create_task(timeout_watcher(engine, publisher), name="cmd-timeout"),
+        asyncio.create_task(weather_collection_loop(engine), name="weather-collector"),
     ]
     yield
     for t in tasks:

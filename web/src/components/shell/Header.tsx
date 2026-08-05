@@ -20,6 +20,7 @@ import { StopButton } from "@/components/StopControls";
 import { CONTROL, CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AuthUser, ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
+import { useGlobalAlerts } from "@/lib/monitor";
 import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
 const EXPAND_MARGIN = 24;  // 되펼칠 때 요구하는 여유 폭(px) — 경계 깜빡임 방지
@@ -181,7 +182,8 @@ function NavDrawer({ pathname, onClose }: { pathname: string; onClose: () => voi
 export function Header() {
   const pathname = usePathname();
   const user = useUser();
-  const { scope, alerts, stops } = useFarmData();
+  const { stops } = useFarmData();
+  const globalAlerts = useGlobalAlerts();
   const { level } = useFontLevel();
   const [collapsed, setCollapsed] = useState(false);
   const [tight, setTight] = useState(false);      // 접은 뒤에도 넘칠 때 (좁은 폭 + 큰글씨)
@@ -318,7 +320,7 @@ export function Header() {
             {user && <UserMenu user={user} compact={collapsed} />}
 
             {/* 알림 — 전역 벨 (스코프 무관: 전체 알림) */}
-            <AlertPanel farmId={scope === "all" ? null : scope} alerts={alerts} />
+            <AlertPanel key={pathname} farmId={null} alerts={globalAlerts} />
 
             {/* 원격 전체 정지 — 발동 중이면 배너의 해제 버튼으로 (중복 방지) */}
             {!stops.remote && <StopButton canStop={canControl(user)} />}

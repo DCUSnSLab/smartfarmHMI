@@ -130,16 +130,14 @@ export function AlertPanel({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={`h-2 w-2 flex-none rounded-full ${SEV[a.severity].dot}`} />
-        
                   <span className="min-w-0 flex-1 truncate text-13.5 font-bold">
                     {a.title}
-                  </span> 
-                    
-                  <span className={`text-[11px] font-extrabold ${SEV[a.severity].text}`}>
+                  </span>
+                  <span className={`text-11 font-extrabold ${SEV[a.severity].text}`}>
                     {SEV[a.severity].label}
                   </span>
                 </span>
-                
+
                 <span className="mt-0.5 block truncate pl-4 text-12 font-semibold text-muted">
                   {a.body} · {timeAgo(a.occurred_at)}
                 </span>

@@ -52,7 +52,7 @@ export function Assistant() {
       <button
         onClick={() => setOpen(!open)}
         aria-label="음성·도움 어시스턴트"
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-[22px] text-white shadow-lg"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-22 text-white shadow-lg"
       >
         {open ? "×" : "💬"}
       </button>
@@ -60,7 +60,7 @@ export function Assistant() {
       {open && (
         <div className="fixed bottom-24 right-6 z-40 flex max-h-[70vh] w-[min(380px,calc(100vw-3rem))] flex-col rounded-2xl bg-white shadow-xl ring-1 ring-gray-100">
           <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-            <span className="text-[14.5px] font-extrabold">음성·도움 어시스턴트</span>
+            <span className="text-14.5 font-extrabold">음성·도움 어시스턴트</span>
             <PlannedChip basis="FR-27·30 엔진 미연동" />
           </div>
 
@@ -68,7 +68,7 @@ export function Assistant() {
             {msgs.map((m, i) => (
               <div
                 key={i}
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] font-semibold leading-relaxed ${
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-13 font-semibold leading-relaxed ${
                   m.role === "user"
                     ? "ml-auto bg-primary text-white"
                     : "bg-surface text-gray-700"
@@ -84,15 +84,15 @@ export function Assistant() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="메시지 입력…"
-              className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[13px] font-semibold outline-none focus:border-primary"
+              className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-13 font-semibold outline-none focus:border-primary"
             />
             <button
               type="button" disabled title="음성 인식 엔진 미연동 (FR-27)"
-              className="rounded-xl bg-gray-100 px-3 text-[13px] font-bold text-gray-400"
+              className="rounded-xl bg-gray-100 px-3 text-13 font-bold text-gray-400"
             >
               🎤
             </button>
-            <button type="submit" className="rounded-xl bg-primary px-3 text-[13px] font-extrabold text-white">
+            <button type="submit" className="rounded-xl bg-primary px-3 text-13 font-extrabold text-white">
               전송
             </button>
           </form>

@@ -70,7 +70,7 @@ export function AlertPanel({
           <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
         {unacked > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-status-warning px-1 text-[11px] font-extrabold text-white">
+          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-status-warning px-1 text-11 font-extrabold text-white">
             {unacked}
           </span>
         )}
@@ -84,20 +84,20 @@ export function AlertPanel({
           }`}
         >
           <div className="mb-3 flex items-center gap-2">
-            <span className="text-[15px] font-extrabold">알림</span>
-            <span className="text-[12px] font-bold text-muted">미확인 {unacked}건</span>
+            <span className="text-15 font-extrabold">알림</span>
+            <span className="text-12 font-bold text-muted">미확인 {unacked}건</span>
             <span className="ml-auto flex gap-2">
               {farmId && (
                 <button
                   onClick={() => void ackAllAlerts(farmId)}
-                  className="text-[12px] font-bold text-primary-dark"
+                  className="text-12 font-bold text-primary-dark"
                 >
                   모두 읽음
                 </button>
               )}
               <button
                 onClick={() => { setOpen(false); router.push("/alerts"); }}
-                className="text-[12px] font-bold text-gray-500"
+                className="text-12 font-bold text-gray-500"
               >
                 전체 보기
               </button>
@@ -108,7 +108,7 @@ export function AlertPanel({
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={`rounded-lg px-2.5 py-1 text-[12px] font-bold ${
+                className={`rounded-lg px-2.5 py-1 text-12 font-bold ${
                   filter === f.key ? "bg-primary-bg text-primary-dark" : "bg-gray-50 text-gray-500"
                 }`}
               >
@@ -118,7 +118,7 @@ export function AlertPanel({
           </div>
           <div className="max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {list.length === 0 && (
-              <div className="py-8 text-center text-[13px] font-semibold text-muted">알림이 없어요</div>
+              <div className="py-8 text-center text-13 font-semibold text-muted">알림이 없어요</div>
             )}
             {list.map((a) => (
               <button
@@ -130,12 +130,17 @@ export function AlertPanel({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={`h-2 w-2 flex-none rounded-full ${SEV[a.severity].dot}`} />
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] font-bold">{a.title}</span>
+        
+                  <span className="min-w-0 flex-1 truncate text-13.5 font-bold">
+                    {a.title}
+                  </span> 
+                    
                   <span className={`text-[11px] font-extrabold ${SEV[a.severity].text}`}>
                     {SEV[a.severity].label}
                   </span>
                 </span>
-                <span className="mt-0.5 block truncate pl-4 text-[12px] font-semibold text-muted">
+                
+                <span className="mt-0.5 block truncate pl-4 text-12 font-semibold text-muted">
                   {a.body} · {timeAgo(a.occurred_at)}
                 </span>
               </button>
@@ -165,13 +170,13 @@ export function AlertList({
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-[13px] font-bold text-muted">미확인 {unacked}건</span>
+        <span className="text-13 font-bold text-muted">미확인 {unacked}건</span>
         <span className="flex gap-1.5">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`rounded-lg px-2.5 py-1 text-[12.5px] font-bold ${
+              className={`rounded-lg px-2.5 py-1 text-12.5 font-bold ${
                 filter === f.key ? "bg-primary-bg text-primary-dark" : "bg-white text-gray-500"
               }`}
             >
@@ -182,7 +187,7 @@ export function AlertList({
         {farmId && (
           <button
             onClick={() => void ackAllAlerts(farmId)}
-            className="ml-auto rounded-lg bg-white px-3 py-1 text-[12.5px] font-bold text-primary-dark shadow-sm"
+            className="ml-auto rounded-lg bg-white px-3 py-1 text-12.5 font-bold text-primary-dark shadow-sm"
           >
             모두 읽음
           </button>
@@ -191,7 +196,7 @@ export function AlertList({
 
       <div className="rounded-2xl bg-white p-2 shadow-sm">
         {list.length === 0 && (
-          <div className="py-10 text-center text-[13px] font-semibold text-muted">알림이 없어요</div>
+          <div className="py-10 text-center text-13 font-semibold text-muted">알림이 없어요</div>
         )}
         {list.map((a) => (
           <button
@@ -206,19 +211,19 @@ export function AlertList({
           >
             <span className={`h-2.5 w-2.5 flex-none rounded-full ${SEV[a.severity].dot}`} />
             <span className="min-w-0 flex-1">
-              <span className="block text-[14px] font-bold">
+              <span className="block text-14 font-bold">
                 {showFarm && a.farm_id && (
                   <span className="mr-1.5 text-muted">{a.farm_id}</span>
                 )}
                 {a.title}
               </span>
-              <span className="block text-[12.5px] font-semibold text-muted">{a.body}</span>
+              <span className="block text-12.5 font-semibold text-muted">{a.body}</span>
             </span>
             <span className="flex-none text-right">
-              <span className={`block text-[11.5px] font-extrabold ${SEV[a.severity].text}`}>
+              <span className={`block text-11.5 font-extrabold ${SEV[a.severity].text}`}>
                 {SEV[a.severity].label}
               </span>
-              <span className="block text-[11.5px] font-semibold text-muted">
+              <span className="block text-11.5 font-semibold text-muted">
                 {timeAgo(a.occurred_at)}
               </span>
             </span>

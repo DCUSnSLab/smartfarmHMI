@@ -33,27 +33,27 @@ function ManualControlModal({
       sub={MISSION_LABEL[robot.mission_state] ?? robot.mission_state}
       onClose={onClose}
       footer={
-        <button onClick={onClose} className="w-full rounded-xl bg-primary py-3 text-[14px] font-extrabold text-white">
+        <button onClick={onClose} className="w-full rounded-xl bg-primary py-3 text-14 font-extrabold text-white">
           닫기
         </button>
       }
     >
-      <div className="mb-4 rounded-xl bg-status-caution/10 px-3 py-2 text-[12.5px] font-bold text-status-cautionDark">
+      <div className="mb-4 rounded-xl bg-status-caution/10 px-3 py-2 text-12.5 font-bold text-status-cautionDark">
         수동 제어 중에는 자동 스케줄이 일시 중지됩니다 (인터록 명세 예정)
       </div>
 
       <div className="mb-4 grid grid-cols-3 gap-3">
         <div>
-          <div className="text-[12px] font-bold text-gray-500">배터리</div>
-          <div className="text-[20px] font-extrabold">{robot.battery_pct ?? "—"}%</div>
+          <div className="text-12 font-bold text-gray-500">배터리</div>
+          <div className="text-20 font-extrabold">{robot.battery_pct ?? "—"}%</div>
         </div>
         <div>
-          <div className="text-[12px] font-bold text-gray-500">이동 속도</div>
-          <div className="text-[20px] font-extrabold">{robot.speed?.toFixed(1) ?? "—"}㎧</div>
+          <div className="text-12 font-bold text-gray-500">이동 속도</div>
+          <div className="text-20 font-extrabold">{robot.speed?.toFixed(1) ?? "—"}㎧</div>
         </div>
         <div>
-          <div className="text-[12px] font-bold text-gray-500">현재 위치</div>
-          <div className="text-[15px] font-extrabold">
+          <div className="text-12 font-bold text-gray-500">현재 위치</div>
+          <div className="text-15 font-extrabold">
             ({robot.pos_x?.toFixed(1) ?? "—"}, {robot.pos_y?.toFixed(1) ?? "—"})
           </div>
         </div>
@@ -62,14 +62,14 @@ function ManualControlModal({
       {/* 이동 조작 — 범위 경계 논의 필요 (00-overview: 로봇 원격조종기는 범위 밖) */}
       <div className="mb-4 rounded-2xl border border-dashed border-gray-200 p-4">
         <div className="mb-2 flex items-center gap-2">
-          <span className="text-[13px] font-extrabold text-gray-500">이동 조작</span>
+          <span className="text-13 font-extrabold text-gray-500">이동 조작</span>
           <PlannedChip basis="범위 경계 논의 · 원격조종기 제외 검토" />
         </div>
         <div className="mx-auto grid w-40 grid-cols-3 gap-1.5 opacity-40">
           {["", "↑", "", "←", "■", "→", "", "↓", ""].map((s, i) => (
             <span
               key={i}
-              className={`flex h-11 items-center justify-center rounded-xl text-[15px] font-extrabold ${
+              className={`flex h-11 items-center justify-center rounded-xl text-15 font-extrabold ${
                 s ? "bg-gray-100 text-gray-500" : ""
               }`}
             >
@@ -82,7 +82,7 @@ function ManualControlModal({
       <div className="flex items-center gap-2">
         <button
           disabled title="자동 충전 지시는 개발 예정입니다 (FR-06)"
-          className="flex-1 rounded-xl bg-gray-100 py-3 text-[13.5px] font-extrabold text-gray-400"
+          className="flex-1 rounded-xl bg-gray-100 py-3 text-13.5 font-extrabold text-gray-400"
         >
           충전 스테이션 복귀
         </button>
@@ -90,7 +90,7 @@ function ManualControlModal({
       </div>
 
       {!canOperate && blockReason && (
-        <p className="mt-3 text-center text-[12px] font-semibold text-status-warningDark">{blockReason}</p>
+        <p className="mt-3 text-center text-12 font-semibold text-status-warningDark">{blockReason}</p>
       )}
     </Modal>
   );
@@ -122,20 +122,20 @@ export default function RobotTab() {
             return (
               <Card key={r.device_id}>
                 <div className="mb-2.5 flex flex-wrap items-center gap-2">
-                  <span className="text-[15.5px] font-extrabold">{r.device_id}</span>
-                  <span className="rounded-lg bg-primary-bg px-2 py-0.5 text-[11.5px] font-extrabold text-primary-dark">
+                  <span className="text-15.5 font-extrabold">{r.device_id}</span>
+                  <span className="rounded-lg bg-primary-bg px-2 py-0.5 text-11.5 font-extrabold text-primary-dark">
                     {MISSION_LABEL[r.mission_state] ?? r.mission_state}
                   </span>
                   {c && <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />}
-                  <span className="ml-auto text-[11.5px] font-semibold text-muted">{timeAgo(r.ts)}</span>
+                  <span className="ml-auto text-11.5 font-semibold text-muted">{timeAgo(r.ts)}</span>
                 </div>
 
-                <div className="mb-3 grid grid-cols-3 gap-2 text-[12.5px] font-semibold text-gray-600">
+                <div className="mb-3 grid grid-cols-3 gap-2 text-12.5 font-semibold text-gray-600">
                   <div>
                     배터리{" "}
                     <b className={low ? "text-status-warningDark" : ""}>{r.battery_pct ?? "—"}%</b>
                     {r.charging && <span className="ml-1 text-status-infoDark">⚡충전</span>}
-                    {eta && <div className="text-[11.5px] text-muted">완충 예상 {eta}</div>}
+                    {eta && <div className="text-11.5 text-muted">완충 예상 {eta}</div>}
                   </div>
                   <div>속도 <b>{r.speed?.toFixed(1) ?? "—"}㎧</b></div>
                   <div>
@@ -146,13 +146,13 @@ export default function RobotTab() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSelected(r)}
-                    className="rounded-xl border border-gray-200 px-3.5 py-2 text-[12.5px] font-bold text-gray-600"
+                    className="rounded-xl border border-gray-200 px-3.5 py-2 text-12.5 font-bold text-gray-600"
                   >
                     수동 제어
                   </button>
                   <button
                     disabled title="로봇 영상 조회는 개발 예정입니다 (FR-05)"
-                    className="rounded-xl bg-gray-100 px-3.5 py-2 text-[12.5px] font-bold text-gray-400"
+                    className="rounded-xl bg-gray-100 px-3.5 py-2 text-12.5 font-bold text-gray-400"
                   >
                     영상
                   </button>
@@ -163,7 +163,7 @@ export default function RobotTab() {
           })}
           {list.length === 0 && (
             <Card className="lg:col-span-2">
-              <div className="text-[13px] font-semibold text-muted">
+              <div className="text-13 font-semibold text-muted">
                 로봇 데이터가 없어요. 장비를 등록하고 엣지가 상태를 발행하면 표시됩니다.
               </div>
             </Card>

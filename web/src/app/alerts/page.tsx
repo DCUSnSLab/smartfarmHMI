@@ -18,12 +18,12 @@ export default function AlertsPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">알림</h1>
-        <span className="text-[13.5px] font-bold text-status-warningDark">미확인 {unacked}건</span>
-        <span className="text-[13px] font-semibold text-muted">
+        <h1 className="text-22 font-extrabold">알림</h1>
+        <span className="text-13.5 font-bold text-status-warningDark">미확인 {unacked}건</span>
+        <span className="text-13 font-semibold text-muted">
           전 농장 대상 · 각 알림을 누르면 관련 화면으로 이동해요
         </span>
-        <Link href="/settings" className="ml-auto text-[12.5px] font-bold text-primary-dark">
+        <Link href="/settings" className="ml-auto text-12.5 font-bold text-primary-dark">
           알림 규칙 설정 →
         </Link>
       </div>

@@ -12,7 +12,7 @@ export function PlannedChip({ basis }: { basis?: string }) {
   return (
     <span
       title={basis ? `개발 예정 — ${basis}` : "개발 예정"}
-      className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] font-extrabold text-gray-500"
+      className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-11 font-extrabold text-gray-500"
     >
       개발 예정{basis ? ` · ${basis}` : ""}
     </span>
@@ -30,11 +30,11 @@ export function PlannedBox({
   return (
     <div className="rounded-2xl border border-dashed border-gray-200 bg-white/60 p-5">
       <div className="mb-1 flex items-center gap-2">
-        <span className="text-[14px] font-extrabold text-gray-500">{feature}</span>
+        <span className="text-14 font-extrabold text-gray-500">{feature}</span>
         <PlannedChip basis={basis} />
       </div>
       {children && (
-        <div className="text-[12.5px] font-semibold leading-relaxed text-muted">{children}</div>
+        <div className="text-12.5 font-semibold leading-relaxed text-muted">{children}</div>
       )}
     </div>
   );

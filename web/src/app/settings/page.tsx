@@ -104,16 +104,18 @@ function Actions({ onCancel, submitLabel, busy }: { onCancel: () => void; submit
 
 // ── 팜 추가/수정 모달 ──
 function FarmModal({
-  edit, onClose, onDone,
+  edit, discovered, onClose, onDone,
 }: {
   edit?: FarmSummary;
+  discovered?: DiscoveredFarm;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [farmId, setFarmId] = useState(edit?.farm_id ?? "");
-  const [name, setName] = useState(edit?.name ?? "");
-  const [farmType, setFarmType] = useState(edit?.farm_type ?? "greenhouse");
-  const [crop, setCrop] = useState(edit?.crop ?? "");
+  const initialFarm = edit ?? discovered;
+  const [farmId, setFarmId] = useState(initialFarm?.farm_id ?? "");
+  const [name, setName] = useState(initialFarm?.name ?? initialFarm?.farm_id ?? "");
+  const [farmType, setFarmType] = useState(initialFarm?.farm_type ?? "greenhouse");
+  const [crop, setCrop] = useState(initialFarm?.crop ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [locating, setLocating] = useState(false);
@@ -138,19 +140,19 @@ function FarmModal({
   }, []);
 
   useEffect(() => {
-    if (!edit?.region_code || !regions.length) return;
-    const row = regions.find((candidate) => candidate.code === edit.region_code);
+    if (!initialFarm?.region_code || !regions.length) return;
+    const row = regions.find((candidate) => candidate.code === initialFarm.region_code);
     if (!row) return;
     setLevel1(row.level1);
     setLevel2(row.level2 || NO_DISTRICT);
     setLevel3(row.level3);
     setSelectedRegion(row);
     setPosition({
-      latitude: edit.latitude ?? row.latitude,
-      longitude: edit.longitude ?? row.longitude,
+      latitude: initialFarm.latitude ?? row.latitude,
+      longitude: initialFarm.longitude ?? row.longitude,
       label: [row.level1, row.level2, row.level3].filter(Boolean).join(" "),
     });
-  }, [edit, regions]);
+  }, [initialFarm, regions]);
 
   const level1Options = unique(regions.map((row) => row.level1));
   const rowsAtLevel1 = regions.filter((row) => row.level1 === level1);
@@ -275,23 +277,37 @@ function FarmModal({
       longitude: position.longitude,
       ...(position.accuracy != null ? { accuracy_m: position.accuracy } : {}),
     };
-    const ok = edit
-      ? await updateFarm(edit.farm_id, {
+    const ok = discovered
+      ? await registerDiscovered(discovered.farm_id, {
           name, farm_type: farmType, crop: crop || null, ...locationPatch,
         })
-      : await createFarm({
-          farm_id: farmId.trim(), name, farm_type: farmType, crop: crop || null,
-          ...locationPatch,
-        });
+      : edit
+        ? await updateFarm(edit.farm_id, {
+            name, farm_type: farmType, crop: crop || null, ...locationPatch,
+          })
+        : await createFarm({
+            farm_id: farmId.trim(), name, farm_type: farmType, crop: crop || null,
+            ...locationPatch,
+          });
     setBusy(false);
     if (ok) onDone();
     else setErr("저장에 실패했습니다. 입력값과 위치 정보를 확인하세요.");
   };
 
   return (
-    <Modal title={edit ? `팜 수정 · ${edit.farm_id}` : "스마트팜 추가"} onClose={onClose}>
+    <Modal
+      title={discovered
+        ? `발견된 팜 등록 · ${discovered.farm_id}`
+        : edit ? `팜 수정 · ${edit.farm_id}` : "스마트팜 추가"}
+      onClose={onClose}
+    >
       <form onSubmit={submit}>
-        {!edit && (
+        {discovered && (
+          <p className="mb-3 text-12.5 font-semibold text-muted">
+            장치 {discovered.device_count}대 · 센서 {discovered.sensor_count}종이 함께 등록됩니다.
+          </p>
+        )}
+        {!edit && !discovered && (
           <Field label="farm_id (자연키 · MQTT 토픽 · 이후 변경 불가)">
             <input className={inputCls} value={farmId} onChange={(e) => setFarmId(e.target.value)} placeholder="예: gimje" required />
           </Field>
@@ -361,7 +377,11 @@ function FarmModal({
         </div>
 
         {err && <p className="text-12.5 font-bold text-status-warningDark">{err}</p>}
-        <Actions onCancel={onClose} submitLabel={edit ? "수정" : "추가"} busy={busy} />
+        <Actions
+          onCancel={onClose}
+          submitLabel={discovered ? "등록" : edit ? "수정" : "추가"}
+          busy={busy}
+        />
       </form>
     </Modal>
   );
@@ -574,10 +594,6 @@ function FarmDevices({ farmId }: { farmId: string }) {
 function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   const [farms, setFarms] = useState<DiscoveredFarm[]>([]);
   const [target, setTarget] = useState<DiscoveredFarm | null>(null);
-  const [name, setName] = useState("");
-  const [farmType, setFarmType] = useState("greenhouse");
-  const [crop, setCrop] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(() => { void listDiscovery().then(setFarms); }, []);
   useEffect(() => {
@@ -586,7 +602,7 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
     return () => clearInterval(id);
   }, [reload]);
 
-  const openRegister = (f: DiscoveredFarm) => { setTarget(f); setName(f.farm_id); setFarmType("greenhouse"); setCrop(""); };
+  const openRegister = (farm: DiscoveredFarm) => setTarget(farm);
 
   return (
     <section className="mb-8">
@@ -615,33 +631,11 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
       )}
 
       {target && (
-        <Modal title={`발견된 팜 등록 · ${target.farm_id}`} onClose={() => setTarget(null)}>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              const ok = await registerDiscovered(target.farm_id, { name, farm_type: farmType, crop: crop || null });
-              setBusy(false);
-              if (ok) { setTarget(null); reload(); onRegistered(); }
-            }}
-          >
-            <p className="mb-3 text-12.5 font-semibold text-muted">
-              장치 {target.device_count}대 · 센서 {target.sensor_count}종이 함께 등록됩니다.
-            </p>
-            <Field label="농장 이름">
-              <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required />
-            </Field>
-            <Field label="유형">
-              <select className={inputCls} value={farmType} onChange={(e) => setFarmType(e.target.value)}>
-                {FARM_TYPES.map((ft) => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
-              </select>
-            </Field>
-            <Field label="작물 (선택)">
-              <input className={inputCls} value={crop} onChange={(e) => setCrop(e.target.value)} />
-            </Field>
-            <Actions onCancel={() => setTarget(null)} submitLabel="등록" busy={busy} />
-          </form>
-        </Modal>
+        <FarmModal
+          discovered={target}
+          onClose={() => setTarget(null)}
+          onDone={() => { setTarget(null); reload(); onRegistered(); }}
+        />
       )}
     </section>
   );

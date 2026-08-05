@@ -212,25 +212,35 @@ async def release_remote_stop(req: StopRequest):
 async def _active_stops(conn, farm_id: str | None) -> dict:
     """활성 정지 상태 — 원격·물리 각각 독립 표시 (동시 성립 가능).
 
-    farm_id 가 None 이면 전체 스코프 — 어느 농장이든 발동 중이면 표시한다.
-    물리 비상정지는 농장별이라 여러 건일 수 있어 **최초 발동 건**을 대표로 둔다.
+    - **원격 정지는 스코프를 따른다**: farm_id 가 주어지면 전 농장 정지(scope=all)와
+      그 농장 정지만. 다른 농장만 멈춘 상태를 이 농장 화면에 표시하면 오해가 된다.
+    - **물리 비상정지는 스코프와 무관하게 전부 모은다**: 안전 기능이라 어느 현장에서
+      눌렸는지를 모든 화면에서 알아야 한다. 걸린 농장 목록(farm_ids)과 최초 발동
+      시각을 함께 준다 — 화면이 농장명과 개수를 문구에 반영한다 (FR-36).
     """
-    cond = [m.stop_event.c.released_at.is_(None)]
-    if farm_id:
-        cond.append((m.stop_event.c.scope == "all") | (m.stop_event.c.farm_id == farm_id))
     rows = (
         (await conn.execute(
-            select(m.stop_event).where(*cond).order_by(m.stop_event.c.engaged_at)
+            select(m.stop_event)
+            .where(m.stop_event.c.released_at.is_(None))
+            .order_by(m.stop_event.c.engaged_at)
         )).mappings().all()
     )
     out: dict = {"remote": None, "physical_estop": None}
+    estop_farms: list[str] = []
     for r in rows:
+        if r["stop_kind"] == "physical_estop":
+            if r["farm_id"]:
+                estop_farms.append(r["farm_id"])
+        elif farm_id and not (r["scope"] == "all" or r["farm_id"] == farm_id):
+            continue  # 다른 농장의 원격 정지 — 이 스코프에는 표시하지 않는다
         if out[r["stop_kind"]] is not None:
             continue
         out[r["stop_kind"]] = {
             "scope": r["scope"], "engaged_at": r["engaged_at"].isoformat(),
             "by": r["engaged_by"], "reason": r["reason"],
         }
+    if out["physical_estop"]:
+        out["physical_estop"]["farm_ids"] = estop_farms
     return out
 
 

@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { CONTROL } from "@/components/ui";
-import { StopState, engageStop, releaseStop, timeAgo } from "@/lib/monitor";
+import { FarmSummary, StopState, engageStop, releaseStop, timeAgo } from "@/lib/monitor";
 
 /** 경고 삼각 — 원격 전체 정지 (전달본 원본 path) */
 function WarningIcon({ size = 17 }: { size?: number }) {
@@ -62,7 +62,9 @@ function Banner({
   meta: string;                  // 항상 보여야 하는 짧은 값 (경과 시간)
   detail: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  // 처음 뜰 때는 펼친다 — 정지가 걸린 순간에는 어느 현장·왜 멈췄는지가 바로 보여야 한다.
+  // 그 뒤 접는 선택은 사용자가 하고, 배너가 살아 있는 동안 그 선택을 유지한다
+  const [open, setOpen] = useState(true);
 
   return (
     <div className={`text-white ${bar}`}>
@@ -73,12 +75,14 @@ function Banner({
         <div className="flex items-center gap-3">
           <span className="flex h-9 shrink-0 items-center">{icon}</span>
 
-          {/* 경과 시간은 제목 바로 뒤 — 간격은 공백 1칸 수준(gap-1) */}
-          <span className="mr-auto flex min-w-0 shrink items-center gap-1">
-            <span className="min-w-0 truncate text-14 font-extrabold">
-              {title}
-            </span>
-            <span className="shrink-0 text-13 font-semibold opacity-90">{meta}</span>
+          {/* 경과 시간은 제목 바로 뒤 — 간격은 공백 1칸 수준(gap-1).
+              **글자 크기를 제목과 같게 둔다**: 크기가 다르면 줄 상자 높이도 달라
+              글자 중심이 어긋나고, 그 오차가 배율마다 변한다. 위계는 굵기와 밝기로 준다 */}
+          <span className="mr-auto flex min-w-0 shrink items-center gap-1.5 text-14 font-extrabold">
+            <span className="min-w-0 truncate">{title}</span>
+            {/* 굵기까지 같게 둔다 — 같은 크기라도 굵기가 다르면 획이 두꺼워 더 커 보인다.
+                위계는 밝기만으로 준다 */}
+            <span className="shrink-0 text-white/70">{meta}</span>
           </span>
 
           {/* 배너는 표시 전용 — 해제는 네비의 정지 버튼 자리에 둔다 (StopRelease).
@@ -102,7 +106,7 @@ function Banner({
         </div>
 
         {open && (
-          <div className="mt-2 pb-1 text-12.5 font-semibold leading-relaxed opacity-95">
+          <div className="mt-2 pb-1 text-12.5 font-semibold leading-relaxed text-white/85">
             {detail}
           </div>
         )}
@@ -184,7 +188,14 @@ export function StopButton({ canStop, short }: {
 }
 
 /** 정지 배너 2종 — 표시 전용. 해제 조작은 네비의 StopRelease 가 담당한다 */
-export function StopBanners({ stops }: { stops: StopState }) {
+export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSummary[] }) {
+  // 물리 비상정지는 농장별로 독립 성립하고 **모든 화면에 표시**한다 (안전 기능).
+  // 어느 현장으로 가야 하는지 알려야 하므로 농장명을 문구에 넣는다 — 이름을 못 찾으면
+  // farm_id 로 대신한다 (미등록 농장에서도 정지는 성립할 수 있음)
+  const estopFarms = (stops.physical_estop?.farm_ids ?? []).map(
+    (id) => farms.find((f) => f.farm_id === id)?.name ?? id,
+  );
+
   return (
     <>
       {/* 물리 비상정지 — 상위 심각도(적색 실선 강조), 해제 경로 없음 */}
@@ -192,9 +203,25 @@ export function StopBanners({ stops }: { stops: StopState }) {
         <Banner
           bar="bg-gradient-to-r from-[#D32030] to-status-warning"
           icon={<EstopIcon size={20} />}
-          title="현장 비상정지 작동됨"
+          title={
+            estopFarms.length > 1
+              ? `현장 비상정지 작동됨 · ${estopFarms.length}곳`
+              : "현장 비상정지 작동됨"
+          }
           meta={timeAgo(stops.physical_estop.engaged_at)}
-          detail="현장에서 의도적인 수동 조작으로만 리셋됩니다. 웹에서는 해제할 수 없습니다 (ISO 13850)."
+          detail={
+            <>
+              {/* 농장명을 나열하므로 개수가 늘어도 문장이 자연스럽다. 개수 자체는 제목에 */}
+              {estopFarms.length > 0 && (
+                <>
+                  <span className="font-extrabold text-white">{estopFarms.join(" · ")}</span>
+                  에서 작동했습니다.{" "}
+                </>
+              )}
+              현장에서 수동 조작으로만 제어가 가능하며, 웹에서는 해제할 수 없습니다.
+              (ISO 13850).
+            </>
+          }
         />
       )}
 

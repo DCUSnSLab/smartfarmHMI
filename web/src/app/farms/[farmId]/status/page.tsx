@@ -71,7 +71,7 @@ function Layout2D() {
         {/* 논리 구역 — 좌표계 확정 시 실제 도면으로 교체 */}
         <div className="absolute left-3 top-3 flex gap-2">
           {["A동 랙", "B동 랙", "작업 구역"].map((zone) => (
-            <span key={zone} className="rounded-lg bg-white px-2.5 py-1 text-[11.5px] font-bold text-gray-500 shadow-sm">
+            <span key={zone} className="rounded-lg bg-white px-2.5 py-1 text-11.5 font-bold text-gray-500 shadow-sm">
               {zone}
             </span>
           ))}
@@ -82,7 +82,7 @@ function Layout2D() {
           return (
             <span
               key={r.device_id}
-              className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11.5px] font-extrabold text-white shadow transition-all duration-1000"
+              className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-11.5 font-extrabold text-white shadow transition-all duration-1000"
               style={{ left: `${12 + left * 76}%`, top: `${30 + top * 55}%` }}
             >
               🤖 {r.device_id}
@@ -91,7 +91,7 @@ function Layout2D() {
           );
         })}
         {list.length === 0 && (
-          <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold text-muted">
+          <span className="absolute inset-0 flex items-center justify-center text-13 font-semibold text-muted">
             로봇 데이터가 없어요
           </span>
         )}
@@ -120,22 +120,22 @@ export default function StatusTab() {
           <SectionTitle
             title="상태 요약"
             right={
-              <span className="rounded-lg bg-status-info/10 px-2 py-0.5 text-[11px] font-extrabold text-status-infoDark">
+              <span className="rounded-lg bg-status-info/10 px-2 py-0.5 text-11 font-extrabold text-status-infoDark">
                 자동 생성
               </span>
             }
           />
-          <p className="text-[14px] font-semibold leading-relaxed text-gray-700">{summary.text}</p>
+          <p className="text-14 font-semibold leading-relaxed text-gray-700">{summary.text}</p>
           {summary.issues.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {summary.issues.map((i) => (
-                <span key={i} className="rounded-lg bg-status-caution/10 px-2.5 py-1 text-[12px] font-bold text-status-cautionDark">
+                <span key={i} className="rounded-lg bg-status-caution/10 px-2.5 py-1 text-12 font-bold text-status-cautionDark">
                   {i}
                 </span>
               ))}
             </div>
           )}
-          <p className="mt-3 text-[11.5px] font-semibold text-muted">
+          <p className="mt-3 text-11.5 font-semibold text-muted">
             규칙 기반 요약입니다. LLM 연동 후 서술형 분석·조치 권고로 확장됩니다 (FR-30).
           </p>
         </Card>
@@ -160,19 +160,19 @@ export default function StatusTab() {
               if (list.length === 0) return null;
               return (
                 <div key={type}>
-                  <div className="mb-1 text-[12px] font-extrabold text-gray-500">
+                  <div className="mb-1 text-12 font-extrabold text-gray-500">
                     {label} {list.length}
                   </div>
                   <div className="space-y-1">
                     {list.slice(0, 4).map((d) => {
                       const c = conns[d.device_id];
                       return (
-                        <div key={d.device_id} className="flex items-center gap-2 text-[12.5px]">
+                        <div key={d.device_id} className="flex items-center gap-2 text-12.5">
                           <span className="min-w-0 flex-1 truncate font-bold">{d.name}</span>
                           {c ? (
                             <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />
                           ) : (
-                            <span className="text-[11.5px] font-semibold text-muted">—</span>
+                            <span className="text-11.5 font-semibold text-muted">—</span>
                           )}
                         </div>
                       );
@@ -180,7 +180,7 @@ export default function StatusTab() {
                     {list.length > 4 && (
                       <button
                         onClick={() => router.push("/settings")}
-                        className="text-[11.5px] font-bold text-primary-dark"
+                        className="text-11.5 font-bold text-primary-dark"
                       >
                         +{list.length - 4}대 더 보기 (설정)
                       </button>
@@ -190,7 +190,7 @@ export default function StatusTab() {
               );
             })}
             {devices.length === 0 && (
-              <div className="text-[12.5px] font-semibold text-muted">
+              <div className="text-12.5 font-semibold text-muted">
                 등록된 장비가 없어요. 설정에서 추가하세요.
               </div>
             )}
@@ -210,10 +210,10 @@ export default function StatusTab() {
             return (
               <Card key={s.sensor_id}>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-[13px] font-bold text-gray-600">{meta.name}</span>
-                  <span className="text-[22px] font-extrabold">
+                  <span className="text-13 font-bold text-gray-600">{meta.name}</span>
+                  <span className="text-22 font-extrabold">
                     {s.value != null ? s.value.toFixed(1) : "—"}
-                    <span className="ml-0.5 text-[12px] font-bold text-muted">{meta.unit}</span>
+                    <span className="ml-0.5 text-12 font-bold text-muted">{meta.unit}</span>
                   </span>
                 </div>
                 <Gauge
@@ -222,7 +222,7 @@ export default function StatusTab() {
                   max={hi != null ? hi + (lo != null ? (hi - lo) * 0.5 : 10) : 100}
                   okMin={lo} okMax={hi} unit={meta.unit}
                 />
-                <div className="mt-1 text-[11.5px] font-semibold text-muted">{timeAgo(s.ts)}</div>
+                <div className="mt-1 text-11.5 font-semibold text-muted">{timeAgo(s.ts)}</div>
               </Card>
             );
           })}
@@ -237,7 +237,7 @@ export default function StatusTab() {
             right={
               <button
                 onClick={() => router.push(`/farms/${farmId}/supply`)}
-                className="text-[12.5px] font-bold text-primary-dark"
+                className="text-12.5 font-bold text-primary-dark"
               >
                 작업·공급 →
               </button>
@@ -247,16 +247,16 @@ export default function StatusTab() {
             {snap.tanks.map((t) => (
               <Card key={t.device_id}>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-[13px] font-bold text-gray-600">
+                  <span className="text-13 font-bold text-gray-600">
                     {TANK_LABEL[t.tank_type] ?? t.tank_type}
                   </span>
-                  <span className="text-[20px] font-extrabold">
+                  <span className="text-20 font-extrabold">
                     {t.level_pct != null ? Math.round(t.level_pct) : "—"}
-                    <span className="text-[12px] font-bold text-muted">%</span>
+                    <span className="text-12 font-bold text-muted">%</span>
                   </span>
                 </div>
                 <Gauge value={t.level_pct} compact />
-                <div className="mt-1.5 text-[11.5px] font-semibold text-muted">
+                <div className="mt-1.5 text-11.5 font-semibold text-muted">
                   {t.remain_l != null ? `약 ${t.remain_l}L` : "—"}
                   {t.days_left != null && ` · ${t.days_left}일분`}
                   {t.uses_left != null && ` · ${t.uses_left}회분`}

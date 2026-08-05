@@ -48,18 +48,18 @@ const RELEASE_BOX = `${CONTROL} justify-center border font-extrabold`;
  * 헤더 사용자 버튼과 폭을 맞춘다 — 두 바에서 세로로 겹치는 자리라 어긋나면 눈에 띈다.
  *
  * 사용자 버튼은 내용 크기이고, 그 구성이 **rem(배율 영향)과 px(고정)의 혼합**이다:
- *   좌우 여백 px-3 + 간격 gap-1.5 = 1.875rem  (가 큰글씨 3단계에 따라 커짐)
- *   아이콘 17px + 이름 13.5px 글자 + 테두리    = 59.1px (고정)
- * 그래서 한쪽만 rem 이나 px 로 박으면 다른 배율에서 어긋난다 — 실측 89.1px(배율 1.0)
- * / 97.5px(배율 1.28) 이 그 차이다. 같은 식으로 두면 모든 단계에서 일치한다.
+ *   좌우 여백 px-3 + 간격 gap-1.5 + 이름 글자(text-13.5) = 4.406rem  (배율에 따라 커짐)
+ *   아이콘 17px + 테두리 2px                              = 19px (고정)
+ * GEN-1246 이 글자 크기를 rem 토큰으로 옮기면서 글자도 배율을 받게 됐다 — 그전 기준
+ * (59.1px + 1.875rem)은 이제 맞지 않는다. 한쪽만 rem·px 로 박으면 배율마다 어긋난다.
  *
  * minWidth 를 함께 지정해야 한다: flex 항목의 `min-width: auto` 가 내용 최소 폭을
  * 하한으로 삼아, width 만 주면 긴 라벨이 지정 폭을 밀어낸다.
  * 인라인 스타일인 이유는 calc 조합을 Tailwind 임의값으로 두면 가독성이 떨어지기 때문.
  */
 const RELEASE_W = {
-  width: "calc(59.1px + 1.875rem)",
-  minWidth: "calc(59.1px + 1.875rem)",
+  width: "calc(19px + 4.406rem)",
+  minWidth: "calc(19px + 4.406rem)",
 } as const;
 
 /** 발동자 표기 — 배너에 이메일 전문을 노출하지 않는다 */
@@ -95,10 +95,10 @@ function Banner({
 
           {/* 경과 시간은 제목 바로 뒤 — 간격은 공백 1칸 수준(gap-1) */}
           <span className="mr-auto flex min-w-0 shrink items-center gap-1">
-            <span className="min-w-0 truncate text-[14px] font-extrabold">
+            <span className="min-w-0 truncate text-14 font-extrabold">
               {title}
             </span>
-            <span className="shrink-0 text-[13px] font-semibold opacity-90">{meta}</span>
+            <span className="shrink-0 text-13 font-semibold opacity-90">{meta}</span>
           </span>
 
           {/* 우측 그룹 — 간격을 헤더 우측 그룹(gap-2)과 같게 둬야 해제 버튼과
@@ -133,7 +133,7 @@ function Banner({
         </div>
 
         {open && (
-          <div className="pb-1 text-[12.5px] font-semibold leading-relaxed opacity-95">
+          <div className="pb-1 text-12.5 font-semibold leading-relaxed opacity-95">
             {detail}
           </div>
         )}
@@ -150,12 +150,16 @@ export function StopButton({ canStop }: { canStop: boolean }) {
   if (!canStop) return null;
   return (
     <>
+      {/* 라벨은 창 너비 기준으로 줄인다 (글자 크기와 무관 — 줄인 라벨도 함께 커진다).
+          전체 명칭은 aria-label 과 확인 모달이 유지한다 (GEN-1246) */}
       <button
         onClick={() => { setErr(null); setConfirming(true); }}
+        aria-label="원격 전체 정지"
         className={`${CONTROL} gap-1.5 border-[1.5px] border-status-warning bg-status-warning/10 px-4 font-extrabold text-status-warningDark`}
       >
         <WarningIcon />
-        원격 전체 정지
+        <span className="hidden sm:inline">원격 전체 정지</span>
+        <span className="sm:hidden">정지</span>
       </button>
 
       {/* 헤더의 backdrop-blur 가 fixed 의 컨테이닝 블록이 되어 inset-0 이 헤더 박스(높이 약
@@ -167,21 +171,21 @@ export function StopButton({ canStop }: { canStop: boolean }) {
             <div className="mx-auto mb-4 flex h-[68px] w-[68px] items-center justify-center rounded-[20px] bg-status-warning/10 text-status-warningDark">
               <WarningIcon size={36} />
             </div>
-            <h2 className="mb-2 text-[22px] font-extrabold">원격 전체 정지를 실행할까요?</h2>
-            <p className="mb-6 text-[14.5px] font-semibold leading-relaxed text-gray-600">
+            <h2 className="mb-2 text-22 font-extrabold">원격 전체 정지를 실행할까요?</h2>
+            <p className="mb-6 text-14.5 font-semibold leading-relaxed text-gray-600">
               전 농장의 <b>모든 로봇·설비 작동이 즉시 중단</b>됩니다.<br />
               자동 스케줄과 원격 제어도 해제 전까지 차단돼요.<br />
-              <span className="text-[12.5px] text-muted">(운전 정지 — 현장 비상정지와는 다른 기능입니다)</span>
+              <span className="text-12.5 text-muted">(운전 정지 — 현장 비상정지와는 다른 기능입니다)</span>
             </p>
             {err && (
-              <p className="mb-4 rounded-xl bg-status-warning/10 px-4 py-3 text-[13.5px] font-bold text-status-warningDark">
+              <p className="mb-4 rounded-xl bg-status-warning/10 px-4 py-3 text-13.5 font-bold text-status-warningDark">
                 {err}
               </p>
             )}
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirming(false)}
-                className="flex-1 rounded-2xl bg-gray-100 py-3.5 text-[16px] font-extrabold text-gray-600"
+                className="flex-1 rounded-2xl bg-gray-100 py-3.5 text-16 font-extrabold text-gray-600"
               >
                 취소
               </button>
@@ -194,7 +198,7 @@ export function StopButton({ canStop }: { canStop: boolean }) {
                   setErr(failed);
                   if (!failed) setConfirming(false);  // 실패하면 닫지 않는다 — 성공과 구분돼야 한다
                 }}
-                className="flex-1 rounded-2xl bg-status-warningDark py-3.5 text-[16px] font-extrabold text-white disabled:opacity-60"
+                className="flex-1 rounded-2xl bg-status-warningDark py-3.5 text-16 font-extrabold text-white disabled:opacity-60"
               >
                 {busy ? "실행 중…" : "원격 전체 정지 실행"}
               </button>

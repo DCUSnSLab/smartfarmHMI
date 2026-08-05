@@ -51,32 +51,32 @@ export function AlertRules({ farmId, editable }: { farmId: string; editable: boo
 
   return (
     <section id="rules" className="mb-6">
-      <h3 className="mb-3 text-[15px] font-extrabold">
+      <h3 className="mb-3 text-15 font-extrabold">
         알림 규칙 <span className="font-semibold text-muted">· 임계값 기본값은 잠정 (OPN-20)</span>
       </h3>
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         {rules.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-3 border-b border-gray-50 py-2.5 last:border-0">
-            <span className="w-28 text-[13.5px] font-bold">
+            <span className="w-28 text-13.5 font-bold">
               {TYPE_LABEL[r.sensor_type ?? ""] ?? r.sensor_type}
             </span>
-            <label className="flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-600">
+            <label className="flex items-center gap-1.5 text-12.5 font-semibold text-gray-600">
               하한
               <input
                 type="number" value={r.min_value ?? ""} disabled={!editable}
                 onChange={(e) => set(r.id, { min_value: e.target.value === "" ? null : Number(e.target.value) })}
-                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-[13px] font-bold disabled:bg-gray-50"
+                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-13 font-bold disabled:bg-gray-50"
               />
             </label>
-            <label className="flex items-center gap-1.5 text-[12.5px] font-semibold text-gray-600">
+            <label className="flex items-center gap-1.5 text-12.5 font-semibold text-gray-600">
               상한
               <input
                 type="number" value={r.max_value ?? ""} disabled={!editable}
                 onChange={(e) => set(r.id, { max_value: e.target.value === "" ? null : Number(e.target.value) })}
-                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-[13px] font-bold disabled:bg-gray-50"
+                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-13 font-bold disabled:bg-gray-50"
               />
             </label>
-            <label className="flex items-center gap-1.5 text-[12.5px] font-bold">
+            <label className="flex items-center gap-1.5 text-12.5 font-bold">
               <input
                 type="checkbox" checked={r.enabled} disabled={!editable}
                 onChange={(e) => set(r.id, { enabled: e.target.checked })}
@@ -87,7 +87,7 @@ export function AlertRules({ farmId, editable }: { farmId: string; editable: boo
             {editable && (
               <button
                 onClick={() => void save(r)}
-                className="rounded-lg bg-primary-bg px-3 py-1 text-[12.5px] font-extrabold text-primary-dark"
+                className="rounded-lg bg-primary-bg px-3 py-1 text-12.5 font-extrabold text-primary-dark"
               >
                 {saved === r.id ? "저장됨 ✓" : "저장"}
               </button>
@@ -95,7 +95,7 @@ export function AlertRules({ farmId, editable }: { farmId: string; editable: boo
           </div>
         ))}
         {!editable && (
-          <p className="pt-2 text-[12px] font-semibold text-muted">조회 전용 계정 — 규칙 수정 권한이 없습니다</p>
+          <p className="pt-2 text-12 font-semibold text-muted">조회 전용 계정 — 규칙 수정 권한이 없습니다</p>
         )}
       </div>
     </section>

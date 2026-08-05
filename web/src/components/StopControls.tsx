@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { CONTROL, USER_BUTTON_W } from "@/components/ui";
+import { CONTROL } from "@/components/ui";
 import { StopState, engageStop, releaseStop, timeAgo } from "@/lib/monitor";
 
 /** 경고 삼각 — 원격 전체 정지 (전달본 원본 path) */
@@ -40,6 +40,27 @@ function EstopIcon({ size = 17 }: { size?: number }) {
     </svg>
   );
 }
+
+/** 해제 버튼의 상자 — 아래 자리끼움도 같은 값을 쓰므로 두 배너의 제목 가용 폭이 같아진다 */
+const RELEASE_BOX = `${CONTROL} justify-center border font-extrabold`;
+
+/**
+ * 헤더 사용자 버튼과 폭을 맞춘다 — 두 바에서 세로로 겹치는 자리라 어긋나면 눈에 띈다.
+ *
+ * 사용자 버튼은 내용 크기이고, 그 구성이 **rem(배율 영향)과 px(고정)의 혼합**이다:
+ *   좌우 여백 px-3 + 간격 gap-1.5 = 1.875rem  (가 큰글씨 3단계에 따라 커짐)
+ *   아이콘 17px + 이름 13.5px 글자 + 테두리    = 59.1px (고정)
+ * 그래서 한쪽만 rem 이나 px 로 박으면 다른 배율에서 어긋난다 — 실측 89.1px(배율 1.0)
+ * / 97.5px(배율 1.28) 이 그 차이다. 같은 식으로 두면 모든 단계에서 일치한다.
+ *
+ * minWidth 를 함께 지정해야 한다: flex 항목의 `min-width: auto` 가 내용 최소 폭을
+ * 하한으로 삼아, width 만 주면 긴 라벨이 지정 폭을 밀어낸다.
+ * 인라인 스타일인 이유는 calc 조합을 Tailwind 임의값으로 두면 가독성이 떨어지기 때문.
+ */
+const RELEASE_W = {
+  width: "calc(59.1px + 1.875rem)",
+  minWidth: "calc(59.1px + 1.875rem)",
+} as const;
 
 /** 발동자 표기 — 배너에 이메일 전문을 노출하지 않는다 */
 const actor = (v?: string | null) => v?.split("@")[0] || "-";
@@ -72,38 +93,43 @@ function Banner({
         <div className="flex items-center gap-3">
           <span className="flex h-9 shrink-0 items-center">{icon}</span>
 
-          {/* 제목 칸을 두 배너 제목(실측 136·141px)이 들어가는 9rem 으로 고정한다 —
-              길이 차이와 무관하게 경과 시간이 같은 위치에 붙는다.
-              간격은 행의 gap-3 이 아니라 안쪽 gap-1 — 제목에 바로 붙어야 한다.
-              폭이 모자라면 칸이 줄며 제목이 말줄임된다 */}
+          {/* 경과 시간은 제목 바로 뒤 — 간격은 공백 1칸 수준(gap-1) */}
           <span className="mr-auto flex min-w-0 shrink items-center gap-1">
-            <span className="min-w-0 w-[9rem] shrink truncate text-[14px] font-extrabold">
+            <span className="min-w-0 truncate text-[14px] font-extrabold">
               {title}
             </span>
             <span className="shrink-0 text-[13px] font-semibold opacity-90">{meta}</span>
           </span>
 
-          {action}
+          {/* 우측 그룹 — 간격을 헤더 우측 그룹(gap-2)과 같게 둬야 해제 버튼과
+              사용자 버튼의 좌우 위치가 맞는다. 폭만 같고 간격이 다르면 어긋난다 */}
+          <span className="flex shrink-0 items-center gap-2">
+            {/* 해제 버튼이 없는 배너에는 같은 상자를 투명하게 둔다 — 두 배너의 제목
+                가용 폭이 같아져 좁은 폭에서 말줄임 시점과 경과 시간 위치가 어긋나지 않는다 */}
+            {action ?? (
+              <span aria-hidden="true" style={RELEASE_W} className={`${RELEASE_BOX} invisible`}>
+                정지 해제
+              </span>
+            )}
 
-          {/* 펼침 버튼은 두 배너 모두 맨 오른쪽 — 위치가 배너 종류에 따라 흔들리지 않는다 */}
-          <button
-            onClick={() => setOpen(!open)}
-            aria-expanded={open}
-            aria-label={open ? "정지 상세 닫기" : "정지 상세 보기"}
-            className={`${CONTROL} w-9 justify-center bg-white/20`}
-          >
-            {/* 셰브론 — 디자인 전달본(.dc.html) FAQ 원본 path.
-                path 는 고정하고 클래스만 토글한다 — 요소가 유지돼야 전환이 정확히
-                180도에서 끝난다 (path 를 바꾸면 전환이 끊긴다) */}
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-              className={`origin-center transition-transform duration-200 ease-out ${
-                open ? "rotate-180" : "rotate-0"
-              }`}
+            {/* 펼침 버튼은 두 배너 모두 맨 오른쪽 — 배너 종류에 따라 위치가 흔들리지 않는다 */}
+            <button
+              onClick={() => setOpen(!open)}
+              aria-expanded={open}
+              aria-label={open ? "정지 상세 닫기" : "정지 상세 보기"}
+              className={`${CONTROL} w-9 justify-center border border-white/40 bg-white/15`}
             >
-              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-          </button>
+              {/* 셰브론 — 디자인 전달본(.dc.html) FAQ 원본 path.
+                  전환 없이 즉시 뒤집는다 — 애니메이션을 걸면 반복 클릭 시 중간 각도에서
+                  다시 시작해 기울어진 상태로 보인다. 각도는 항상 0 또는 180 */}
+              <svg
+                width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                className={open ? "rotate-180" : ""}
+              >
+                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </span>
         </div>
 
         {open && (
@@ -203,7 +229,8 @@ export function StopBanners({ stops, canRelease }: { stops: StopState; canReleas
         <Banner
           bar="bg-gradient-to-r from-[#E07800] to-status-caution"
           icon={<WarningIcon size={20} />}
-          title="원격 전체 정지 발동됨"
+          // 「전체정지」 붙여 씀 — 물리 배너 제목과 폭을 같게 맞춘 것 (정식 명칭은 모달·aria)
+          title="원격 전체정지 발동됨"
           meta={timeAgo(stops.remote.engaged_at)}
           detail={
             <>
@@ -221,7 +248,8 @@ export function StopBanners({ stops, canRelease }: { stops: StopState; canReleas
                   setErr(await releaseStop());
                   setBusy(false);
                 }}
-                className={`${CONTROL} ${USER_BUTTON_W} bg-white font-extrabold text-[#C05600] disabled:opacity-60`}
+                style={RELEASE_W}
+                className={`${RELEASE_BOX} border-[#C05600]/20 bg-white text-[#C05600] disabled:opacity-60`}
               >
                 {busy ? "해제 중…" : "정지 해제"}
               </button>

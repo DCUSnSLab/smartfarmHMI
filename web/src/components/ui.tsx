@@ -15,13 +15,6 @@ export const CONTROL =
 export const CONTROL_ICON = `${CONTROL} w-9 justify-center [@media(pointer:coarse)]:w-10`;
 
 /**
- * 헤더 사용자 버튼의 실측 폭 (아이콘+이름 3자 = 89.5px).
- * 정지 배너의 해제 버튼이 이 폭을 따라가 두 바에서 좌우 위치가 맞는다 —
- * 사용자 버튼 쪽은 손대지 않는다. 이름 길이가 크게 달라지면 이 값도 조정해야 한다.
- */
-export const USER_BUTTON_W = "w-[5.6rem] justify-center";
-
-/**
  * 팝오버 위치 — 트리거 오른쪽에 맞추되 화면을 벗어나면 옆으로 밀어넣는다.
  * 특정 폭에서 갑자기 전체 폭으로 바뀌지 않고 연속적으로 이동·축소된다.
  */

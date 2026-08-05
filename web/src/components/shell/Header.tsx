@@ -20,6 +20,7 @@ import { StopButton, StopRelease } from "@/components/StopControls";
 import { CONTROL, CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AuthUser, ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
+import { useGlobalAlerts } from "@/lib/monitor";
 import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
 const EXPAND_MARGIN = 24;  // 되펼칠 때 요구하는 여유 폭(px) — 경계 깜빡임 방지
@@ -189,7 +190,8 @@ function NavDrawer({ pathname, onClose }: { pathname: string; onClose: () => voi
 export function Header() {
   const pathname = usePathname();
   const user = useUser();
-  const { scope, alerts, stops } = useFarmData();
+  const { stops } = useFarmData();
+  const globalAlerts = useGlobalAlerts();
   const { level } = useFontLevel();
   const [stage, setStage] = useState(0);          // 압축 단계 (0=전체 … MAX_STAGE)
   const [menuOpen, setMenuOpen] = useState(false);
@@ -314,7 +316,7 @@ export function Header() {
             {user && <UserMenu user={user} compact={compactUser} />}
 
             {/* 알림 — 전역 벨 (스코프 무관: 전체 알림) */}
-            <AlertPanel farmId={scope === "all" ? null : scope} alerts={alerts} />
+            <AlertPanel key={pathname} farmId={null} alerts={globalAlerts} />
 
             {/* 정지 자리 — 발동 중에는 같은 자리가 해제로 바뀐다 (자리를 비우지 않는다).
                 배너에 해제를 두면 정지 중 우측 구성이 무너지고 폭 정렬도 어긋난다 */}

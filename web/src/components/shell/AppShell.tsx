@@ -7,6 +7,8 @@
 
 import { usePathname } from "next/navigation";
 import { Assistant } from "@/components/shell/Assistant";
+import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
+import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
 import { Header } from "@/components/shell/Header";
 import { StopBanners } from "@/components/StopControls";
 import { FarmDataProvider, useFarmData } from "@/lib/farmData";
@@ -25,6 +27,11 @@ function Chrome({ children }: { children: React.ReactNode }) {
         <StopBanners stops={stops} />
         <Header />
       </div>
+
+      {/* 스코프 스위처·탭 바는 고정하지 않는다 — 정지 배너까지 고정되는 상황에서
+          함께 묶으면 좁은 화면의 본문이 거의 남지 않는다 (GEN-1231) */}
+      <FarmScopeNav />
+      <FarmDetailNav />
       {children}
       <Assistant />
     </>

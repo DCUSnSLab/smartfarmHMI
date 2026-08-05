@@ -140,6 +140,7 @@ services:
     environment:
       POSTGRES_HOST: timescaledb
       MQTT_HOST: mosquitto
+      WEATHER_KEY: "${WEATHER_KEY:-change-me}"
     depends_on:
       timescaledb:
         condition: service_healthy

@@ -2,7 +2,7 @@
 
 /**
  * 통합 대시보드 A — 전체 현황 (디자인 전달본 "통합 대시보드 A (전체)").
- * Fleet KPI · 농장별 현황 카드 · 전체 알림 · 오늘 작업 · 지역 날씨.
+ * Fleet KPI · 농장별 현황 카드 · 전체 알림 · 오늘 작업.
  * (기존 MVP 의 농장별 내용은 /farms/[farmId]/[tab] 로 이관)
  */
 
@@ -16,19 +16,56 @@ import {
 import { useFarmData, useScope } from "@/lib/farmData";
 import { FarmSnapshot, farmSeverity, sensorOf, useFleetSnapshots } from "@/lib/fleet";
 import { timeAgo } from "@/lib/monitor";
+import { isValidWeatherLocation, useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
 const KPI_SENSORS = ["temperature", "humidity", "co2"] as const;
 
-function FarmCard({ snap, unackedWarnings }: { snap: FarmSnapshot; unackedWarnings: number }) {
+function FarmCard({
+  snap,
+  unackedWarnings,
+  weather,
+}: {
+  snap: FarmSnapshot;
+  unackedWarnings: number;
+  weather?: WeatherRow;
+}) {
   const router = useRouter();
   const sev = farmSeverity(snap, unackedWarnings);
   const s = SEV_STYLE[sev];
+  const weatherTitle = weather?.ts
+    ? [
+        weatherConditionLabel(weather.condition),
+        weather.humidity_pct != null ? `습도 ${Math.round(weather.humidity_pct)}%` : null,
+        weather.precipitation_mm != null ? `강수 ${weather.precipitation_mm}mm` : null,
+        weather.wind_ms != null ? `풍속 ${weather.wind_ms}m/s` : null,
+      ].filter(Boolean).join(" · ")
+    : isValidWeatherLocation(weather?.latitude ?? null, weather?.longitude ?? null)
+      ? "기상 정보를 불러오는 중입니다."
+      : weather?.latitude != null || weather?.longitude != null
+        ? "정보 없음"
+        : "날씨 조회 위치가 설정되지 않았습니다.";
 
   return (
     <Card onClick={() => router.push(`/farms/${snap.farm.farm_id}/status`)}>
       <div className="mb-3 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 flex-none rounded-full ${s.dot}`} />
         <span className="min-w-0 flex-1 truncate text-16 font-extrabold">{snap.farm.name}</span>
+        <span
+          title={weatherTitle}
+          className="flex flex-none items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-12 font-extrabold text-gray-700"
+        >
+          {weather?.ts ? (
+            <>
+              <span className="text-15 leading-none" aria-hidden="true">
+                {weatherIcon(weather.condition, weather.precipitation_mm)}
+              </span>
+              <span>{weather.temperature_c != null ? `${weather.temperature_c.toFixed(1)}°` : "—"}</span>
+            </>
+          ) : (
+            <span>{(weather?.latitude != null || weather?.longitude != null)
+              && !isValidWeatherLocation(weather.latitude, weather.longitude) ? "정보 없음" : "날씨 —"}</span>
+          )}
+        </span>
         <span className={`rounded-lg px-2 py-0.5 text-11.5 font-extrabold ${s.bg} ${s.text}`}>
           {s.label}
         </span>
@@ -82,6 +119,8 @@ function FarmCard({ snap, unackedWarnings }: { snap: FarmSnapshot; unackedWarnin
 export default function Dashboard() {
   useScope("all");
   const { farms, alerts, wsOpen } = useFarmData();
+  const { rows: weatherRows } = useWeather();
+  const weatherByFarm = new Map(weatherRows.map((row) => [row.farm_id, row]));
   const farmIds = farms.map((f) => f.farm_id);
   const snaps = useFleetSnapshots(farmIds);
 
@@ -142,7 +181,12 @@ export default function Dashboard() {
           {farms.map((f) => {
             const snap = snaps[f.farm_id];
             return snap ? (
-              <FarmCard key={f.farm_id} snap={snap} unackedWarnings={warnByFarm(f.farm_id)} />
+              <FarmCard
+                key={f.farm_id}
+                snap={snap}
+                unackedWarnings={warnByFarm(f.farm_id)}
+                weather={weatherByFarm.get(f.farm_id)}
+              />
             ) : (
               <Card key={f.farm_id}>
                 <div className="text-16 font-extrabold">{f.name}</div>
@@ -198,9 +242,6 @@ export default function Dashboard() {
         <div className="space-y-4">
           <PlannedBox feature="오늘 예정 작업" basis="증분 8 · FR-19·03">
             작업 스케줄과 로봇 임무가 구현되면 오늘 예정된 양액·급수·방재 작업이 시간순으로 표시됩니다.
-          </PlannedBox>
-          <PlannedBox feature="지역 날씨" basis="FR-40 · OPN-17">
-            외부 기상 API 연동 후 농장 소재 지역의 기온·날씨·일사량이 표시됩니다. 공급자 선정 대기 중.
           </PlannedBox>
           <Card>
             <SectionTitle title="장치 통신" sub="전 농장" />

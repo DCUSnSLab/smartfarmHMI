@@ -32,7 +32,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
       <div className="mb-4 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Link
           href="/"
-          className="shrink-0 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-gray-600"
+          className="shrink-0 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-3.5 py-1.5 text-13 font-bold text-gray-600"
         >
           전체 현황
         </Link>
@@ -40,7 +40,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
           <Link
             key={f.farm_id}
             href={`/farms/${f.farm_id}/${current}`}
-            className={`shrink-0 whitespace-nowrap rounded-xl border px-3.5 py-1.5 text-[13px] ${
+            className={`shrink-0 whitespace-nowrap rounded-xl border px-3.5 py-1.5 text-13 ${
               f.farm_id === farmId
                 ? "border-primary bg-primary font-extrabold text-white"
                 : "border-gray-200 bg-white font-bold text-gray-600"
@@ -53,7 +53,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
 
       {/* 농장 헤더 */}
       <div className="mb-3 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[20px] font-extrabold">{farmName || farmId}</h1>
+        <h1 className="text-20 font-extrabold">{farmName || farmId}</h1>
         <StatusDot
           sev={edge?.state === "online" ? "ok" : edge?.state === "degraded" ? "caution" : "warning"}
           label={edge?.state === "online" ? "정상 가동" : edge?.state === "degraded" ? "응답 지연" : "통신 단절"}
@@ -70,7 +70,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
               <Link
                 key={t.seg}
                 href={`/farms/${farmId}/${t.seg}`}
-                className={`-mb-px shrink-0 whitespace-nowrap border-b-[3px] px-3.5 py-2 text-[13.5px] ${
+                className={`-mb-px shrink-0 whitespace-nowrap border-b-[3px] px-3.5 py-2 text-13.5 ${
                   active
                     ? "border-primary font-extrabold text-primary-dark"
                     : "border-transparent font-semibold text-gray-500"
@@ -78,7 +78,7 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
               >
                 {t.label}
                 {t.seg === "alerts" && unacked > 0 && (
-                  <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-[11px] font-extrabold text-white">
+                  <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-11 font-extrabold text-white">
                     {unacked}
                   </span>
                 )}

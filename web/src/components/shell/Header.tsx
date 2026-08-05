@@ -14,7 +14,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertPanel } from "@/components/AlertPanel";
 import { StopButton } from "@/components/StopControls";
 import { CONTROL, CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
@@ -22,7 +22,22 @@ import { AuthUser, ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
-const EXPAND_MARGIN = 24;  // 접기·펼치기 경계에서 깜빡이지 않도록 둔 여유 폭(px)
+const EXPAND_MARGIN = 24;  // 되펼칠 때 요구하는 여유 폭(px) — 경계 깜빡임 방지
+const FIT_SLACK = 4;       // 넘치기 전에 접도록 두는 여유(px)
+
+/** 자식 폭 합산으로 필요 폭을 구한다 — scrollWidth 는 넘치기 전엔 여유를 알려주지 않는다 */
+function neededWidth(row: HTMLElement): number {
+  const cs = getComputedStyle(row);
+  const gap = parseFloat(cs.columnGap) || 0;
+  const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const kids = Array.from(row.children) as HTMLElement[];
+  const sum = kids.reduce((s, el) => s + el.getBoundingClientRect().width, 0);
+  return sum + gap * Math.max(0, kids.length - 1) + pad;
+}
+
+// 압축 판정은 페인트 전에 끝내야 한다 — useEffect 로 하면 초기화된(펼쳐진) 상태가
+// 한 프레임 보여 글자 크기를 바꿀 때마다 깜빡인다. SSR 경고는 피한다.
+const useMeasureEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 interface NavItem {
   href: string;
@@ -46,17 +61,17 @@ function FontControl() {
   const { level, inc, dec } = useFontLevel();
   return (
     <span className="flex items-center justify-between gap-1 rounded-xl border border-gray-200 px-2 py-1.5">
-      <span className="px-1 text-[12.5px] font-extrabold text-gray-600">가</span>
+      <span className="px-1 text-12.5 font-extrabold text-gray-600">가</span>
       <button
         onClick={dec} disabled={level === 0} aria-label="글자 작게"
-        className="h-7 w-7 rounded-lg bg-gray-50 text-[14px] font-extrabold text-gray-600 disabled:opacity-40"
+        className="h-7 w-7 rounded-lg bg-gray-50 text-14 font-extrabold text-gray-600 disabled:opacity-40"
       >−</button>
-      <span className="min-w-[3.5rem] text-center text-[11.5px] font-bold text-muted">
+      <span className="min-w-[3.5rem] text-center text-11.5 font-bold text-muted">
         {LEVEL_LABEL[level]}
       </span>
       <button
         onClick={inc} disabled={level === 2} aria-label="글자 크게"
-        className="h-7 w-7 rounded-lg bg-gray-50 text-[14px] font-extrabold text-gray-600 disabled:opacity-40"
+        className="h-7 w-7 rounded-lg bg-gray-50 text-14 font-extrabold text-gray-600 disabled:opacity-40"
       >+</button>
     </span>
   );
@@ -100,21 +115,21 @@ function UserMenu({ user, compact }: { user: AuthUser; compact: boolean }) {
           }`}
         >
           <span className="block">
-            <span className="block text-[14px] font-extrabold">{user.name}</span>
-            <span className="block text-[12px] font-semibold text-muted">{user.email}</span>
+            <span className="block text-14 font-extrabold">{user.name}</span>
+            <span className="block text-12 font-semibold text-muted">{user.email}</span>
           </span>
-          <span className="w-fit rounded-md bg-primary-bg px-2 py-0.5 text-[11.5px] font-extrabold text-primary-dark">
+          <span className="w-fit rounded-md bg-primary-bg px-2 py-0.5 text-11.5 font-extrabold text-primary-dark">
             {ROLE_LABEL[user.role]}
           </span>
 
           <span className="mt-1 border-t border-gray-100 pt-3">
-            <span className="mb-1.5 block text-[11.5px] font-bold text-muted">글자 크기</span>
+            <span className="mb-1.5 block text-11.5 font-bold text-muted">글자 크기</span>
             <FontControl />
           </span>
 
           <button
             onClick={logout}
-            className="mt-1 rounded-xl border border-gray-200 py-2.5 text-[13px] font-bold text-gray-500"
+            className="mt-1 rounded-xl border border-gray-200 py-2.5 text-13 font-bold text-gray-500"
           >
             로그아웃
           </button>
@@ -149,7 +164,7 @@ function NavDrawer({ pathname, onClose }: { pathname: string; onClose: () => voi
         {NAV.map((n) => (
           <Link
             key={n.href} href={n.href} onClick={onClose}
-            className={`rounded-xl px-3 py-3 text-[14.5px] ${
+            className={`rounded-xl px-3 py-3 text-14.5 ${
               isActive(n, pathname)
                 ? "bg-primary-bg font-extrabold text-primary-dark"
                 : "font-semibold text-gray-600"
@@ -169,28 +184,53 @@ export function Header() {
   const { scope, alerts, stops } = useFarmData();
   const { level } = useFontLevel();
   const [collapsed, setCollapsed] = useState(false);
+  const [tight, setTight] = useState(false);      // 접은 뒤에도 넘칠 때 (좁은 폭 + 큰글씨)
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const collapsedAt = useRef(0);  // 접기 시작한 폭 — 되펼칠 기준
+  const tightAt = useRef(0);
 
-  useEffect(() => {
+  // 되펼침 판정이 컨테이너 폭 기준이라, 폭이 그대로인 채 콘텐츠만 좁아지는 경우
+  // (글자 크기 축소, 정지 배너 발동으로 버튼 사라짐 등)에는 스스로 풀리지 않는다.
+  // 그래서 그런 변화에는 압축을 초기화하고 아래 measure 가 다시 판정하게 한다.
+  useMeasureEffect(() => {
+    setCollapsed(false);
+    setTight(false);
+  }, [level, user, stops.remote]);
+
+  // 2단계 압축: ① 네비 → 햄버거 드로어  ② 간격·좌우 여백 압축
+  useMeasureEffect(() => {
     const row = rowRef.current;
     if (!row) return;
     const measure = () => {
+      const avail = row.clientWidth;
+      const need = neededWidth(row);
       if (!collapsed) {
-        if (row.scrollWidth > row.clientWidth + 1) {
-          collapsedAt.current = row.clientWidth;
+        if (need > avail - FIT_SLACK) {
+          collapsedAt.current = need;   // 펼친 상태의 필요 폭을 기억 — 되펼칠 기준
           setCollapsed(true);
         }
-      } else if (row.clientWidth > collapsedAt.current + EXPAND_MARGIN) {
+        return;
+      }
+      if (avail > collapsedAt.current + EXPAND_MARGIN) {
         setCollapsed(false);
+        setTight(false);
+        return;
+      }
+      if (!tight) {
+        if (need > avail - FIT_SLACK) {
+          tightAt.current = need;
+          setTight(true);
+        }
+      } else if (avail > tightAt.current + EXPAND_MARGIN) {
+        setTight(false);
       }
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(row);
     return () => ro.disconnect();
-  }, [collapsed, level, user, stops.remote]);
+  }, [collapsed, tight, level, user, stops.remote]);
 
   // 폭이 넓어지면 닫는다 — 드로어가 열린 채 데스크톱 레이아웃으로 돌아가는 것 방지
   useEffect(() => {
@@ -200,9 +240,15 @@ export function Header() {
   return (
     <>
       {/* flex-wrap 없음 — 넘칠 때 줄바꿈이 아니라 접어야 한다.
-          모든 컨트롤이 같은 높이(CONTROL)라 접힘 여부와 무관하게 행 높이가 같다 */}
+          모든 컨트롤이 같은 높이(CONTROL)라 접힘 여부와 무관하게 행 높이가 같다.
+          tight: 접은 뒤에도 넘치면 간격·좌우 여백을 줄여 폭을 확보한다 (요소는 숨기지 않는다) */}
       <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
-        <div ref={rowRef} className="mx-auto flex max-w-7xl items-center gap-3 px-6 py-2">
+        <div
+          ref={rowRef}
+          className={`mx-auto flex max-w-7xl items-center py-2 ${
+            tight ? "gap-1.5 px-3" : "gap-3 px-6"
+          }`}
+        >
           {collapsed && (
             <button
               onClick={() => setMenuOpen(true)}
@@ -218,12 +264,13 @@ export function Header() {
             </button>
           )}
 
-          {/* 로고는 서비스명이라 글자를 크게 둔다. 접힌 상태에서는 남는 폭 부족을
-              여기서 흡수한다 — 그래야 오른쪽 정지 버튼이 잘리지 않는다 */}
+          {/* 로고는 서비스명이라 글자를 크게 둔다. 접힌 뒤에는 남는 폭 부족을 텍스트
+              truncate 로 흡수하고, tight 에서는 텍스트만 감춘다 — 아이콘은 항상 남긴다.
+              min-w-0 은 텍스트에만 준다 — Link 에 주면 아이콘 폭 아래로 줄어들어 겹친다 */}
           <Link
             href="/"
             className={`inline-flex h-9 items-center gap-2 rounded-xl ${
-              collapsed ? "min-w-0 shrink" : "shrink-0"
+              collapsed && !tight ? "shrink" : "shrink-0"
             }`}
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-primary text-white">
@@ -240,7 +287,13 @@ export function Header() {
                 />
               </svg>
             </span>
-            <span className={`text-[16px] font-extrabold ${collapsed ? "truncate" : ""}`}>팜온</span>
+            <span
+              className={`text-16 font-extrabold ${
+                tight ? "hidden" : collapsed ? "min-w-0 truncate" : ""
+              }`}
+            >
+              팜온
+            </span>
           </Link>
 
           {!collapsed && (

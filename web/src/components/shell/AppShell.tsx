@@ -26,7 +26,8 @@ function Chrome({ children }: { children: React.ReactNode }) {
       <StopBanners stops={stops} canRelease={canControl(user)} />
       <FarmScopeNav />
       <FarmDetailNav />
-      {children}
+      {/* Keep the final content clear of the fixed assistant button. */}
+      <div className="pb-24">{children}</div>
       <Assistant />
     </>
   );

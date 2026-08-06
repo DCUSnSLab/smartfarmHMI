@@ -74,7 +74,11 @@ export interface AlertItem {
   acked_at: string | null;
 }
 
-/** 헤더 전용 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다. */
+/**
+ * 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다.
+ * 소유자는 FarmDataProvider 하나뿐이다 (globalAlerts) — 소비 측에서 직접 부르면
+ * 15 초마다 같은 요청이 겹친다.
+ */
 export function useGlobalAlerts(intervalMs = 15_000) {
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
 

@@ -99,54 +99,63 @@ export default function EnvTab() {
         <SectionTitle
           title="센서 목록" sub={`${list.length}개 · 행을 누르면 상세·추이를 볼 수 있어요`}
         />
+        {/* 5열 표는 좁은 폭·큰글씨에서 열이 짓눌려 글자가 세로로 읽힌다. sm 미만에서는
+            행을 블록으로 쌓아, 폭·글자 크기와 무관하게 각 값이 자기 자리를 갖게 한다.
+            열 머리글은 표 형태일 때만 의미가 있어 카드형에서는 감춘다. */}
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-gray-100 text-11.5 font-extrabold text-gray-500">
-                <th className="px-4 py-2.5">센서</th>
-                <th className="px-4 py-2.5">위치</th>
-                <th className="px-4 py-2.5 text-right">현재값</th>
-                <th className="px-4 py-2.5">상태</th>
-                <th className="px-4 py-2.5 text-right">수신</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((s) => {
-                const meta = SENSOR_META[s.sensor_type] ?? { name: s.sensor_type, unit: s.unit };
-                const c = conns[s.sensor_id] ?? conns["growbed-01"];
-                return (
-                  <tr
-                    key={s.sensor_id}
-                    onClick={() => setSelected(s)}
-                    className="cursor-pointer border-b border-gray-50 text-13 last:border-0 hover:bg-surface"
-                  >
-                    <td className="px-4 py-2.5 font-bold">
-                      {meta.name}
-                      <span className="ml-1.5 text-11.5 font-semibold text-muted">{s.sensor_id}</span>
-                    </td>
-                    <td className="px-4 py-2.5 font-semibold text-gray-600">{s.location ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-right font-extrabold">
-                      {s.value != null ? `${s.value.toFixed(1)}${meta.unit}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <StatusDot
-                        sev={c ? (CONN_STYLE[c.state]?.sev ?? "info") : "info"}
-                        label={c ? CONN_STYLE[c.state]?.label : "—"}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-muted">{timeAgo(s.ts)}</td>
-                  </tr>
-                );
-              })}
-              {list.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-13 font-semibold text-muted">
-                    등록된 센서가 없어요
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <div className="hidden border-b border-gray-100 px-4 py-2.5 text-11.5 font-extrabold text-gray-500 sm:grid sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr] sm:gap-3">
+            <span>센서</span>
+            <span>위치</span>
+            <span className="text-right">현재값</span>
+            <span>상태</span>
+            <span className="text-right">수신</span>
+          </div>
+
+          {list.map((s) => {
+            const meta = SENSOR_META[s.sensor_type] ?? { name: s.sensor_type, unit: s.unit };
+            const c = conns[s.sensor_id] ?? conns["growbed-01"];
+            const conn = {
+              sev: c ? (CONN_STYLE[c.state]?.sev ?? "info") : "info",
+              label: c ? CONN_STYLE[c.state]?.label : "—",
+            };
+            return (
+              <button
+                key={s.sensor_id}
+                onClick={() => setSelected(s)}
+                className="block w-full cursor-pointer border-b border-gray-50 px-4 py-3 text-left text-13 last:border-0 hover:bg-surface sm:grid sm:grid-cols-[2fr_1.2fr_1fr_1fr_1fr] sm:items-center sm:gap-3 sm:py-2.5"
+              >
+                {/* 카드형(좁은 폭): 이름과 값을 한 줄에 마주 놓고, 나머지는 아래 줄에 모은다 */}
+                <span className="flex items-baseline justify-between gap-2 sm:block">
+                  <span className="min-w-0 font-bold">
+                    {meta.name}
+                    <span className="ml-1.5 text-11.5 font-semibold text-muted">{s.sensor_id}</span>
+                  </span>
+                  <span className="shrink-0 font-extrabold sm:hidden">
+                    {s.value != null ? `${s.value.toFixed(1)}${meta.unit}` : "—"}
+                  </span>
+                </span>
+
+                <span className="mt-1 flex items-center gap-2 text-11.5 font-semibold text-muted sm:mt-0 sm:contents">
+                  <span className="min-w-0 truncate sm:font-semibold sm:text-13 sm:text-gray-600">
+                    {s.location ?? "—"}
+                  </span>
+                  <span className="hidden text-right font-extrabold text-body sm:block">
+                    {s.value != null ? `${s.value.toFixed(1)}${meta.unit}` : "—"}
+                  </span>
+                  <span aria-hidden="true" className="sm:hidden">·</span>
+                  <StatusDot sev={conn.sev} label={conn.label} />
+                  <span aria-hidden="true" className="sm:hidden">·</span>
+                  <span className="ml-auto shrink-0 sm:ml-0 sm:text-right sm:text-13">{timeAgo(s.ts)}</span>
+                </span>
+              </button>
+            );
+          })}
+
+          {list.length === 0 && (
+            <div className="px-4 py-8 text-center text-13 font-semibold text-muted">
+              등록된 센서가 없어요
+            </div>
+          )}
         </div>
       </section>
 

@@ -566,8 +566,8 @@ function FarmDevices({ farmId }: { farmId: string }) {
         <div key={g.type.value} className="mb-2">
           <div className="mb-1 text-11.5 font-extrabold uppercase tracking-wide text-muted">{g.type.label}</div>
           {g.rows.map((d) => (
-            <div key={d.device_id} className="flex items-center gap-2 border-b border-gray-100 py-1.5 last:border-0">
-              <span className="flex-1 text-13 font-bold">
+            <div key={d.device_id} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-gray-100 py-1.5 last:border-0">
+              <span className="min-w-0 flex-1 basis-full text-13 font-bold sm:basis-auto">
                 {d.name} <span className="font-semibold text-muted">· {d.device_id}</span>
                 {d.location && <span className="font-semibold text-muted"> · {d.location}</span>}
               </span>
@@ -616,10 +616,10 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {farms.map((f) => (
             <div key={f.farm_id} className="rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-status-caution" />
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-caution" />
                 <span className="text-15 font-extrabold">{f.farm_id}</span>
-                <button onClick={() => openRegister(f)} className="ml-auto rounded-lg bg-primary px-3 py-1.5 text-12.5 font-extrabold text-white">등록</button>
+                <button onClick={() => openRegister(f)} className="ml-auto shrink-0 whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-12.5 font-extrabold text-white">등록</button>
               </div>
               <div className="mt-2 text-12.5 font-semibold text-muted">장치 {f.device_count}대 · 센서 {f.sensor_count}종 발견</div>
               <div className="mt-1 text-12 font-medium text-muted">
@@ -712,15 +712,19 @@ export default function SettingsPage() {
         ) : (
           farms.map((f) => (
             <div key={f.farm_id} className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2">
+              {/* 큰글씨에서 한 줄에 못 담으면 줄바꿈 — 눌러 담으면 메타 문구가 세로로 읽힌다.
+                  조작 버튼 3개는 한 덩어리로 묶어 함께 내려간다 (흩어지면 짝을 잃는다) */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                 <span className="text-15 font-extrabold">{f.name}</span>
                 <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-bold text-primary-dark">{f.farm_id}</span>
                 <span className="text-12.5 font-semibold text-muted">{farmTypeLabel(f.farm_type)} · {f.crop ?? "—"} · {f.devices_online}/{f.devices_total} 온라인</span>
-                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="ml-auto rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
+                <span className="ml-auto flex shrink-0 items-center gap-1">
+                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="whitespace-nowrap rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
                   {expanded === f.farm_id ? "접기" : "장치 관리"}
                 </button>
                 <button onClick={() => setEditingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">수정</button>
                 <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
+                </span>
               </div>
               {expanded === f.farm_id && <FarmDevices farmId={f.farm_id} />}
             </div>

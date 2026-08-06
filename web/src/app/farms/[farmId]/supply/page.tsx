@@ -76,12 +76,12 @@ export default function SupplyTab() {
             {stations.map((s) => {
               const st = STATION_STATE[s.state] ?? STATION_STATE.idle;
               return (
-                <div key={s.station_id} className="flex items-center gap-3 rounded-xl bg-surface px-3.5 py-2.5">
+                <div key={s.station_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-surface px-3.5 py-2.5">
                   <span className="text-13.5 font-extrabold">{s.station_id}</span>
-                  <span className="text-12.5 font-semibold text-muted">
+                  <span className="whitespace-nowrap text-12.5 font-semibold text-muted">
                     {TANK_LABEL[s.station_type] ?? s.station_type} 스테이션
                   </span>
-                  <span className="ml-auto"><StatusDot sev={st.sev} label={st.label} /></span>
+                  <span className="ml-auto shrink-0"><StatusDot sev={st.sev} label={st.label} /></span>
                 </div>
               );
             })}

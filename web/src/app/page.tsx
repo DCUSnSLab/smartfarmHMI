@@ -14,7 +14,7 @@ import {
   SENSOR_META, SEV_STYLE, TANK_LABEL,
 } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
-import { FarmSnapshot, farmSeverity, sensorOf, useFleetSnapshots } from "@/lib/fleet";
+import { FarmSnapshot, farmSeverity, sensorOf } from "@/lib/fleet";
 import { timeAgo } from "@/lib/monitor";
 import { isValidWeatherLocation, useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
@@ -121,11 +121,9 @@ function FarmCard({
 
 export default function Dashboard() {
   useScope("all");
-  const { farms, alerts, wsOpen } = useFarmData();
+  const { farms, alerts, wsOpen, snaps } = useFarmData();
   const { rows: weatherRows } = useWeather();
   const weatherByFarm = new Map(weatherRows.map((row) => [row.farm_id, row]));
-  const farmIds = farms.map((f) => f.farm_id);
-  const snaps = useFleetSnapshots(farmIds);
 
   const alertList = Object.values(alerts);
   const unacked = alertList.filter((a) => !a.acked_at);

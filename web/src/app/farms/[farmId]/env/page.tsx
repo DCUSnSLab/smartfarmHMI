@@ -16,7 +16,7 @@ import { Card, CONN_STYLE, SectionTitle, SENSOR_META, StatusDot } from "@/compon
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import { useRanges } from "@/lib/farmDetail";
-import { SensorValue, timeAgo } from "@/lib/monitor";
+import { SensorValue, controlBlocked, timeAgo } from "@/lib/monitor";
 
 export default function EnvTab() {
   const { farmId } = useParams<{ farmId: string }>();
@@ -29,7 +29,7 @@ export default function EnvTab() {
   const envList = list.filter((s) => s.sensor_type !== "water_level");
   const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
   const farmOnline = edge?.state === "online";
-  const stopped = stops.remote != null || stops.physical_estop != null;
+  const stopped = controlBlocked(stops, farmId);
 
   const outOfRange = (s: SensorValue) => {
     const r = ranges[s.sensor_type];

@@ -286,10 +286,14 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 "physical_estop", True, scope="farm",
                 engaged_at=msg.timestamp.isoformat()))
         from middleware.app.alerts import create_alert
+        # 키에 발동 시각을 넣는다 — 농장 단위로만 잡으면(estop:{farm_id}) 확인하지 않은
+        # 알림 하나가 그 농장의 이후 모든 비상정지 알림을 영구히 막는다 (create_alert 의
+        # 중복 억제는 '미확인' 기준이고, 해제해도 그 알림이 사라지지 않기 때문).
+        # 재전달(retain 된 estop_state 재수신)은 시각이 같아 여전히 걸러진다.
         await create_alert(conn, publisher, farm_id=msg.farm_id, severity="warning",
                            alert_kind="stop", title="현장 비상정지 작동됨",
                            body="현장에서 직접 해제해야 합니다 (웹 해제 불가)",
-                           dedup_key=f"estop:{msg.farm_id}")
+                           dedup_key=f"estop:{msg.farm_id}:{msg.timestamp.isoformat()}")
         log.warning("physical estop engaged: %s", msg.farm_id)
     else:
         row = (
@@ -302,8 +306,17 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 .returning(m.stop_event.c.id)
             )
         ).first()
-        if row and publisher:
+        if row is None:
+            return   # 열린 비상정지가 없음 — 재전달이거나 이미 해제된 상태
+        if publisher:
             publisher.publish(msg.farm_id, "stop", _stream_payload(
                 "physical_estop", False, scope="farm",
                 released_at=msg.timestamp.isoformat()))
-            log.warning("physical estop released (현장 조작): %s", msg.farm_id)
+        # 해제도 알림으로 남긴다 — 원격 정지와 동작을 맞춘다(발동 1건·해제 1건).
+        # 없으면 벨에 「작동됨」만 쌓여, 지금 걸려 있는 것인지 지난 일인지 알 수 없다.
+        from middleware.app.alerts import create_alert
+        await create_alert(conn, publisher, farm_id=msg.farm_id, severity="info",
+                           alert_kind="stop", title="현장 비상정지 해제됨",
+                           body="현장에서 직접 해제했습니다",
+                           dedup_key=f"estop-release:{msg.farm_id}:{msg.timestamp.isoformat()}")
+        log.warning("physical estop released (현장 조작): %s", msg.farm_id)

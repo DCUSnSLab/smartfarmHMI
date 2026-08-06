@@ -46,7 +46,10 @@ function FarmCard({
         : "날씨 조회 위치가 설정되지 않았습니다.";
 
   return (
-    <Card onClick={() => router.push(`/farms/${snap.farm.farm_id}/status`)}>
+    <Card
+      className="flex h-full flex-col justify-start"
+      onClick={() => router.push(`/farms/${snap.farm.farm_id}/status`)}
+    >
       <div className="mb-3 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 flex-none rounded-full ${s.dot}`} />
         <span className="min-w-0 flex-1 truncate text-16 font-extrabold">{snap.farm.name}</span>
@@ -78,7 +81,7 @@ function FarmCard({
         {snap.connections.filter((c) => c.state === "online").length}/{snap.connections.length}
       </div>
 
-      <div className="mb-3 grid grid-cols-3 gap-2">
+      <div className="mb-3 grid grid-cols-3 gap-2 border-b border-gray-100 pb-3">
         {KPI_SENSORS.map((type) => {
           const sensor = sensorOf(snap, type);
           const meta = SENSOR_META[type];

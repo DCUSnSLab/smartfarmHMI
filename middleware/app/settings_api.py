@@ -94,6 +94,10 @@ class DiscoveryRegister(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
+    region_code: str
+    latitude: float
+    longitude: float
+    accuracy_m: float | None = None
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────
@@ -382,12 +386,9 @@ async def list_discovery():
     다시 발견 목록에 떠 재등록(재활성화)할 수 있다.
     """
     async with _engine().connect() as conn:
-        registered = {
-            r.farm_id
-            for r in (
-                await conn.execute(select(m.farm.c.farm_id).where(m.farm.c.is_active))
-            ).all()
-        }
+        farm_rows = (await conn.execute(select(m.farm))).mappings().all()
+        registered = {r["farm_id"] for r in farm_rows if r["is_active"]}
+        existing = {r["farm_id"]: r for r in farm_rows}
         rows = (
             await conn.execute(
                 select(m.pending_registration).order_by(
@@ -412,6 +413,12 @@ async def list_discovery():
     return [
         {
             "farm_id": f["farm_id"],
+            "name": existing.get(f["farm_id"], {}).get("name"),
+            "farm_type": existing.get(f["farm_id"], {}).get("farm_type"),
+            "crop": existing.get(f["farm_id"], {}).get("crop"),
+            "region_code": existing.get(f["farm_id"], {}).get("region_code"),
+            "latitude": existing.get(f["farm_id"], {}).get("latitude"),
+            "longitude": existing.get(f["farm_id"], {}).get("longitude"),
             "device_count": len(f["devices"]),
             "sensor_count": sum(len(d["sensors"]) for d in f["devices"]),
             "first_seen": f["first_seen"].isoformat() if f["first_seen"] else None,
@@ -423,7 +430,9 @@ async def list_discovery():
 
 
 @router.post("/discovery/{farm_id}/register")
-async def register_discovered(farm_id: str, req: DiscoveryRegister):
+async def register_discovered(
+    farm_id: str, req: DiscoveryRegister, background_tasks: BackgroundTasks,
+):
     """발견된 팜을 등록 — farm + 발견 장치 + (birth/telemetry 로 파악한) 센서를 한 번에 생성.
 
     한 트랜잭션: farm upsert → pending 장치마다 device_meta,
@@ -431,6 +440,12 @@ async def register_discovered(farm_id: str, req: DiscoveryRegister):
     """
     if req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
+    if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+        raise HTTPException(400, "region_code must be a 10-digit administrative code")
+    try:
+        validate_coordinates(req.latitude, req.longitude)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         pend = (
             await conn.execute(
@@ -442,11 +457,18 @@ async def register_discovered(farm_id: str, req: DiscoveryRegister):
 
         await conn.execute(
             insert(m.farm)
-            .values(farm_id=farm_id, name=req.name, farm_type=req.farm_type, crop=req.crop)
+            .values(
+                farm_id=farm_id, name=req.name, farm_type=req.farm_type, crop=req.crop,
+                region_code=req.region_code, latitude=req.latitude, longitude=req.longitude,
+            )
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 발견으로 재등록하면 재활성화한다.
-                set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop, "is_active": True},
+                set_={
+                    "name": req.name, "farm_type": req.farm_type, "crop": req.crop,
+                    "region_code": req.region_code, "latitude": req.latitude,
+                    "longitude": req.longitude, "is_active": True,
+                },
             )
         )
 
@@ -473,4 +495,7 @@ async def register_discovered(farm_id: str, req: DiscoveryRegister):
         await conn.execute(
             delete(m.pending_registration).where(m.pending_registration.c.farm_id == farm_id)
         )
+    background_tasks.add_task(
+        collect_farm_weather, _engine(), farm_id, req.region_code, req.latitude, req.longitude,
+    )
     return {"ok": True, "farm_id": farm_id, "devices": devices, "sensors": sensors}

@@ -22,6 +22,12 @@ export interface DiscoveredFarm {
   first_seen: string | null;
   last_seen: string | null;
   devices: DiscoveredDevice[];
+  name: string | null;
+  farm_type: string | null;
+  crop: string | null;
+  region_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface DeviceDetail {
@@ -71,7 +77,7 @@ export async function listDiscovery(): Promise<DiscoveredFarm[]> {
 
 export async function registerDiscovered(
   farmId: string,
-  meta: { name: string; farm_type: string; crop?: string | null },
+  meta: Omit<FarmInput, "farm_id">,
 ): Promise<boolean> {
   return jsonOk(
     await apiFetch(`/api/discovery/${farmId}/register`, {

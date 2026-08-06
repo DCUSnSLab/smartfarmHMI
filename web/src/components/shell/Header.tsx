@@ -16,7 +16,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertPanel } from "@/components/AlertPanel";
-import { StopButton } from "@/components/StopControls";
+import { StopButton, StopRelease } from "@/components/StopControls";
 import { CONTROL, CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AuthUser, ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
@@ -25,6 +25,14 @@ import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
 const EXPAND_MARGIN = 24;  // 되펼칠 때 요구하는 여유 폭(px) — 경계 깜빡임 방지
 const FIT_SLACK = 4;       // 넘치기 전에 접도록 두는 여유(px)
+
+/**
+ * 압축 단계 — 폭이 모자랄 때 **이 순서로 하나씩** 줄인다.
+ * 잃는 정보가 적은 것부터: 네비는 드로어로 옮겨도 접근 가능하고, 사용자 이름·정지
+ * 라벨은 아이콘·축약으로 남는다. 여백 압축은 마지막 (더 줄일 게 없을 때).
+ */
+const STAGE = { nav: 1, user: 2, stop: 3, gap: 4 } as const;
+const MAX_STAGE = STAGE.gap;
 
 /** 자식 폭 합산으로 필요 폭을 구한다 — scrollWidth 는 넘치기 전엔 여유를 알려주지 않는다 */
 function neededWidth(row: HTMLElement): number {
@@ -185,54 +193,51 @@ export function Header() {
   const { stops } = useFarmData();
   const globalAlerts = useGlobalAlerts();
   const { level } = useFontLevel();
-  const [collapsed, setCollapsed] = useState(false);
-  const [tight, setTight] = useState(false);      // 접은 뒤에도 넘칠 때 (좁은 폭 + 큰글씨)
+  const [stage, setStage] = useState(0);          // 압축 단계 (0=전체 … MAX_STAGE)
   const [menuOpen, setMenuOpen] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
-  const collapsedAt = useRef(0);  // 접기 시작한 폭 — 되펼칠 기준
-  const tightAt = useRef(0);
+  const stageAt = useRef<number[]>([]);           // 각 단계에서의 필요 폭 — 되펼칠 기준
+
+  // 단계별로 하나씩 줄인다 — 한 트리거로 여러 요소를 동시에 줄이면 여백이 남는데도
+  // 갑자기 축소된 것처럼 보인다
+  const collapsed = stage >= STAGE.nav;
+  const compactUser = stage >= STAGE.user;
+  const shortStop = stage >= STAGE.stop;
+  const tight = stage >= STAGE.gap;
 
   // 되펼침 판정이 컨테이너 폭 기준이라, 폭이 그대로인 채 콘텐츠만 좁아지는 경우
   // (글자 크기 축소, 정지 배너 발동으로 버튼 사라짐 등)에는 스스로 풀리지 않는다.
   // 그래서 그런 변화에는 압축을 초기화하고 아래 measure 가 다시 판정하게 한다.
   useMeasureEffect(() => {
-    setCollapsed(false);
-    setTight(false);
+    setStage(0);
   }, [level, user, stops.remote]);
 
-  // 2단계 압축: ① 네비 → 햄버거 드로어  ② 간격·좌우 여백 압축
+  // 넘치면 한 단계 올리고, 직전 단계의 필요 폭 + 여유가 확보되면 한 단계 내린다.
+  // 한 번의 measure 에서 한 단계만 움직인다 — stage 가 바뀌면 이 훅이 다시 돌며 수렴한다.
   useMeasureEffect(() => {
     const row = rowRef.current;
     if (!row) return;
     const measure = () => {
       const avail = row.clientWidth;
       const need = neededWidth(row);
-      if (!collapsed) {
-        if (need > avail - FIT_SLACK) {
-          collapsedAt.current = need;   // 펼친 상태의 필요 폭을 기억 — 되펼칠 기준
-          setCollapsed(true);
+      if (need > avail - FIT_SLACK) {
+        if (stage < MAX_STAGE) {
+          stageAt.current[stage] = need;   // 이 단계의 필요 폭을 기억
+          setStage(stage + 1);
         }
         return;
       }
-      if (avail > collapsedAt.current + EXPAND_MARGIN) {
-        setCollapsed(false);
-        setTight(false);
-        return;
-      }
-      if (!tight) {
-        if (need > avail - FIT_SLACK) {
-          tightAt.current = need;
-          setTight(true);
-        }
-      } else if (avail > tightAt.current + EXPAND_MARGIN) {
-        setTight(false);
+      // 되펼침은 직전 단계가 실제로 들어갈 폭이 됐을 때만 — 경계에서 깜빡이지 않게.
+      // 기록이 없으면(있을 수 없지만) 되돌리지 않는다 — 0 으로 두면 즉시 되돌아 진동한다
+      if (stage > 0 && avail > (stageAt.current[stage - 1] ?? Infinity) + EXPAND_MARGIN) {
+        setStage(stage - 1);
       }
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(row);
     return () => ro.disconnect();
-  }, [collapsed, tight, level, user, stops.remote]);
+  }, [stage, level, user, stops.remote]);
 
   // 폭이 넓어지면 닫는다 — 드로어가 열린 채 데스크톱 레이아웃으로 돌아가는 것 방지
   useEffect(() => {
@@ -241,10 +246,11 @@ export function Header() {
 
   return (
     <>
-      {/* flex-wrap 없음 — 넘칠 때 줄바꿈이 아니라 접어야 한다.
-          모든 컨트롤이 같은 높이(CONTROL)라 접힘 여부와 무관하게 행 높이가 같다.
-          tight: 접은 뒤에도 넘치면 간격·좌우 여백을 줄여 폭을 확보한다 (요소는 숨기지 않는다) */}
-      <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur">
+      {/* flex-wrap 없음 — 넘칠 때 줄바꿈이 아니라 STAGE 순서로 접는다.
+          모든 컨트롤이 같은 높이(CONTROL)라 단계와 무관하게 행 높이가 같다.
+          고정은 AppShell 의 sticky 컨테이너가 맡는다 — 정지 배너와 함께 묶여야
+          스크롤 시 배너가 이 바를 덮지 않는다 */}
+      <header className="border-b border-gray-100 bg-white/95 backdrop-blur">
         <div
           ref={rowRef}
           className={`mx-auto flex max-w-7xl items-center py-2 ${
@@ -266,15 +272,11 @@ export function Header() {
             </button>
           )}
 
-          {/* 로고는 서비스명이라 글자를 크게 둔다. 접힌 뒤에는 남는 폭 부족을 텍스트
-              truncate 로 흡수하고, tight 에서는 텍스트만 감춘다 — 아이콘은 항상 남긴다.
-              min-w-0 은 텍스트에만 준다 — Link 에 주면 아이콘 폭 아래로 줄어들어 겹친다 */}
-          <Link
-            href="/"
-            className={`inline-flex h-9 items-center gap-2 rounded-xl ${
-              collapsed && !tight ? "shrink" : "shrink-0"
-            }`}
-          >
+          {/* 로고는 shrink-0 — 줄어들면 neededWidth 가 자식의 실제 폭 합이라 부족분을
+              로고가 흡수해 버리고, 그러면 다음 압축 단계가 승격되지 않는다 (「팜온」만
+              뭉개진 채 사용자·정지 라벨은 그대로). 폭 확보는 STAGE 가 순서대로 맡는다.
+              마지막 단계에서 텍스트만 감추고 아이콘은 남긴다 */}
+          <Link href="/" className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-primary text-white">
               {/* 새싹 — 디자인 전달본(.dc.html) 원본 path */}
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -289,13 +291,7 @@ export function Header() {
                 />
               </svg>
             </span>
-            <span
-              className={`text-16 font-extrabold ${
-                tight ? "hidden" : collapsed ? "min-w-0 truncate" : ""
-              }`}
-            >
-              팜온
-            </span>
+            <span className={`text-16 font-extrabold ${tight ? "hidden" : ""}`}>팜온</span>
           </Link>
 
           {!collapsed && (
@@ -317,13 +313,20 @@ export function Header() {
 
           {/* 우측 고정 영역 — shrink-0 로 글자 단위 찌그러짐을 막는다 */}
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {user && <UserMenu user={user} compact={collapsed} />}
+            {user && <UserMenu user={user} compact={compactUser} />}
 
             {/* 알림 — 전역 벨 (스코프 무관: 전체 알림) */}
             <AlertPanel key={pathname} farmId={null} alerts={globalAlerts} />
 
-            {/* 원격 전체 정지 — 발동 중이면 배너의 해제 버튼으로 (중복 방지) */}
-            {!stops.remote && <StopButton canStop={canControl(user)} />}
+            {/* 정지 자리 — 발동 중에는 같은 자리가 해제로 바뀐다 (자리를 비우지 않는다).
+                배너에 해제를 두면 정지 중 우측 구성이 무너지고 폭 정렬도 어긋난다 */}
+            {stops.remote
+              ? <StopRelease
+                  canRelease={canControl(user)}
+                  estopActive={!!stops.physical_estop}
+                  short={shortStop}
+                />
+              : <StopButton canStop={canControl(user)} short={shortStop} />}
           </div>
         </div>
       </header>

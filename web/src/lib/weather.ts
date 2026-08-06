@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface WeatherRow {
   farm_id: string;
@@ -26,7 +27,7 @@ export function useWeather() {
   useEffect(() => {
     let active = true;
     const load = () => {
-      void fetch("/api/weather")
+      void apiFetch("/api/weather")
         .then(async (response) => response.ok ? response.json() : [])
         .then((data: WeatherRow[]) => { if (active) setRows(data); })
         .finally(() => { if (active) setLoading(false); });

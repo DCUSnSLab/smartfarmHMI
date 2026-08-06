@@ -137,6 +137,13 @@ async def farm_stop_state(request, farm_id: str):
     return await _proxy_middleware(f"/internal/farms/{farm_id}/stop-state")
 
 
+async def stop_state_all(request):
+    """전체 스코프 활성 정지 — 통합 대시보드 초기 로드 (WS 이벤트는 그 순간만 온다)."""
+    if request_user(request) is None:
+        return unauthorized()
+    return await _proxy_middleware("/internal/stop-state")
+
+
 @csrf_exempt
 async def stop_engage(request):
     """원격 전체 정지 발동 (FR-35) — admin/manager. Cat.2 운전 정지 (비안전등급)."""

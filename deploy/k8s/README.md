@@ -86,9 +86,11 @@ kubectl create secret generic smartfarmhmi-external-secrets -n $NS \
 NS=smartfarmhmi-dev
 kubectl kustomize deploy/k8s/overlays/dev     # 렌더 확인
 
-# (0) 인프라 먼저 — StatefulSet/Service 만 추출해 적용 후 Ready 대기
+# (0) 인프라 먼저 — ConfigMap/StatefulSet/Service 를 추출해 적용 후 Ready 대기
+#     ConfigMap 을 빠뜨리면 timescaledb 가 init 스크립트 ConfigMap 을 마운트하지 못해
+#     ContainerCreating 에서 멈춘다.
 kubectl kustomize deploy/k8s/overlays/dev \
-  | awk 'BEGIN{RS="\n---\n"; ORS="\n---\n"} /(^|\n)kind: (StatefulSet|Service)\n/' \
+  | awk 'BEGIN{RS="\n---\n"; ORS="\n---\n"} /(^|\n)kind: (ConfigMap|StatefulSet|Service)\n/' \
   | kubectl apply -n $NS -f -
 kubectl rollout status statefulset/timescaledb -n $NS --timeout=5m
 kubectl rollout status statefulset/redis       -n $NS --timeout=5m

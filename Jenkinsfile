@@ -145,11 +145,15 @@ pipeline {
                         # (인용 없는 숫자만 들어가면 정수로 해석돼 Kustomize unmarshal 실패).
                         sed -i 's|newTag: latest|newTag: "${IMAGE_TAG}"|g' kustomization.yaml
 
-                        # ── (0) 인프라(StatefulSet/Service) 먼저 + Ready 대기
+                        # ── (0) 인프라(ConfigMap/StatefulSet/Service) 먼저 + Ready 대기
                         #       fresh 네임스페이스에서 DB 보다 마이그레이션 Job 이 먼저 돌면
                         #       접속 실패로 backoffLimit 을 소진한다.
+                        #       ConfigMap 을 여기 포함하는 게 중요하다 — timescaledb 가
+                        #       smartfarmhmi-db-init(초기화 스크립트)을 volume 으로 마운트하므로
+                        #       ConfigMap 이 없으면 Pod 가 ContainerCreating 에서 영영 멈춘다
+                        #       (AIBootcamp postgres 는 ConfigMap 을 안 붙여 이 순서로 문제없었다).
                         kubectl kustomize . \\
-                            | awk 'BEGIN{RS="\\n---\\n"; ORS="\\n---\\n"} /(^|\\n)kind: (StatefulSet|Service)\\n/' \\
+                            | awk 'BEGIN{RS="\\n---\\n"; ORS="\\n---\\n"} /(^|\\n)kind: (ConfigMap|StatefulSet|Service)\\n/' \\
                             | kubectl apply -n ${NAMESPACE} -f -
                         kubectl rollout status statefulset/timescaledb -n ${NAMESPACE} --timeout=5m
                         kubectl rollout status statefulset/redis       -n ${NAMESPACE} --timeout=5m

@@ -139,17 +139,18 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 
 ## 배포 (K8s)
 
-배포는 Kustomize + Jenkins 파이프라인 구조다 (AIBootcamp 패턴 미러, **현재 스켈레톤 — 클러스터 적용 전**).
+배포는 Kustomize + Jenkins 파이프라인 구조다.
 
-| 브랜치 | 네임스페이스 | 환경 | 노출 |
-|---|---|---|---|
-| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 |
-| `main` | `smartfarmhmi` | 운영 | NodePort 30481 (TLS·도메인 TODO) |
+| 브랜치 | 네임스페이스 | 환경 | 노출 | 상태 |
+|---|---|---|---|---|
+| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 | **운영 중** |
+| `main` | `smartfarmhmi` | 운영 | NodePort 30481 | 미개통 (TLS·도메인·Harbor 프로젝트 TODO) |
 
 - 매니페스트: `deploy/k8s/` (base + overlays/{dev,main}) — 렌더 확인: `kubectl kustomize deploy/k8s/overlays/dev`
-- **최초 1회 사전 작업**(네임스페이스·Secret 수동 생성 절차): [deploy/k8s/README.md](./deploy/k8s/README.md)
-- 파이프라인: `Jenkinsfile` — 브랜치별 환경 결정 → 이미지 빌드(`BUILD_NUMBER-GIT_SHA` 불변 태그) → Harbor push → `kubectl apply -k`. **Harbor 프로젝트·Jenkins 자격증명 등록 후 활성화** (파일 내 TODO)
-- 운영 전 필수: Mosquitto 인증·TLS·ACL (OPN-22), 쿠키 `secure` 전환
+- **최초 1회 사전 작업**(네임스페이스·Secret 5종·시드): [deploy/k8s/README.md](./deploy/k8s/README.md)
+- 파이프라인: `Jenkinsfile` — 브랜치별 환경 결정 → 이미지 빌드(`BUILD_NUMBER-GIT_SHA` 불변 태그) → Harbor push → 인프라·마이그레이션 Job·워크로드 순차 적용. **develop 머지 시 자동 배포**된다
+- 설정값 배치: 비밀값은 Secret, 환경별 값은 ConfigMap(`overlays/*/config.env` — **git 커밋됨**). 기준은 [deploy/k8s/README.md](./deploy/k8s/README.md) 참고
+- 운영 전 필수: Mosquitto 인증·TLS·ACL (OPN-22), 쿠키 `secure` 전환, main overlay TLS·도메인
 
 ---
 
@@ -243,3 +244,4 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 - 2026-07-29 · 기술 스택 확정(tech-stack.md 신설, AIBootcamp 정합). OPN-03(DB)·OPN-19(물리 비상정지 상태 취득)·OPN-07 중 인증 방식 확정
 - 2026-07-29 · 개발 착수 — DB 스키마 정의(db-schema.md, OPN-09·15 해소), 개발 증분 계획(dev-increments.md), 개발 스캐폴딩(모노레포·compose·k8s 스켈레톤), develop 브랜치 신설
 - 2026-07-30 · 증분 0~7 구현 완료 반영 — 프로젝트 소개·Getting Started 튜토리얼·배포 안내로 README 개편, 개발 현황 표 신설(dev-increments.md), 증분 8 보류·검토 논점 기록
+- 2026-08-06 · **dev 서버 개통** (GEN-1264) — k8s 매니페스트 누락분 보강, Jenkins Harbor push·자동 배포 연결. 배포 절이 스켈레톤 안내에서 실제 접속 정보·시드 계정으로 바뀜

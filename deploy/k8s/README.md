@@ -2,7 +2,8 @@
 
 사내 온프레미스 Kubernetes 클러스터 배포용 매니페스트 (AIBootcamp `deploy/k8s` 패턴 미러).
 
-> **상태: 스켈레톤.** `kubectl kustomize` 렌더 검증까지 완료된 상태이며, 실제 클러스터 적용·검증은 아직이다. 증분 1(스키마 구현) 이후 dev 클러스터 적용을 진행한다.
+> **상태: dev 운영 중** (2026-08-06 개통, GEN-1264). `http://<노드IP>:30480`
+> Jenkins 가 develop 머지마다 자동 배포한다. main(운영) overlay 는 아직 미개통.
 
 - 매니페스트 도구: **Kustomize** (kubectl 내장)
 - 배포 흐름: Jenkins → Harbor(`harbor.cu.ac.kr`) push → `kubectl apply -k`
@@ -69,13 +70,11 @@ kubectl create secret generic smartfarmhmi-external-secrets -n $NS \
   --from-literal=WEATHER_KEY='<공공데이터포털 서비스키>'
 ```
 
-> **어떤 값을 어디에 두는가**
-> - **Secret** — 비밀번호·서비스키. `django-secret` / `postgres-credentials` / `minio-credentials` / `smartfarmhmi-external-secrets`
-> - **ConfigMap**(`overlays/*/config.env`) — 비밀은 아니지만 환경마다 다른 값. **git 에 커밋되므로 공개돼도 무방한 값만.**
-> - **코드 상수** — 공개 문서화된 외부 엔드포인트 URL 등
->
-> 노출을 꺼리는 내부망 주소(엣지 게이트웨이 IP 등)가 생기면, 비밀이 아니어도 `config.env` 대신
-> 클러스터에만 존재하는 별도 ConfigMap 을 만들고 `configMapRef ... optional: true` 로 참조할 것.
+`overlays/*/config.env` 는 git 에 커밋된다. 비밀번호·서비스키·사내망 주소는 Secret 에, 그 외 환경별 값만 거기 둔다.
+외부 API 는 URL 이 아니라 서비스키만 비밀이다.
+
+비밀값 추가 시 — Secret 생성 → 매니페스트에서 `secretRef`/`secretKeyRef` 로 참조 → 위 목록에 항목 추가.
+Secret 변경 후에는 `kubectl rollout restart deploy/<대상>` (실행 중 Pod 는 갱신되지 않는다).
 
 ### 3. 렌더 확인 / 적용
 

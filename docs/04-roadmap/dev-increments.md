@@ -4,7 +4,7 @@
 
 브랜치 전략: 증분(또는 그 하위 작업) 단위 브랜치 → PR base **develop** → develop→main은 릴리즈 PR. 배포는 develop→dev 환경, main→운영 환경 (`../03-architecture/tech-stack.md`, Jenkinsfile).
 
-## 개발 현황 (2026-07-30 기준)
+## 개발 현황 (2026-08-06 기준)
 
 | 증분 | 티켓 | PR | 상태 |
 |---|---|---|---|
@@ -22,8 +22,12 @@
 | (병행) 설정 화면·장비 관리 | GEN-1223 | [#16](https://github.com/DCUSnSLab/smartfarmHMI/pull/16) | ✅ 완료 |
 | (병행) 개발환경 멀티팜 | GEN-1222 | [#15](https://github.com/DCUSnSLab/smartfarmHMI/pull/15) | ✅ 완료 |
 | (병행) 가상 엣지 + 시뮬레이터 통합 | GEN-1217 | [#12](https://github.com/DCUSnSLab/smartfarmHMI/pull/12) | ✅ 구현 완료 — `virtual-edge/` 하네스(연동 시나리오 11종) + **edge-sim 통합 제거** (기본 스택 데이터원 교체, 로봇 시뮬 이식) |
+| (병행) **dev 클러스터 배포** | GEN-1264 | [#31](https://github.com/DCUSnSLab/smartfarmHMI/pull/31) | ✅ **개통** — NodePort 30480, develop 머지 시 Jenkins 자동 배포 |
 
 증분 2~4 완료로 `phase2-scope.md` "현재 개발 범위"는 **전체 달성**됐다. 실행 환경 구축은 루트 `README.md` Getting Started 참고.
+
+**dev 배포 시 유의** — **compose 에 서비스를 추가하면 k8s 매니페스트에도 반드시 반영할 것**
+— 로컬은 compose 가 돌리므로 누락돼도 드러나지 않는다.
 
 ## 증분 목록
 
@@ -146,3 +150,4 @@ AIBootcamp 패턴 이식.
 - 2026-07-29 · 최초 작성 (증분 0~8 + 원칙)
 - 2026-07-31 · 병행 트랙 갱신 (GEN-1222·1223·1224). UI/UX 전면 구현으로 화면 체계 완성 — 미구현 기능은 화면에 「개발 예정」으로 표시되어 추적된다
 - 2026-07-30 · 개발 현황 표 추가 (증분 0~7 완료, PR #2~#9). 증분 8 보류 처리 + 착수 전 검토 논점 5건 기록. 구현 중 확정 사항 절 신설
+- 2026-08-06 · dev 클러스터 개통 (GEN-1264) — 현황 표에 배포 트랙 추가, compose↔k8s 정합 유지 유의사항 기록

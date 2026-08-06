@@ -16,6 +16,10 @@ spec:
           ports: [{ containerPort: 8001 }]
           envFrom:
             - configMapRef: { name: smartfarmhmi-config }
+            # 외부 서비스 키 (WEATHER_KEY 등) — git 에 올릴 수 없어 Secret 으로 분리.
+            # optional: 아직 Secret 을 안 만든 클러스터에서도 Pod 가 뜨게 한다
+            # (그 경우 날씨 수집만 실패하고 나머지는 정상 동작).
+            - secretRef: { name: smartfarmhmi-external-secrets, optional: true }
           env:
             - name: MW_DB_PASSWORD
               valueFrom: { secretKeyRef: { name: postgres-credentials, key: MW_DB_PASSWORD } }
@@ -23,6 +27,9 @@ spec:
             httpGet: { path: /health, port: 8001 }
             initialDelaySeconds: 10
             periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 1000m, memory: 1Gi }
 ---
 apiVersion: v1
 kind: Service

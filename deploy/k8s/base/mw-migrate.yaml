@@ -1,0 +1,25 @@
+# 미들웨어 Alembic 마이그레이션 Job — mw 스키마 전용 (db-schema.md §1).
+# `make migrate` 가 Django + Alembic 둘 다 도는 것과 짝을 맞춘다. 이게 없으면
+# mw.* 테이블이 없어 middleware 가 기동 직후 죽는다.
+# Jenkins 가 apply 전에 delete 후 재생성한다 (Job 은 immutable).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smartfarmhmi-mw-migrate
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-mw-migrate }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: mw-migrate
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/middleware
+          # alembic.ini 가 /app/middleware 에 있어 해당 디렉토리에서 실행해야 한다
+          command: ["sh", "-c", "cd /app/middleware && alembic upgrade head"]
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: MW_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: MW_DB_PASSWORD } }

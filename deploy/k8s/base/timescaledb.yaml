@@ -34,6 +34,9 @@ spec:
     - metadata: { name: data }
       spec:
         accessModes: ["ReadWriteOnce"]
+        # 사내 클러스터 기본 SC (AIBootcamp deploy/k8s 와 동일). SC 이름이 다르면
+        # PVC 가 Pending 으로 영구 대기하므로 클러스터에 맞춰 고칠 것.
+        storageClassName: longhorn
         resources: { requests: { storage: 20Gi } }
 ---
 apiVersion: v1

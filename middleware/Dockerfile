@@ -42,4 +42,7 @@ COPY shared /app/shared
 USER appuser
 
 EXPOSE 8001
-CMD ["uvicorn", "middleware.app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
+# --workers 1 고정: lifespan 이 MQTT 구독(ingest_loop)·통신 상태 감시를 띄우므로
+# 워커가 2개면 같은 메시지를 두 번 수집하고 LWT·스케줄러가 충돌한다 (tech-stack.md
+# 의 "단일 인스턴스 전제" — k8s replicas 1 과 짝을 이룬다).
+CMD ["uvicorn", "middleware.app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

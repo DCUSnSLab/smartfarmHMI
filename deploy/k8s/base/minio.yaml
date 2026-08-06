@@ -32,6 +32,7 @@ spec:
     - metadata: { name: data }
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
         resources: { requests: { storage: 20Gi } }
 ---
 apiVersion: v1

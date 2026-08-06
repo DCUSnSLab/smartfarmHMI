@@ -7,10 +7,13 @@ resources:
   - timescaledb.yaml
   - redis.yaml
   - minio.yaml
+  - minio-init.yaml
   - mosquitto.yaml
   - api.yaml
   - api-migrate.yaml
+  - api-bridge.yaml
   - middleware.yaml
+  - mw-migrate.yaml
   - virtual-edge.yaml
   - web.yaml
   - nginx.yaml
@@ -26,7 +29,9 @@ configMapGenerator:
   - name: smartfarmhmi-db-init
     files: [01-schemas.sh=db-init-01-schemas.sh]
   - name: smartfarmhmi-vedge-config
-    files: [seongju.yaml=vedge-seongju.yaml]
+    files:
+      - seongju.yaml=vedge-seongju.yaml
+      - jinju.yaml=vedge-jinju.yaml
 
 # 이미지 placeholder — overlay/Jenkins 가 newTag 치환 (IMAGE_TAG=BUILD_NUMBER-GIT_SHA)
 images:

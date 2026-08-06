@@ -1,0 +1,31 @@
+# MQTT → Channels 브리지 (compose 의 api-bridge 대응).
+# api 와 같은 이미지·같은 env 를 쓰지만 ASGI 서버 대신 mqtt_bridge 커맨드를 돈다.
+# **단일 replica 전용** (tech-stack.md) — 늘리면 같은 메시지를 중복 재발행한다.
+# HTTP 를 열지 않으므로 Service·probe 없음.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-api-bridge
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # 롤링 중 구독자 2개가 겹치지 않게
+  selector:
+    matchLabels: { app: smartfarmhmi-api-bridge }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-api-bridge }
+    spec:
+      containers:
+        - name: api-bridge
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/api
+          command: ["python", "manage.py", "mqtt_bridge"]
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: django-secret, key: SECRET_KEY } }
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: APP_DB_PASSWORD } }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }

@@ -16,10 +16,19 @@ spec:
           ports: [{ containerPort: 3000 }]
           envFrom:
             - configMapRef: { name: smartfarmhmi-config }
+          env:
+            # web/src/middleware.ts 의 라우트 가드가 이 키로 SimpleJWT(HS256) 를 검증한다.
+            # 없으면 빈 키로 jwtVerify → 항상 실패 → 액세스 토큰이 멀쩡해도 로그인 화면으로
+            # 튕긴다. api 와 **반드시 같은 값**이어야 한다.
+            - name: DJANGO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: django-secret, key: SECRET_KEY } }
           readinessProbe:
             httpGet: { path: /, port: 3000 }
             initialDelaySeconds: 10
             periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 1000m, memory: 1Gi }
 ---
 apiVersion: v1
 kind: Service

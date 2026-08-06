@@ -100,13 +100,13 @@ function FarmCard({
       <div className="space-y-1.5">
         {snap.tanks.map((t) => (
           <div key={t.device_id} className="flex items-center gap-2">
-            <span className="w-12 flex-none text-11.5 font-bold text-gray-500">
+            <span className="w-12 flex-none whitespace-nowrap text-11.5 font-bold text-gray-500">
               {TANK_LABEL[t.tank_type] ?? t.tank_type}
             </span>
             <span className="flex-1">
               <Gauge value={t.level_pct} compact />
             </span>
-            <span className="w-10 flex-none text-right text-11.5 font-extrabold">
+            <span className="w-10 flex-none whitespace-nowrap text-right text-11.5 font-extrabold">
               {t.level_pct != null ? `${Math.round(t.level_pct)}%` : "—"}
             </span>
           </div>
@@ -254,7 +254,7 @@ export default function Dashboard() {
                 const total = snap.connections.length;
                 return (
                   <div key={snap.farm.farm_id} className="flex items-center gap-2 text-12.5">
-                    <span className="flex-1 truncate font-bold">{snap.farm.name}</span>
+                    <span className="min-w-0 flex-1 truncate font-bold">{snap.farm.name}</span>
                     <StatusDot
                       sev={on === total ? "ok" : on > 0 ? "caution" : "warning"}
                       label={`${on}/${total}`}

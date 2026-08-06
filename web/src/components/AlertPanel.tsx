@@ -169,12 +169,12 @@ export function AlertList({
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-13 font-bold text-muted">미확인 {unacked}건</span>
-        <span className="flex gap-1.5">
+        <span className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`rounded-lg px-2.5 py-1 text-12.5 font-bold ${
+              className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-12.5 font-bold ${
                 filter === f.key ? "bg-primary-bg text-primary-dark" : "bg-white text-gray-500"
               }`}
             >

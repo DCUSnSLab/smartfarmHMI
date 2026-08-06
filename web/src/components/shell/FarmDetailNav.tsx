@@ -7,9 +7,9 @@
  * 현재 선택된 탭을 활성화하고, 선택된 농장 경로를 유지한다.
  */
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFarmData } from "@/lib/farmData";
+import { NavDropdown, NavItemData, NavItemLink } from "@/components/ui";
 
 
 const TABS = [
@@ -40,34 +40,44 @@ export function FarmDetailNav() {
     (alert) => alert.farm_id === farmId && !alert.acked_at
   ).length;
 
+  const badge = (seg: string) =>
+    seg === "alerts" && unacked > 0 ? (
+      <span className="shrink-0 rounded-full bg-status-warning px-1.5 text-11 font-extrabold text-white">
+        {unacked}
+      </span>
+    ) : undefined;
+
+  // 넓은 폭의 탭 나열과 좁은 폭의 드롭다운이 같은 목록을 쓴다
+  const items: NavItemData[] = TABS.map((tab) => ({
+    key: tab.seg,
+    href: `/farms/${farmId}/${tab.seg}`,
+    label: tab.label,
+    active: currentTab === tab.seg,
+    trail: badge(tab.seg),
+  }));
+
   return (
     <nav className="w-full border-b border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-7xl flex-wrap gap-1 px-6">
-        {TABS.map((tab) => {
-          const active = currentTab === tab.seg;
+      {/* 좁은 폭에서는 접는다 — 탭 5종이 두 줄이 되면 밑줄이 두 겹으로 보여
+          어느 것이 현재 탭인지 흐려지고, 고정 영역 높이도 그만큼 커진다 */}
+      <NavDropdown items={items} ariaLabel="상세 화면 선택" className="mx-auto max-w-7xl sm:hidden" />
 
-          return (
-            <Link
-              key={tab.seg}
-              href={`/farms/${farmId}/${tab.seg}`}
-              className={`-mb-px border-b-[3px] px-3.5 py-3 text-13.5 focus:outline-none ${
-                active
-                  ? "border-primary font-extrabold text-primary-dark"
-                  : "border-transparent font-semibold text-gray-500 hover:text-primary-dark"
-              }`}
-            >
-              {tab.label}
-
-              {tab.seg === "alerts" && unacked > 0 && (
-                <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-11 font-extrabold text-white">
-                  {unacked}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      <div className="mx-auto hidden max-w-7xl flex-wrap gap-1 px-6 sm:flex">
+        {items.map((item) => (
+          <NavItemLink
+            key={item.key}
+            item={item}
+            className={`-mb-px inline-flex items-center gap-1.5 whitespace-nowrap border-b-[3px] px-3.5 py-3 text-13.5 focus:outline-none ${
+              item.active
+                ? "border-primary font-extrabold text-primary-dark"
+                : "border-transparent font-semibold text-gray-500 hover:text-primary-dark"
+            }`}
+          >
+            {item.label}
+            {item.trail}
+          </NavItemLink>
+        ))}
       </div>
     </nav>
-
   );
 }

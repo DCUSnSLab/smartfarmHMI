@@ -42,7 +42,7 @@ function ManualControlModal({
         수동 제어 중에는 자동 스케줄이 일시 중지됩니다 (인터록 명세 예정)
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <div className="text-12 font-bold text-gray-500">배터리</div>
           <div className="text-20 font-extrabold">{robot.battery_pct ?? "—"}%</div>
@@ -79,7 +79,7 @@ function ManualControlModal({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           disabled title="자동 충전 지시는 개발 예정입니다 (FR-06)"
           className="flex-1 rounded-xl bg-gray-100 py-3 text-13.5 font-extrabold text-gray-400"
@@ -130,7 +130,8 @@ export default function RobotTab() {
                   <span className="ml-auto text-11.5 font-semibold text-muted">{timeAgo(r.ts)}</span>
                 </div>
 
-                <div className="mb-3 grid grid-cols-3 gap-2 text-12.5 font-semibold text-gray-600">
+                {/* 큰글씨에서 3열은 「속 도」처럼 라벨이 쪼개진다 — 좁을 때는 2열로 내린다 */}
+                <div className="mb-3 grid grid-cols-2 gap-2 text-12.5 font-semibold text-gray-600 sm:grid-cols-3">
                   <div>
                     배터리{" "}
                     <b className={low ? "text-status-warningDark" : ""}>{r.battery_pct ?? "—"}%</b>

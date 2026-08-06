@@ -3,7 +3,8 @@
 사내 온프레미스 Kubernetes 클러스터 배포용 매니페스트 (AIBootcamp `deploy/k8s` 패턴 미러).
 
 > **상태: dev 운영 중** (2026-08-06 개통, GEN-1264). `http://<노드IP>:30480`
-> Jenkins 가 develop 머지마다 자동 배포한다. main(운영) overlay 는 아직 미개통.
+> develop 머지 후 Jenkins로 배포된다.
+> main(운영) overlay 는 아직 미개통.
 
 - 매니페스트 도구: **Kustomize** (kubectl 내장)
 - 배포 흐름: Jenkins → Harbor(`harbor.cu.ac.kr`) push → `kubectl apply -k`

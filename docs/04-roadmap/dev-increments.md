@@ -22,7 +22,7 @@
 | (병행) 설정 화면·장비 관리 | GEN-1223 | [#16](https://github.com/DCUSnSLab/smartfarmHMI/pull/16) | ✅ 완료 |
 | (병행) 개발환경 멀티팜 | GEN-1222 | [#15](https://github.com/DCUSnSLab/smartfarmHMI/pull/15) | ✅ 완료 |
 | (병행) 가상 엣지 + 시뮬레이터 통합 | GEN-1217 | [#12](https://github.com/DCUSnSLab/smartfarmHMI/pull/12) | ✅ 구현 완료 — `virtual-edge/` 하네스(연동 시나리오 11종) + **edge-sim 통합 제거** (기본 스택 데이터원 교체, 로봇 시뮬 이식) |
-| (병행) **dev 클러스터 배포** | GEN-1264 | [#31](https://github.com/DCUSnSLab/smartfarmHMI/pull/31) | ✅ **개통** — NodePort 30480, develop 머지 시 Jenkins 자동 배포 |
+| (병행) **dev 클러스터 배포** | GEN-1264 | [#31](https://github.com/DCUSnSLab/smartfarmHMI/pull/31) | ✅ **개통** — NodePort 30480, develop 머지 후 Jenkins 배포 |
 
 증분 2~4 완료로 `phase2-scope.md` "현재 개발 범위"는 **전체 달성**됐다. 실행 환경 구축은 루트 `README.md` Getting Started 참고.
 

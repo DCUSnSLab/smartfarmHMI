@@ -9,10 +9,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# 계약 버전 — 문서 §4 와 함께 올린다. 수신 측 호환 판정은 conformance.py.
+CONTRACT_VERSION = "0.2"
+
 
 class _Msg(BaseModel):
     model_config = ConfigDict(extra="allow")
-    version: str = "0.2"
+    version: str = CONTRACT_VERSION
     farm_id: str
     timestamp: datetime
 

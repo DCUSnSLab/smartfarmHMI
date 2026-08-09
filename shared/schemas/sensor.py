@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from shared.schemas.messages import CONTRACT_VERSION
+
 
 class SensorReading(BaseModel):
     """엣지 → 미들웨어: 센서값 (FR-08, FR-39).
@@ -16,7 +18,7 @@ class SensorReading(BaseModel):
     model_config = ConfigDict(extra="allow")  # 확장 필드 허용 (비기능 §1 확장성)
 
     type: Literal["sensor_reading"] = "sensor_reading"
-    version: str = "0.2"
+    version: str = CONTRACT_VERSION
     farm_id: str
     device_id: str
     sensor_id: str

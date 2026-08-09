@@ -65,6 +65,24 @@ device_meta = sa.Table(
     ),
 )
 
+
+def not_soft_deleted(farm_col, device_col):
+    """소프트 삭제된 장치를 제외하는 조건 — (farm_id, device_id) 를 가진 표에 건다.
+
+    이력·상태 표는 device_meta 를 참조하지 않으므로, 장치를 떼어내도 행이 남아
+    화면에 유령으로 계속 뜬다. 그 표들이 공통으로 쓰는 조건을 여기 한 번만 둔다 —
+    같은 규칙을 각자 적어 두면 한쪽만 고쳐져 목록마다 결과가 갈린다 (실제로
+    로봇 목록만 고쳐져 통신 상태에는 삭제한 장치가 남아 있었다).
+
+    미등록 장치(device_meta 행 없음)는 남긴다: 발견 전 팜의 장치가 사라지면 안 된다.
+    """
+    return ~sa.exists().where(
+        device_meta.c.farm_id == farm_col,
+        device_meta.c.device_id == device_col,
+        device_meta.c.deleted_at.isnot(None),
+    )
+
+
 sensor = sa.Table(
     "sensor",
     metadata,

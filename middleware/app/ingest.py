@@ -364,7 +364,17 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
         now = _now()
         try:
             async with engine.begin() as conn:
-                rows = (await conn.execute(select(m.device_connection_state))).mappings().all()
+                # 소프트 삭제된 장치는 판정 대상이 아니다 — 떼어낸 장비는 당연히
+                # 소식이 없고, 그대로 두면 장비를 뗄 때마다 통신 단절 알림이
+                # 하나씩 영구히 쌓여 진짜 고장이 그 사이에 묻힌다.
+                rows = (await conn.execute(
+                    select(m.device_connection_state).where(
+                        m.not_soft_deleted(
+                            m.device_connection_state.c.farm_id,
+                            m.device_connection_state.c.device_id,
+                        )
+                    )
+                )).mappings().all()
                 for row in rows:
                     interval = row["publish_interval_sec"]
                     if interval is None:

@@ -72,7 +72,14 @@ async def list_farms():
             (await conn.execute(select(m.farm).where(m.farm.c.is_active))).mappings().all()
         )
         conns = (
-            (await conn.execute(select(m.device_connection_state))).mappings().all()
+            (await conn.execute(
+                select(m.device_connection_state).where(
+                    m.not_soft_deleted(
+                        m.device_connection_state.c.farm_id,
+                        m.device_connection_state.c.device_id,
+                    )
+                )
+            )).mappings().all()
         )
     by_farm: dict[str, list] = {}
     for c in conns:
@@ -126,15 +133,27 @@ async def farm_snapshot(farm_id: str):
         )
         robots = (
             (await conn.execute(text(
-                "SELECT DISTINCT ON (device_id) device_id, ts, pos_x, pos_y, speed, "
-                "battery_pct, charging, mission_state "
-                "FROM mw.robot_status WHERE farm_id = :farm ORDER BY device_id, ts DESC"
+                # 소프트 삭제된 장치는 제외한다. 이 목록은 이력 테이블에서 나오므로
+                # 한 번이라도 발행한 장치는 영원히 남는다 — 장비를 개명하거나 떼어내면
+                # 유령이 화면에 계속 떠 있게 된다. 미등록 장치(device_meta 행 없음)는
+                # 그대로 보인다: 발견 전 팜의 로봇이 사라지면 안 된다.
+                "SELECT DISTINCT ON (r.device_id) r.device_id, r.ts, r.pos_x, r.pos_y, r.speed, "
+                "r.battery_pct, r.charging, r.mission_state "
+                "FROM mw.robot_status r "
+                "LEFT JOIN mw.device_meta d "
+                "  ON d.farm_id = r.farm_id AND d.device_id = r.device_id "
+                "WHERE r.farm_id = :farm AND d.deleted_at IS NULL "
+                "ORDER BY r.device_id, r.ts DESC"
             ), {"farm": farm_id})).mappings().all()
         )
         connections = (
             (await conn.execute(
                 select(m.device_connection_state)
                 .where(m.device_connection_state.c.farm_id == farm_id)
+                .where(m.not_soft_deleted(
+                    m.device_connection_state.c.farm_id,
+                    m.device_connection_state.c.device_id,
+                ))
             )).mappings().all()
         )
         # 탱크·워크스테이션·랙 — 작업·공급 화면과 농장 카드 게이지 (FR-08·21~26 표시)

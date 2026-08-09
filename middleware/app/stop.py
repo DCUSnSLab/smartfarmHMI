@@ -17,7 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from shared.schemas import EstopState, RemoteStop, RemoteStopRelease
+from shared.schemas import EstopState, RemoteStop, RemoteStopRelease, RemoteStopState
 from shared.schemas.topics import topic
 
 log = logging.getLogger("mw.stop")
@@ -66,6 +66,25 @@ def _publish_outbox(publisher, outbox: list[tuple[str, str]]) -> None:
     """모아둔 엣지 명령을 발행 — 호출 시점이 커밋 이후여야 한다."""
     for topic_str, payload in outbox:
         publisher.publish_raw(topic_str, payload, retain=False)
+
+
+def _publish_stop_state(publisher, edges, *, engaged: bool, scope: str,
+                        reason: str | None, now: datetime) -> None:
+    """정지 '상태'를 retained 로 발행 (§4.6.1).
+
+    §4.6 명령은 retain=false 라 재접속한 엣지에게 도달하지 않는다. 지속되는
+    사실은 이쪽이 나른다 — 이게 없으면 정지 발동 중 엣지를 재기동했을 때
+    정지가 조용히 풀린다. 명령이 아니므로 command_log 에 남기지 않고 ack 도
+    받지 않는다. estop_state 와 대칭인 서버→엣지 방향 상태.
+    """
+    for farm_id, device_id in edges:
+        msg = RemoteStopState(
+            farm_id=farm_id, device_id=device_id, engaged=engaged,
+            scope=scope, reason=reason, timestamp=now,
+        )
+        publisher.publish_raw(
+            topic(farm_id, "edge", device_id, "stop_state"), msg.model_dump_json(), retain=True
+        )
 
 
 def _stream_payload(kind: str, active: bool, *, scope: str | None = None,
@@ -135,6 +154,9 @@ async def engage_remote_stop(req: StopRequest):
     # 커밋 이후 발행 — 트랜잭션 안에서 발행하면 롤백 시 엣지만 멈추고 기록이 남지 않는다.
     # 반대 방향(기록만 남고 미발행)은 ack 타임아웃이 실패로 잡아 알림을 낸다
     _publish_outbox(publisher, outbox)
+    # 재접속 복구용 retained 상태 — 명령과 달리 브로커에 남아 재부팅한 엣지가 받는다
+    _publish_stop_state(publisher, edges, engaged=True, scope=req.scope,
+                        reason=req.reason, now=now)
 
     from middleware.app.alerts import create_alert
     async with engine.begin() as conn:
@@ -196,6 +218,7 @@ async def release_remote_stop(req: StopRequest):
                            msg.model_dump_json()))
 
     _publish_outbox(publisher, outbox)  # 커밋 이후 — 해제 실패 시 상태 불일치 방지
+    _publish_stop_state(publisher, edges, engaged=False, scope=req.scope, reason=None, now=now)
 
     from middleware.app.alerts import create_alert
     async with engine.begin() as conn:

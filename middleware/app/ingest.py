@@ -82,6 +82,7 @@ async def _handle_sensor_reading(conn, msg: SensorReading, received_at: datetime
             ts=msg.timestamp, received_at=received_at, farm_id=msg.farm_id,
             device_id=msg.device_id, sensor_id=msg.sensor_id, sensor_type=msg.sensor_type,
             value=msg.value, unit=msg.unit, sensor_state=msg.sensor_state,
+            extra=msg.model_extra or {},  # 계약 밖 확장 필드 보존 (extra="allow")
         )
         .on_conflict_do_nothing()  # QoS1 중복 배달 멱등 (PK: farm_id,sensor_id,ts)
     )
@@ -105,6 +106,9 @@ async def _handle_robot_status(conn, msg: RobotStatusMsg, received_at: datetime)
             speed=msg.speed, battery_pct=msg.battery_pct, charging=msg.charging,
             mission_state=msg.mission_state, current_task_id=msg.current_task_id,
             error=msg.error,
+            # 엣지 확장 필드(heading_rad 등) 보존 — 지도 렌더가 방향 표시에 쓴다.
+            # position 은 선언 필드라 model_extra 에 안 들어온다.
+            extra=msg.model_extra or {},
         )
         .on_conflict_do_nothing()
     )
@@ -293,6 +297,9 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                     "device_id": msg.device_id,
                     "pos_x": msg.position.x if msg.position else None,
                     "pos_y": msg.position.y if msg.position else None,
+                    "pos_frame": msg.position.frame if msg.position else None,
+                    # 배치도에 로봇 방향을 그리려면 실시간 스트림에도 실어야 한다.
+                    "heading_rad": (msg.model_extra or {}).get("heading_rad"),
                     "speed": msg.speed, "battery_pct": msg.battery_pct,
                     "charging": msg.charging, "mission_state": msg.mission_state,
                     "ts": msg.timestamp.isoformat(),

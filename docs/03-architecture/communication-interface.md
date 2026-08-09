@@ -189,6 +189,31 @@ farmon-internal/v1/{farm_id}/{stream}
 
 해제는 `"type": "remote_stop_release"`로 동일 구조를 쓴다. `scope`는 `all` \| `farm`. 발행 토픽은 대상 농장의 **엣지 컨트롤러 command 토픽**(`farmon/v1/{farm}/edge/{edge_id}/command`)이다 — 전 장치 정지의 실행 주체가 엣지이기 때문이다 (증분 7 확정).
 
+명령 토픽은 retain 하지 않으므로(§3) **이 메시지만으로는 재접속한 엣지가 정지 중임을 알 수 없다.** 지속되는 사실은 아래 `remote_stop_state`가 나른다.
+
+#### 4.6.1 미들웨어 → 엣지: 원격 정지 상태 (retained)
+
+```json
+{
+  "type": "remote_stop_state",
+  "version": "0.2",
+  "farm_id": "seongju",
+  "device_id": "edge-01",
+  "engaged": true,
+  "scope": "farm",
+  "reason": "관리자 요청",
+  "timestamp": "2026-07-21T10:00:00+09:00"
+}
+```
+
+토픽 `farmon/v1/{farm}/edge/{edge_id}/stop_state`, **QoS 1 · retained**.
+
+§4.6이 "지금 정지하라"는 **행위**라면, 이것은 "이 농장은 정지 상태다"라는 **사실**이다. 발동·해제 시마다 발행하며 엣지는 ack 하지 않는다 — 명령이 아니라 상태이기 때문이다.
+
+retained 이므로 엣지가 재부팅해 구독하는 순간 브로커가 현재 상태를 즉시 준다. 이것이 없으면 정지 발동 중에 엣지를 재기동했을 때 **정지가 조용히 풀린다.** `estop_state`(§4.7)와 대칭이다 — 물리 비상정지는 엣지→서버 방향의 retained 상태, 원격 정지는 서버→엣지 방향의 retained 상태.
+
+낡음 검사(§4.0)를 적용하지 않는다. 오래된 정지도 해제되지 않았으면 여전히 유효하고, 만료시키면 안전 반대 방향으로 실패한다.
+
 > **이 메시지는 안전 기능이 아니다.** IEC 60204-1 Stop Category 2(제어된 정지, 전원 유지)에 해당하는 운전 정지이며, MQTT가 안전등급 통신이 아니므로 안전 기능을 이 경로에 의존시키지 않는다. 실제 비상정지는 현장 물리 장치가 담당한다 (`../01-requirements/non-functional.md` §2).
 
 ### 4.7 엣지 → 미들웨어: 물리 비상정지 상태 (FR-36)

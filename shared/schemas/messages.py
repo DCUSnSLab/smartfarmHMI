@@ -100,6 +100,21 @@ class RemoteStopRelease(_Msg):
     issued_by: str | None = None
 
 
+class RemoteStopState(_Msg):
+    """미들웨어 → 엣지: 원격 정지 상태 (§4.6.1, FR-35) — retained.
+
+    RemoteStop 이 "지금 정지하라"는 행위라면 이것은 "정지 상태다"라는 사실이다.
+    명령 토픽은 retain 하지 않아 재접속한 엣지가 정지 중임을 알 방법이 없으므로,
+    지속되는 쪽을 별도 retained 상태 토픽으로 나른다. 엣지는 ack 하지 않는다.
+    """
+
+    type: Literal["remote_stop_state"] = "remote_stop_state"
+    device_id: str
+    engaged: bool
+    scope: Literal["all", "farm"] = "farm"
+    reason: str | None = None
+
+
 class EstopState(_Msg):
     """엣지 → 미들웨어: 물리 비상정지 상태 (§4.7, FR-36) — 표시 전용.
 

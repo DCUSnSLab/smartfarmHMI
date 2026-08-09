@@ -22,6 +22,7 @@ from shared.schemas.messages import (
     Position,
     RemoteStop,
     RemoteStopRelease,
+    RemoteStopState,
     RobotStatusMsg,
 )
 from shared.schemas.sensor import SensorReading
@@ -35,6 +36,7 @@ AnyMessage = Annotated[
         Calibrate,
         RemoteStop,
         RemoteStopRelease,
+        RemoteStopState,
         EstopState,
         Ack,
         Birth,
@@ -55,5 +57,5 @@ def parse_message(raw: bytes | str):
 __all__ = [
     "Ack", "AnyMessage", "Birth", "BirthMetric", "Calibrate", "ControlCommand",
     "Death", "EstopState", "Heartbeat", "PalletTaskMsg", "Position", "RemoteStop",
-    "RemoteStopRelease", "RobotStatusMsg", "SensorReading", "parse_message",
+    "RemoteStopRelease", "RemoteStopState", "RobotStatusMsg", "SensorReading", "parse_message",
 ]

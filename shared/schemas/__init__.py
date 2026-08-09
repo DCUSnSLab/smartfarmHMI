@@ -18,6 +18,10 @@ from shared.schemas.messages import (
     Death,
     EstopState,
     Heartbeat,
+    Layout,
+    LayoutGate,
+    LayoutPoint,
+    LayoutZone,
     PalletTaskMsg,
     Position,
     RemoteStop,
@@ -42,6 +46,7 @@ AnyMessage = Annotated[
         Birth,
         Death,
         Heartbeat,
+        Layout,
     ],
     Field(discriminator="type"),
 ]
@@ -56,6 +61,7 @@ def parse_message(raw: bytes | str):
 
 __all__ = [
     "Ack", "AnyMessage", "Birth", "BirthMetric", "Calibrate", "ControlCommand",
-    "Death", "EstopState", "Heartbeat", "PalletTaskMsg", "Position", "RemoteStop",
+    "Death", "EstopState", "Heartbeat", "Layout", "LayoutGate", "LayoutPoint", "LayoutZone",
+    "PalletTaskMsg", "Position", "RemoteStop",
     "RemoteStopRelease", "RemoteStopState", "RobotStatusMsg", "SensorReading", "parse_message",
 ]

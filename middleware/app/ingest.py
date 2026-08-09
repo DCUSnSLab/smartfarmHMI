@@ -25,6 +25,7 @@ from shared.schemas import (
     Death,
     EstopState,
     Heartbeat,
+    Layout,
     RobotStatusMsg,
     SensorReading,
     parse_message,
@@ -111,6 +112,64 @@ async def _handle_robot_status(conn, msg: RobotStatusMsg, received_at: datetime)
             extra=msg.model_extra or {},
         )
         .on_conflict_do_nothing()
+    )
+
+
+async def _handle_layout(conn, msg: Layout, received_at: datetime) -> None:
+    """배치도 자기기술 → DB 영속 (§4.9.1).
+
+    retained 만 믿으면 엣지·브로커가 모두 내려간 동안 도면이 사라진다. 배치도는
+    연결과 무관하게 보여야 하므로 수신 즉시 적재한다. 엣지가 진실의 원천이라
+    같은 layout 을 통째로 교체한다 — 부분 갱신은 사라진 구역을 남긴다.
+    """
+    layout_id = (
+        await conn.execute(
+            insert(m.farm_layout)
+            .values(
+                farm_id=msg.farm_id, coord_frame=msg.frame,
+                origin_desc="엣지 지도(SD map) 작성 기준점",
+                scale={"unit": "m", "ratio": 1.0},
+                source="edge", source_device_id=msg.device_id, updated_at=received_at,
+            )
+            .on_conflict_do_update(
+                index_elements=["farm_id"],
+                set_={"coord_frame": msg.frame, "source": "edge",
+                      "source_device_id": msg.device_id, "updated_at": received_at},
+            )
+            .returning(m.farm_layout.c.id)
+        )
+    ).scalar_one()
+
+    await conn.execute(
+        m.layout_element.delete().where(m.layout_element.c.layout_id == layout_id)
+    )
+    # executemany 는 첫 행의 키로 INSERT 문을 만든다 — 구역 행과 지점 행의 키가
+    # 다르면 뒤쪽 그룹에서 바인드 파라미터가 비어 실패한다. 모든 행을 같은
+    # 모양으로 채운다.
+    def _row(**kw) -> dict:
+        return {"layout_id": layout_id, "element_id": None, "zone": None, "zone_type": None,
+                "geometry": None, "connects": None, "x": None, "y": None, **kw}
+
+    # 세 종류는 서로 다른 개념이다 — 존은 주행 공간, 게이트는 존 사이 통로,
+    # 지점은 작업 대상. 지점은 존 안에 있으므로 zone 이 소속을 가리키고,
+    # 존 자신의 종류는 zone_type 이다 (두 개를 한 칸에 넣으면 소속이 사라진다).
+    rows = [
+        _row(element_type="zone", element_id=z.id, zone_type=z.zone_type,
+             geometry=[list(p) for p in z.polygon])
+        for z in msg.zones
+    ] + [
+        _row(element_type="gate", element_id=g.id, connects=g.between,
+             geometry=[list(p) for p in g.segment])
+        for g in msg.gates
+    ] + [
+        _row(element_type=p.point_type, element_id=p.id, x=p.x, y=p.y, zone=p.zone)
+        for p in msg.points
+    ]
+    if rows:
+        await conn.execute(insert(m.layout_element), rows)
+    log.info(
+        "layout: %s/%s (zones=%d gates=%d points=%d frame=%s)",
+        msg.farm_id, msg.device_id, len(msg.zones), len(msg.gates), len(msg.points), msg.frame,
     )
 
 
@@ -303,6 +362,15 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                     "speed": msg.speed, "battery_pct": msg.battery_pct,
                     "charging": msg.charging, "mission_state": msg.mission_state,
                     "ts": msg.timestamp.isoformat(),
+                })
+        elif isinstance(msg, Layout):
+            await _handle_layout(conn, msg, received_at)
+            await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
+            if publisher:
+                publisher.publish(msg.farm_id, "layout", {
+                    "device_id": msg.device_id, "frame": msg.frame,
+                    "zones": len(msg.zones), "gates": len(msg.gates),
+                    "points": len(msg.points),
                 })
         elif isinstance(msg, Birth):
             await _handle_birth(conn, msg, received_at)

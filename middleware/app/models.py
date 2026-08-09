@@ -236,7 +236,7 @@ rack_slot = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
     sa.Column("farm_id", sa.Text, sa.ForeignKey("farm.farm_id"), nullable=False),
     sa.Column("slot_id", sa.Text, nullable=False),  # 예: rack-a-03
-    sa.Column("zone", sa.Text),
+    sa.Column("zone", sa.Text),  # 소속 존 (슬롯 → 자기를 담은 존)
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
     sa.UniqueConstraint("farm_id", "slot_id", name="uq_rack_slot_farm_slot"),
 )
@@ -614,6 +614,9 @@ farm_layout = sa.Table(
     sa.Column("origin_desc", sa.Text),
     sa.Column("scale", JSONB),
     sa.Column("background", JSONB),
+    # 배치도 출처 — 엣지 자기기술(edge)과 설정 화면 수기 등록을 구분한다
+    sa.Column("source", sa.Text),
+    sa.Column("source_device_id", sa.Text),
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
 )
 
@@ -623,12 +626,16 @@ layout_element = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
     sa.Column("layout_id", sa.BigInteger, sa.ForeignKey("farm_layout.id"), nullable=False),
     sa.Column("element_type", sa.Text, nullable=False),
+    sa.Column("element_id", sa.Text),  # 엣지 재발행 시 교체 키 (zone id, slot id 등)
     sa.Column("ref_device_id", sa.Text),  # 딥링크 대상
     sa.Column("x", sa.Double),  # 좌표 확정 전엔 NULL + zone 논리 배치
     sa.Column("y", sa.Double),
-    sa.Column("zone", sa.Text),
+    sa.Column("zone", sa.Text),       # 소속 존 (지점 → 자기를 담은 존)
+    sa.Column("zone_type", sa.Text),  # 존 자신의 종류 (corridor/charging/...)
+    sa.Column("geometry", JSONB),  # 구역 폴리곤·게이트 선분 [[x,y], ...] — 점 요소는 NULL
+    sa.Column("connects", ARRAY(sa.Text)),  # gate 가 잇는 두 존
     sa.CheckConstraint(
-        "element_type IN ('rack','station','tank','sensor','entrance','zone')",
+        "element_type IN ('rack','station','tank','sensor','entrance','zone','gate','charging')",
         name="layout_element_type_check",
     ),
 )

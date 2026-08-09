@@ -289,3 +289,55 @@ async def environment_summary(farm_id: str, hours: int = 24):
          "count": r["n"]}
         for r in rows
     ]
+
+
+@router.get("/farms/{farm_id}/layout")
+async def farm_layout(farm_id: str):
+    """농장 배치도 (§4.9.1, FR-41) — 구역 폴리곤 + 지점.
+
+    엣지가 발행한 자기기술을 DB 에서 읽는다. 브로커 retained 가 아니라 DB 가
+    출처이므로 **엣지가 꺼져 있어도 도면이 뜬다.** 좌표는 변환하지 않고 엣지
+    프레임(미터) 그대로 내보낸다 — 화면 맞춤은 렌더러가 viewBox 로 처리한다.
+    """
+    async with _engine().connect() as conn:
+        layout = (
+            (await conn.execute(
+                select(m.farm_layout).where(m.farm_layout.c.farm_id == farm_id)
+            )).mappings().first()
+        )
+        if layout is None:
+            # 404 가 아니다 — 배치도 없음은 정상 상태이고, 화면은 빈 도면을 그린다.
+            return {"farm_id": farm_id, "frame": None, "zones": [], "gates": [], "points": [],
+                    "source": None, "updated_at": None}
+        elements = (
+            (await conn.execute(
+                select(m.layout_element)
+                .where(m.layout_element.c.layout_id == layout["id"])
+                .order_by(m.layout_element.c.element_type, m.layout_element.c.element_id)
+            )).mappings().all()
+        )
+
+    zones = [
+        {"id": e["element_id"], "zone_type": e["zone_type"], "polygon": e["geometry"] or []}
+        for e in elements if e["element_type"] == "zone"
+    ]
+    gates = [
+        {"id": e["element_id"], "between": e["connects"] or [], "segment": e["geometry"] or []}
+        for e in elements if e["element_type"] == "gate"
+    ]
+    points = [
+        {"id": e["element_id"], "point_type": e["element_type"],
+         "x": e["x"], "y": e["y"], "zone": e["zone"], "ref_device_id": e["ref_device_id"]}
+        for e in elements if e["element_type"] not in ("zone", "gate")
+    ]
+    return {
+        "farm_id": farm_id,
+        "frame": layout["coord_frame"],
+        "origin_desc": layout["origin_desc"],
+        "scale": layout["scale"],
+        "source": layout["source"],
+        "zones": zones,
+        "gates": gates,
+        "points": points,
+        "updated_at": layout["updated_at"].isoformat() if layout["updated_at"] else None,
+    }

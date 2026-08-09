@@ -158,6 +158,52 @@ class Birth(_Msg):
     publish_interval_sec: int | None = None
 
 
+class LayoutZone(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    zone_type: str = "corridor"
+    speed: float | None = None
+    polygon: list[tuple[float, float]] = Field(default_factory=list)
+
+
+class LayoutGate(BaseModel):
+    """존과 존 사이 통로 (SD 맵 gates). 두 점을 잇는 선분."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    between: list[str] = Field(default_factory=list)
+    segment: list[tuple[float, float]] = Field(default_factory=list)
+
+
+class LayoutPoint(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    id: str
+    point_type: Literal["rack", "station", "tank", "sensor", "entrance", "charging"] = "rack"
+    x: float
+    y: float
+    # 이 지점을 담고 있는 존. 존과 지점은 다른 개념이고 관계는 포함이다 —
+    # 한 존 안에 지점이 여러 개일 수 있다. 엣지가 폴리곤으로 판정해 채운다.
+    zone: str | None = None
+
+
+class Layout(_Msg):
+    """엣지 → 미들웨어: 농장 배치도 (§4.9.1, FR-41) — retained, 접속 시 1회.
+
+    birth 가 "어떤 데이터를 내는지"의 자기기술이라면 이것은 "농장이 어떻게
+    생겼는지"의 자기기술이다. frame 은 robot_status.position.frame 과 같아야
+    배치도 위에 로봇을 겹쳐 그릴 수 있다 (§4.9.1 좌표계).
+    """
+
+    type: Literal["layout"] = "layout"
+    device_id: str
+    frame: str = "map"
+    # zone 과 point 는 다른 개념이다. zone 은 주행 공간 구조(SD 맵), point 는
+    # 작업 대상 지점(미션 목적지)이며 한 존 안에 여러 지점이 있을 수 있다.
+    zones: list[LayoutZone] = Field(default_factory=list)
+    gates: list[LayoutGate] = Field(default_factory=list)
+    points: list[LayoutPoint] = Field(default_factory=list)
+
+
 class Death(_Msg):
     """장치 → 미들웨어: 단절 (§4.9) — LWT 로 등록, 브로커가 대신 발행."""
 

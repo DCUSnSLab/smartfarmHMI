@@ -24,6 +24,9 @@ export interface RobotValue {
   ts: string;
   pos_x: number | null;
   pos_y: number | null;
+  pos_frame?: string | null;
+  /** 엣지 확장 필드 — 배치도에서 로봇 방향 표시에 쓴다 (통신 규격 §4.2) */
+  heading_rad?: number | null;
   speed: number | null;
   battery_pct: number | null;
   charging: boolean;

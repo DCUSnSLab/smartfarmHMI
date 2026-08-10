@@ -5,6 +5,7 @@
  * 상태 요약 · 지역 날씨(Planned) · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
  */
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Card, CONN_STYLE, Gauge, SectionTitle, StatusDot,
@@ -14,7 +15,7 @@ import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { isValidWeatherLocation, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -51,11 +52,22 @@ function useSummary(): { text: string; issues: string[] } {
 }
 
 function FarmWeather({ farmId }: { farmId: string }) {
-  const { rows, loading } = useWeather();
+  const { rows, loading, reload } = useWeather();
+  const [refreshing, setRefreshing] = useState(false);
   const weather = rows.find((row) => row.farm_id === farmId);
+  const hasValidLocation = isValidWeatherLocation(
+    weather?.latitude ?? null, weather?.longitude ?? null,
+  );
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshWeather(farmId);
+    await reload();
+    setRefreshing(false);
+  };
   const regionLabel = weather?.name.split(/\s+/)[0] ?? "";
   const conditionLabel = weatherConditionLabel(weather?.condition ?? null);
-  const isRainy = (weather?.precipitation_mm ?? 0) > 0;
+  const conditionCodes = parseWeatherCondition(weather?.condition ?? null);
+  const isNight = !isKoreaDaytime();
   const weatherTheme = !weather?.ts
     ? {
         panel: "border-[#E5E8EB] bg-white",
@@ -63,26 +75,19 @@ function FarmWeather({ farmId }: { farmId: string }) {
         primary: "text-[#191F28]", secondary: "text-[#6B7684]",
         metric: "bg-[#F7F8FA]", advisory: "bg-[#F2F4F6] text-[#4E5968]",
       }
-    : isRainy
-      ? {
-        panel: "border-[#253B62] bg-gradient-to-br from-[#17243D] to-[#334D73]",
-        heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
-        primary: "text-white", secondary: "text-[#D8E5F7]",
-        metric: "bg-white/95", advisory: "bg-[#0E1729] text-white",
-      }
-    : weather?.condition === "4"
+    : conditionCodes?.sky === 4
       ? {
           panel: "border-[#C7CDD4] bg-gradient-to-br from-[#D9DDE2] to-[#EEF0F2]",
           heading: "text-[#303841]", badge: "bg-white/80 text-[#56616D]",
           primary: "text-[#252B31]", secondary: "text-[#5D6873]",
           metric: "bg-white/90", advisory: "bg-[#59636E] text-white",
         }
-      : weather?.condition === "3"
+      : isNight
         ? {
-            panel: "border-[#B9CADB] bg-gradient-to-br from-[#D9E4EE] to-[#F2F6F9]",
-            heading: "text-[#29445F]", badge: "bg-white/80 text-[#486783]",
-            primary: "text-[#203B55]", secondary: "text-[#536D84]",
-            metric: "bg-white/90", advisory: "bg-[#4B6E8D] text-white",
+            panel: "border-black bg-gradient-to-br from-[#090D16] to-[#182235]",
+            heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
+            primary: "text-white", secondary: "text-[#D8E5F7]",
+            metric: "bg-white/95", advisory: "bg-black/70 text-white",
           }
         : {
             panel: "border-[#B9D5F8] bg-gradient-to-br from-[#D2E6FF] to-[#EAF4FF]",
@@ -116,7 +121,7 @@ function FarmWeather({ farmId }: { farmId: string }) {
         <>
           <div className="mt-4 flex items-center gap-4">
             <span className="text-56 leading-none drop-shadow-sm" aria-hidden="true">
-              {weatherIcon(weather.condition, weather.precipitation_mm)}
+              {weatherIcon(weather.condition)}
             </span>
             <div className="min-w-0">
               <div className={`text-34 font-extrabold leading-none ${weatherTheme.primary}`}>
@@ -148,10 +153,22 @@ function FarmWeather({ farmId }: { farmId: string }) {
           </div>
         </>
       ) : (
-        <div className="py-10 text-center text-15 font-extrabold text-[#3A5A86]">
-          {weather?.latitude != null || weather?.longitude != null
-            ? isValidWeatherLocation(weather.latitude, weather.longitude) ? "로딩중" : "정보 없음"
-            : "날씨 조회 위치가 설정되지 않았습니다."}
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span className="text-15 font-extrabold text-[#3A5A86]">
+            {hasValidLocation
+              ? "정보 없음"
+              : weather?.latitude != null || weather?.longitude != null
+                ? "정보 없음"
+                : "날씨 조회 위치가 설정되지 않았습니다."}
+          </span>
+          {hasValidLocation && (
+            <button
+              type="button" onClick={() => void handleRefresh()} disabled={refreshing}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-12.5 font-extrabold text-[#4E5968] hover:bg-gray-50 disabled:opacity-50"
+            >
+              {refreshing ? "새로고침 중…" : "새로고침"}
+            </button>
+          )}
         </div>
       )}
     </Card>

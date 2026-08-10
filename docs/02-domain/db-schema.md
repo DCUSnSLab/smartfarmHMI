@@ -285,10 +285,12 @@
 | received_at | TIMESTAMPTZ | NOT NULL |
 | farm_id | TEXT | NOT NULL |
 | temperature_c / humidity_pct / precipitation_mm / wind_ms | DOUBLE PRECISION | NULL |
-| condition | TEXT | NULL — 맑음·구름많음 등 |
+| condition | TEXT | NULL — 기상청 코드 조합 `SKY{SKY}-PTY{PTY}` |
 | solar_level | TEXT | NULL — 기상청 자외선지수 |
 | provider | TEXT | NOT NULL — 공급자 식별 (OPN-17) |
 | raw | JSONB | NOT NULL DEFAULT '{}' — 공급자 응답 원문 |
+`condition`은 `^SKY(1|3|4)-PTY[0-7]$` 형식만 허용한다. 예: `SKY1-PTY0`, `SKY4-PTY6`. SKY는 하늘상태(1 맑음·3 구름많음·4 흐림), PTY는 강수형태(0 없음·1 비·2 비/눈·3 눈·4 소나기·5 빗방울·6 빗방울눈날림·7 눈날림)이다.
+
 
 ### 3.4 데이터 관리
 

@@ -114,6 +114,40 @@ async def latest_weather():
     return [dict(row) for row in rows]
 
 
+@router.post("/farms/{farm_id}/weather/refresh")
+async def refresh_farm_weather(farm_id: str):
+    """위치는 있지만 기상 정보가 없는 농장의 날씨를 즉시 다시 수집한다."""
+    async with _engine().connect() as conn:
+        farm = (
+            await conn.execute(
+                select(m.farm).where(
+                    m.farm.c.farm_id == farm_id,
+                    m.farm.c.is_active,
+                )
+            )
+        ).mappings().first()
+    if farm is None:
+        raise HTTPException(404, f"unknown farm: {farm_id}")
+    if (
+        farm["region_code"] is None
+        or farm["latitude"] is None
+        or farm["longitude"] is None
+    ):
+        raise HTTPException(400, "농장 위치 정보가 설정되지 않았습니다")
+
+    await collect_farm_weather(
+        _engine(), farm_id, farm["region_code"], farm["latitude"], farm["longitude"],
+    )
+    async with _engine().connect() as conn:
+        reading = (
+            await conn.execute(
+                select(m.weather_reading.c.farm_id)
+                .where(m.weather_reading.c.farm_id == farm_id)
+                .limit(1)
+            )
+        ).first()
+
+
 @router.get("/farms/{farm_id}/snapshot")
 async def farm_snapshot(farm_id: str):
     """대시보드 초기 로드용 스냅샷 — 센서 최신값·로봇 최신 상태·통신 상태."""

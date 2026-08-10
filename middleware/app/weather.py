@@ -77,6 +77,17 @@ def _precipitation(value: object) -> float | None:
         return 0.0
     return _number(value)
 
+def _condition(sky_value: object, pty_value: object) -> str | None:
+    """SKY·PTY 코드를 화면에서 안전하게 분리할 수 있는 단일 값으로 조합한다."""
+    sky = _number(sky_value)
+    pty = _number(pty_value)
+    if sky is None or pty is None or not sky.is_integer() or not pty.is_integer():
+        return None
+    sky_code, pty_code = int(sky), int(pty)
+    if sky_code not in {1, 3, 4} or pty_code not in range(8):
+        return None
+    return f"SKY{sky_code}-PTY{pty_code}"
+
 
 def _request_weather(nx: int, ny: int) -> dict:
     base_date, base_time = _base_datetime()
@@ -162,7 +173,6 @@ async def fetch_weather(
     forecast_at = min(future_slots) if future_slots else max(forecasts)
     values = forecasts[forecast_at]
 
-    sky = _number(values.get("SKY"))
     solar_level: str | None = None
     if isinstance(uv_result, BaseException):
         log.warning("자외선지수 수집 실패 region=%s: %s", region_code, uv_result)
@@ -182,7 +192,7 @@ async def fetch_weather(
         "humidity_pct": _number(values.get("REH")),
         "precipitation_mm": _precipitation(values.get("RN1")),
         "wind_ms": _number(values.get("WSD")),
-        "condition": str(int(sky)) if sky is not None else None,
+        "condition": _condition(values.get("SKY"), values.get("PTY")),
         "solar_level": solar_level,
         "provider": PROVIDER,
         "raw": {**payload, "_uv": uv_raw},

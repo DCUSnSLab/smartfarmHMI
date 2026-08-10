@@ -6,6 +6,8 @@
  */
 
 import { CSSProperties, RefObject, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 // 헤더 컨트롤 공통 — 높이·글자·정렬 통일. 터치 기기에서만 40px 로 키운다 (비기능 §5)
 export const CONTROL =
@@ -384,3 +386,141 @@ export const TANK_LABEL: Record<string, string> = {
 export const MISSION_LABEL: Record<string, string> = {
   idle: "대기", moving: "이동 중", working: "작업 중", charging: "충전 중", error: "이상",
 };
+
+export interface NavItemData {
+  key: string;
+  label: string;
+  active: boolean;
+  href?: string;             // 이동형 (스코프 스위처·상세 탭)
+  onSelect?: () => void;     // 선택형 (통계 농장 필터 — 이동하지 않는다)
+  lead?: React.ReactNode;    // 라벨 앞 표시 (상태 점 등)
+  trail?: React.ReactNode;   // 라벨 뒤 표시 (미확인 수·유형 배지 등)
+}
+
+/** 이동형·선택형을 같은 모양으로 — href 가 있으면 Link, 없으면 button */
+export function NavItemLink({
+  item, className, onDone, children,
+}: {
+  item: NavItemData; className: string; onDone?: () => void; children: React.ReactNode;
+}) {
+  if (item.href) {
+    return (
+      <Link href={item.href} onClick={onDone} className={className}>{children}</Link>
+    );
+  }
+  return (
+    <button onClick={() => { item.onSelect?.(); onDone?.(); }} className={className}>
+      {children}
+    </button>
+  );
+}
+
+/**
+ * 좁은 폭에서 목록을 접는 네비게이션 — 현재 항목만 보이고, 누르면 전체가 펼쳐진다.
+ *
+ * 스코프 스위처·상세 탭은 헤더와 함께 **고정 영역**이라, 줄바꿈을 허용하면 농장·탭이
+ * 늘어난 만큼 높이가 커지고 본문이 영구히 밀린다. 가로 스크롤은 모바일에서 세로
+ * 스크롤과 제스처가 부딪히고 스크롤바가 보이지 않아 있다는 걸 알기 어렵다.
+ * 접으면 항목이 몇 개든 **높이가 한 줄로 고정**된다 (헤더의 햄버거와 같은 방식).
+ *
+ * 넓은 폭에서는 이 컴포넌트가 숨고 각 네비의 원래 나열이 그대로 보인다.
+ */
+export function NavDropdown({
+  items, ariaLabel, className = "",
+}: {
+  items: NavItemData[];
+  ariaLabel: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  useLightDismiss(open, boxRef, () => setOpen(false));
+
+  // 이동해도 컴포넌트가 살아 있어 스스로 닫히지 않는다 — 경로가 바뀌면 닫는다
+  useEffect(() => setOpen(false), [pathname]);
+
+  const current = items.find((i) => i.active) ?? items[0];
+  if (!current) return null;
+
+  return (
+    <div ref={boxRef} className={`relative ${className}`}>
+      {/* 폭을 내용에 맞추지 않고 **가득 채운다**. 작은 상자를 얹으면 라벨 길이에 따라
+          화면마다 크기가 달라져 자리가 흔들리고, 흰 바 위에 뜬 것처럼 보인다.
+          바탕은 바와 같은 흰색으로 두고, **초록 테두리로 「선택됨」**을 표시한다 —
+          넓은 폭에서 현재 농장이 초록으로 칠해지는 것과 같은 신호라 색감이 튀지 않는다.
+          라벨은 검정 — 농장·탭 이름은 읽어야 할 값이라 본문색이 가장 잘 읽힌다. */}
+      <div className="px-6 py-2">
+        <button
+          onClick={() => setOpen(!open)}
+          // listbox 로 알리면 자식이 option 이어야 한다 — 여기 항목은 링크·버튼이라
+          // 상태(펼침 여부)만 전한다
+          aria-label={ariaLabel} aria-expanded={open}
+          className="flex w-full items-center gap-2 rounded-xl border border-primary bg-white px-3 py-2 text-13.5 font-extrabold text-body"
+        >
+          {current.lead}
+          <span className="min-w-0 flex-1 truncate text-left">{current.label}</span>
+          {current.trail}
+          <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"
+            className={`shrink-0 text-primary ${open ? "rotate-180" : ""}`}>
+            <path d="M3 5.2 7 9.2l4-4" fill="none" stroke="currentColor" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        // 컨트롤과 같은 폭·같은 모서리로 바로 아래에 띄운다 — 전폭 흰 판으로 깔면
+        // 바와 경계가 사라져 「펼쳐진 목록」이 아니라 화면 일부처럼 보인다
+        <div className="absolute inset-x-6 top-full z-50 -mt-1 max-h-[60vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+          {items.map((item) => (
+            <NavItemLink
+              key={item.key} item={item} onDone={() => setOpen(false)}
+              className={`flex w-full items-center gap-2 border-b border-gray-50 px-3 py-2.5 text-left text-13.5 last:border-0 ${
+                item.active ? "bg-primary-bg font-extrabold text-primary-dark" : "font-semibold text-gray-600"
+              }`}
+            >
+              {item.lead}
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.trail}
+            </NavItemLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 농장 선택 바 — 헤더 바로 아래 전폭 띠. 넓으면 알약 나열, 좁으면 드롭다운.
+ * 스코프 스위처(이동)와 통계 농장 필터(선택)가 같은 위치·같은 모양을 쓰도록 공유한다.
+ */
+export function ScopeBar({
+  items, ariaLabel,
+}: {
+  items: NavItemData[];
+  ariaLabel: string;
+}) {
+  return (
+    <nav aria-label={ariaLabel} className="w-full border-b border-gray-100 bg-white">
+      <NavDropdown items={items} ariaLabel={ariaLabel} className="mx-auto max-w-7xl sm:hidden" />
+
+      <div className="mx-auto hidden max-w-7xl flex-wrap items-center gap-2 px-6 py-2.5 sm:flex">
+        {items.map((item) => (
+          <NavItemLink
+            key={item.key} item={item}
+            className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2 text-13 focus:outline-none ${
+              item.active
+                ? "border-primary bg-primary font-extrabold text-white"
+                : "border-gray-200 bg-white font-bold text-gray-600 hover:border-primary hover:text-primary-dark"
+            }`}
+          >
+            {item.lead}
+            <span>{item.label}</span>
+            {item.trail}
+          </NavItemLink>
+        ))}
+      </div>
+    </nav>
+  );
+}

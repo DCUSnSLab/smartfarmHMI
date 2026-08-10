@@ -7,11 +7,10 @@
  */
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFarmData } from "@/lib/farmData";
 import { farmSeverity, showsFleetNav } from "@/lib/fleet";
-import { SEV_STYLE } from "@/components/ui";
+import { NavItemData, ScopeBar, SEV_STYLE } from "@/components/ui";
 
 export function FarmScopeNav() {
   const pathname = usePathname();
@@ -44,49 +43,29 @@ export function FarmScopeNav() {
     return null;
   }
 
-  return (
-    <nav className="w-full border-b border-gray-100 bg-white">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2.5">
-        <Link
-          href="/"
-          className={`rounded-full border px-4 py-2 text-13 ${
-            isDashboard
-              ? "border-primary bg-primary font-extrabold text-white"
-              : "border-gray-200 bg-white font-bold text-gray-600"
-          }`}
-        >
-          전체
-        </Link>
+  // 넓은 폭의 알약 나열과 좁은 폭의 드롭다운이 같은 목록을 써야 한다 — 각자 만들면
+  // 한쪽에만 농장이 빠지거나 상태 점이 어긋난다
+  const items: NavItemData[] = [
+    // 「전체」에는 상태 점을 두지 않는다 — 특정 농장의 상태가 아니다
+    { key: "all", href: "/", label: "전체", active: isDashboard },
+    ...farms.map((farm) => {
+      const snap = snaps[farm.farm_id];
+      const sev = snap ? farmSeverity(snap, warnByFarm[farm.farm_id] ?? 0) : "info";
+      return {
+        key: farm.farm_id,
+        href: `/farms/${farm.farm_id}/${currentTab}`,
+        label: farm.name,
+        active: currentFarmId === farm.farm_id,
+        lead: <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full ${SEV_STYLE[sev]?.dot}`} />,
+        trail: farm.farm_type === "open_field" ? (
+          <span className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-10.5 font-extrabold text-blue-600">
+            실외
+          </span>
+        ) : undefined,
+      };
+    }),
+  ];
 
-        {farms.map((farm) => {
-          const active = currentFarmId === farm.farm_id;
-          const snap = snaps[farm.farm_id];
-          const sev = snap ? farmSeverity(snap, warnByFarm[farm.farm_id] ?? 0) : "info";
-
-          return (
-              <Link
-                  key={farm.farm_id}
-                  href={`/farms/${farm.farm_id}/${currentTab}`}
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-13 focus:outline-none ${
-                      active
-                          ? "border-primary bg-primary font-extrabold text-white"
-                          : "border-gray-200 bg-white font-bold text-gray-600 hover:border-primary hover:text-primary-dark"
-                  }`}
-              >
-
-                <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full ${SEV_STYLE[sev]?.dot}`}/>
-
-                <span>{farm.name}</span>
-
-                {farm.farm_type === "open_field" && (
-                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-10.5 font-extrabold text-blue-600">
-                  실외
-                </span>
-                )}
-              </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
+  // 좁은 폭에서는 접힌다 — 고정 영역이라 농장이 늘어난 만큼 본문이 밀린다 (ScopeBar)
+  return <ScopeBar items={items} ariaLabel="농장 선택" />;
 }

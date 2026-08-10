@@ -20,10 +20,29 @@ export interface WeatherRow {
   provider: string | null;
 }
 
+/**
+ * 다음 조회 시각까지 남은 ms — 서버가 매시 40분에만 수집하므로 그 직후 한 번만 받는다.
+ * 고정 간격이면 같은 값을 시간당 12번 받고, 정작 갱신 직후를 놓친다.
+ */
+const SLOT_MINUTE = 41;   // 수집(40분)이 끝날 여유 1분
+
+function msUntilNextSlot(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setMinutes(SLOT_MINUTE, 0, 0);
+  if (next <= now) next.setHours(next.getHours() + 1);
+  return next.getTime() - now.getTime();
+}
+
+/**
+ * 기상 조회 — 소유자는 FarmDataProvider 하나뿐이다. 화면마다 부르면 이동할 때마다
+ * 새로 마운트돼 loading 이 되살아나, 값이 있는데도 「로딩중」이 스친다.
+ */
 export function useWeather() {
   const [rows, setRows] = useState<WeatherRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 수동 새로고침(FarmWeather)도 이 함수를 쓴다
   const reload = useCallback(async () => {
     const response = await apiFetch("/api/weather");
     if (response.ok) setRows(await response.json() as WeatherRow[]);
@@ -31,9 +50,18 @@ export function useWeather() {
   }, []);
 
   useEffect(() => {
-    void reload();
-    const timer = setInterval(() => void reload(), 5 * 60_000);
-    return () => clearInterval(timer);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = async () => {
+      await reload();
+      if (!active) return;
+      // 매번 다시 계산한다 — 절전에서 깨어나 늦게 실행돼도 스스로 정렬된다
+      timer = setTimeout(() => void tick(), msUntilNextSlot());
+    };
+
+    void tick();
+    return () => { active = false; clearTimeout(timer); };
   }, [reload]);
 
   return { rows, loading, reload };

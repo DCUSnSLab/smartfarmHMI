@@ -6,10 +6,10 @@
  * 데이터 CRUD 는 /lib/settings 헬퍼(→ api → middleware). 게이팅은 api 가 강제, 여기선 보조.
  */
 
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertRules } from "@/components/AlertRules";
 import { PlannedChip } from "@/components/Planned";
-import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import { FarmSummary } from "@/lib/monitor";
@@ -642,14 +642,94 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   );
 }
 
+/**
+ * 요소를 본문 맨 위로 올린다. 고정 헤더·정지 배너 높이는 배너 유무·글자 크기로 변해
+ * 상수로 둘 수 없어 실측한다 (AppShell 의 data-app-chrome).
+ */
+// 페인트 전에 끝내야 옮겨가는 모습이 보이지 않는다 (SSR 경고는 피한다)
+const useAlignEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+function alignToTop(el: HTMLElement) {
+  const chrome = document.querySelector<HTMLElement>("[data-app-chrome]");
+  window.scrollTo({
+    top: el.getBoundingClientRect().top + window.scrollY - (chrome?.offsetHeight ?? 0) - 12,
+  });
+}
+
 // ── 메인 ──
+// useSearchParams 는 정적 렌더에서 Suspense 경계를 요구한다 — 없으면 next build 실패
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const user = useUser();
+  // 농장 목록은 공유 컨텍스트에서 — 화면마다 따로 조회하지 않는다
   const { farms, refreshFarms } = useFarmData();
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을 화면 위로 올린다.
+  // 진입 시점에 한 번만 읽는다 — 아래에서 주소를 지우므로 매 렌더 읽으면 값이 바뀐다
+  const router = useRouter();
+  const params = useSearchParams();
+  const [focus] = useState(() => ({
+    farm: params.get("farm"),
+    section: params.get("section") === "rules" ? "rules" : "devices",
+    requested: params.has("farm") || params.has("section"),
+  }));
+  // 여러 농장을 동시에 펼친다 — 하나만 열리면 다른 농장을 열 때 위쪽이 접히며 화면이
+  // 튀고, 두 농장의 장치를 나란히 비교할 수도 없다
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(focus.section === "devices" && focus.farm ? [focus.farm] : []),
+  );
+  const deviceRef = useRef<HTMLDivElement>(null);
+  const rulesRef = useRef<HTMLDivElement>(null);
+  const rulesSectionRef = useRef<HTMLElement>(null);
   const [addingFarm, setAddingFarm] = useState(false);
   const [editingFarm, setEditingFarm] = useState<FarmSummary | null>(null);
   const [deletingFarm, setDeletingFarm] = useState<FarmSummary | null>(null);
+
+  useAlignEffect(() => {
+    if (!focus.requested || !farms.length) return;
+    // 농장을 지정하면 그 농장의 블록, 안 하면(전역 알림에서 옴) 절 머리로
+    const el = focus.section !== "rules" ? deviceRef.current
+      : focus.farm ? rulesRef.current
+      : rulesSectionRef.current;
+    if (!el) {
+      window.scrollTo({ top: 0 });   // 이동 측이 scroll:false 라 방치하면 엉뚱한 위치
+      return;
+    }
+    alignToTop(el);
+
+    // 알림 규칙은 페이지 맨 아래인데 각 블록이 규칙을 받아오기 전에는 비어 있다.
+    // 첫 렌더에는 문서가 짧아 목표까지 스크롤이 잘리므로, 높이가 자리 잡을 때까지
+    // 다시 맞춘다. 사용자가 스크롤하면 즉시 멈춘다 — 조작을 되돌리면 안 된다.
+    const observer = new ResizeObserver(() => alignToTop(el));
+    observer.observe(document.body);
+    const stop = () => observer.disconnect();
+    const timer = setTimeout(stop, 1200);
+    window.addEventListener("wheel", stop, { once: true, passive: true });
+    window.addEventListener("touchstart", stop, { once: true, passive: true });
+
+    // 일회성 의도이지 화면 상태가 아니다 — 남기면 새로고침마다 다시 끌려간다
+    router.replace("/settings", { scroll: false });
+
+    return () => {
+      stop();
+      clearTimeout(timer);
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchstart", stop);
+    };
+  }, [focus, farms.length, router]);
+
+  const toggleDevices = (farmId: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(farmId)) next.add(farmId);
+      return next;
+    });
 
   const reloadFarms = useCallback(() => {
     void refreshFarms();
@@ -711,7 +791,11 @@ export default function SettingsPage() {
           <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">등록된 팜이 없습니다.</div>
         ) : (
           farms.map((f) => (
-            <div key={f.farm_id} className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
+            <div
+              key={f.farm_id}
+              ref={f.farm_id === focus.farm ? deviceRef : undefined}
+              className="mb-3 rounded-2xl bg-white p-4 shadow-sm"
+            >
               {/* 큰글씨에서 한 줄에 못 담으면 줄바꿈 — 눌러 담으면 메타 문구가 세로로 읽힌다.
                   조작 버튼 3개는 한 덩어리로 묶어 함께 내려간다 (흩어지면 짝을 잃는다) */}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -719,21 +803,21 @@ export default function SettingsPage() {
                 <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-bold text-primary-dark">{f.farm_id}</span>
                 <span className="text-12.5 font-semibold text-muted">{farmTypeLabel(f.farm_type)} · {f.crop ?? "—"} · {f.devices_online}/{f.devices_total} 온라인</span>
                 <span className="ml-auto flex shrink-0 items-center gap-1">
-                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="whitespace-nowrap rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
-                  {expanded === f.farm_id ? "접기" : "장치 관리"}
+                <button onClick={() => toggleDevices(f.farm_id)} className="whitespace-nowrap rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
+                  {expanded.has(f.farm_id) ? "접기" : "장치 관리"}
                 </button>
                 <button onClick={() => setEditingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">수정</button>
                 <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
                 </span>
               </div>
-              {expanded === f.farm_id && <FarmDevices farmId={f.farm_id} />}
+              {expanded.has(f.farm_id) && <FarmDevices farmId={f.farm_id} />}
             </div>
           ))
         )}
       </section>
 
       {/* 알림 규칙 (FR-34) — 디자인 설정 화면의 알림 섹션 */}
-      <section className="mt-8">
+      <section ref={rulesSectionRef} className="mt-8">
         <h2 className="mb-3 text-16 font-extrabold">알림 규칙</h2>
         {farms.length === 0 ? (
           <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">
@@ -741,7 +825,11 @@ export default function SettingsPage() {
           </div>
         ) : (
           farms.map((f) => (
-            <div key={f.farm_id} className="mb-3">
+            <div
+              key={f.farm_id}
+              ref={f.farm_id === focus.farm ? rulesRef : undefined}
+              className="mb-3"
+            >
               <div className="mb-1.5 text-13 font-extrabold text-gray-600">{f.name}</div>
               <AlertRules farmId={f.farm_id} editable={canControl(user)} />
             </div>

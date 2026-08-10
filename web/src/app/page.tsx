@@ -10,13 +10,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import {
-  Card, Gauge, KpiTile, SectionTitle, StatusDot,
+  Card, Gauge, GO_LINK, KpiTile, SectionTitle, StatusDot,
   SENSOR_META, SEV_STYLE, TANK_LABEL,
 } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
 import { FarmSnapshot, farmSeverity, sensorOf } from "@/lib/fleet";
 import { timeAgo } from "@/lib/monitor";
-import { isValidWeatherLocation, useWeather, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
+import { isValidWeatherLocation, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
 const KPI_SENSORS = ["temperature", "humidity", "co2"] as const;
 
@@ -121,8 +121,7 @@ function FarmCard({
 
 export default function Dashboard() {
   useScope("all");
-  const { farms, alerts, wsOpen, snaps } = useFarmData();
-  const { rows: weatherRows } = useWeather();
+  const { farms, alerts, wsOpen, snaps, weather: weatherRows } = useFarmData();
   const weatherByFarm = new Map(weatherRows.map((row) => [row.farm_id, row]));
 
   const alertList = Object.values(alerts);
@@ -214,7 +213,7 @@ export default function Dashboard() {
         <Card className="lg:col-span-2">
           <SectionTitle
             title="전체 알림" sub={`미확인 ${unacked.length}건`}
-            right={<Link href="/alerts" className="text-12.5 font-bold text-primary-dark">모두 보기</Link>}
+            right={<Link href="/alerts" className={GO_LINK}>모두 보기</Link>}
           />
           {alertList.length === 0 && (
             <div className="py-6 text-center text-13 font-semibold text-muted">알림이 없어요</div>

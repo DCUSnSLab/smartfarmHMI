@@ -2,27 +2,31 @@
 
 /**
  * 농장 상세 · 상태 (디자인 "농장 상세: 상태").
- * 상태 요약 · 지역 날씨(Planned) · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
+ * 상태 요약 · 지역 날씨 · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
  */
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
-  Card, CONN_STYLE, Gauge, SectionTitle, StatusDot,
-  SENSOR_META, TANK_LABEL,
+  Card, CONN_STYLE, Gauge, GO_LINK, SectionTitle, StatusDot,
+  SENSOR_META, STATION_STATE, TANK_LABEL,
 } from "@/components/ui";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
-import { timeAgo } from "@/lib/monitor";
-import { isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { deviceLiveness, timeAgo } from "@/lib/monitor";
+import {
+  isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
+  uvIndexLabel, weatherConditionLabel, weatherIcon,
+} from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
  * "자동 생성" 라벨을 붙여 사람이 쓴 문장과 구분한다 (FR-30 비고).
  */
-function useSummary(): { text: string; issues: string[] } {
-  const { sensors, conns, robots } = useFarmData();
+function useSummary(): { text: string; issues: string[]; ready: boolean } {
+  const { sensors, conns, robots, snapshotReady } = useFarmData();
   const issues: string[] = [];
 
   const offline = Object.values(conns).filter((c) => c.state === "offline");
@@ -48,11 +52,15 @@ function useSummary(): { text: string; issues: string[] } {
       ? `${envPart} · ${robotPart} · 확인 필요: ${issues.join(", ")}`
       : `${envPart} · ${robotPart} · 특이사항 없음`,
     issues,
+    // 전체 스코프에서는 농장별 센서를 받지 않아, 상세 진입 직후 sensors 가 비어 있다
+    ready: snapshotReady,
   };
 }
 
 function FarmWeather({ farmId }: { farmId: string }) {
-  const { rows, loading, reload } = useWeather();
+  // 컨텍스트에서 받는다 — 화면마다 훅을 부르면 이동할 때마다 「로딩중」이 되살아난다.
+  // 수동 새로고침은 같은 소유자의 reload 를 쓴다 (따로 부르면 폴링이 이중이 된다)
+  const { weather: rows, weatherLoading: loading, reloadWeather: reload } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
   const weather = rows.find((row) => row.farm_id === farmId);
   const hasValidLocation = isValidWeatherLocation(
@@ -155,11 +163,9 @@ function FarmWeather({ farmId }: { farmId: string }) {
       ) : (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <span className="text-15 font-extrabold text-[#3A5A86]">
-            {hasValidLocation
+            {weather?.latitude != null || weather?.longitude != null
               ? "정보 없음"
-              : weather?.latitude != null || weather?.longitude != null
-                ? "정보 없음"
-                : "날씨 조회 위치가 설정되지 않았습니다."}
+              : "날씨 조회 위치가 설정되지 않았습니다."}
           </span>
           {hasValidLocation && (
             <button
@@ -177,7 +183,6 @@ function FarmWeather({ farmId }: { farmId: string }) {
 
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
-  const router = useRouter();
   const { sensors, conns, robots } = useFarmData();
   const snap = useFarmSnapshot(farmId);
   const ranges = useRanges(farmId);
@@ -200,8 +205,13 @@ export default function StatusTab() {
               </span>
             }
           />
-          <p className="text-14 font-semibold leading-relaxed text-gray-700">{summary.text}</p>
-          {summary.issues.length > 0 && (
+          {/* 스냅샷 도착 전에는 자리만 잡는다 (확정 문구를 냈다가 바꾸면 깜빡인다) */}
+          {summary.ready ? (
+            <p className="text-14 font-semibold leading-relaxed text-gray-700">{summary.text}</p>
+          ) : (
+            <p aria-hidden="true" className="h-6 w-3/4 animate-pulse rounded bg-gray-100" />
+          )}
+          {summary.ready && summary.issues.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {summary.issues.map((i) => (
                 <span key={i} className="rounded-lg bg-status-caution/10 px-2.5 py-1 text-12 font-bold text-status-cautionDark">
@@ -221,14 +231,28 @@ export default function StatusTab() {
       <section className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2"><FarmMap farmId={farmId} robots={Object.values(robots)} /></div>
         <Card>
-          <SectionTitle title="하드웨어" sub={`${devices.length}대`} />
-          <div className="space-y-3">
+          <SectionTitle
+            title="하드웨어" sub={`${devices.length}대`}
+            right={
+              // 이 농장의 장치 관리로 바로 — 설정 화면은 농장이 여럿이면 접혀 있다.
+              // scroll={false} — Next 가 맨 위로 올리면 설정 화면의 정렬을 덮어쓴다
+              <Link
+                href={`/settings?farm=${farmId}&section=devices`}
+                scroll={false}
+                className={GO_LINK}
+              >
+                장치 관리
+              </Link>
+            }
+          />
+          {/* 전부 보여주고 넘치면 카드 안에서 스크롤한다 */}
+          <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
             {[
-              { type: "robot", label: "로봇" },
-              { type: "sensor", label: "센서" },
-              { type: "tank", label: "탱크" },
-              { type: "station", label: "워크스테이션" },
-            ].map(({ type, label }) => {
+              { type: "robot", label: "로봇", tab: "robot" },
+              { type: "sensor", label: "센서", tab: "env" },
+              { type: "tank", label: "탱크", tab: "supply" },
+              { type: "station", label: "워크스테이션", tab: "supply" },
+            ].map(({ type, label, tab }) => {
               const list = byType(type);
               if (list.length === 0) return null;
               return (
@@ -237,28 +261,35 @@ export default function StatusTab() {
                     {label} {list.length}
                   </div>
                   <div className="space-y-1">
-                    {list.slice(0, 4).map((d) => {
-                      const c = conns[d.device_id];
+                    {list.map((d) => {
+                      // 통신 상태는 FR-37 판정(deviceLiveness), 워크스테이션만 다른 축이라
+                      // 작업 상태를 보여준다. 경과 시간은 붙이지 않는다 — 여기서 볼 것은
+                      // 정상 여부뿐이고, 초 단위 숫자가 매 초 바뀌면 목록이 어수선해진다
+                      const station = type === "station"
+                        ? snap?.stations.find((s) => s.station_id === d.device_id)
+                        : undefined;
+                      const live = deviceLiveness(
+                        d.device_id, d.device_type, conns, sensors,
+                        d.detail?.parent_device_id,
+                      );
+                      const badge = station
+                        ? STATION_STATE[station.state] ?? STATION_STATE.idle
+                        // 등록은 됐는데 한 번도 값이 오지 않은 장치
+                        : live.state === "unmonitored"
+                          ? { label: "데이터 없음", sev: "warning" }
+                          : CONN_STYLE[live.state];
                       return (
-                        <div key={d.device_id} className="flex items-center gap-2 text-12.5">
+                        <Link
+                          key={d.device_id}
+                          href={`/farms/${farmId}/${tab}`}
+                          className="flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left text-12.5 hover:bg-surface"
+                        >
                           <span className="min-w-0 flex-1 truncate font-bold">{d.name}</span>
-                          {/* 상태는 눌리면 안 된다 — 이름만 말줄임으로 양보한다 */}
-                          {c ? (
-                            <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />
-                          ) : (
-                            <span className="text-11.5 font-semibold text-muted">—</span>
-                          )}
-                        </div>
+                          {/* 상태는 줄이지 않는다 — 좁아지면 이름만 말줄임으로 양보한다 */}
+                          <StatusDot sev={badge?.sev ?? "info"} label={badge?.label ?? "—"} />
+                        </Link>
                       );
                     })}
-                    {list.length > 4 && (
-                      <button
-                        onClick={() => router.push("/settings")}
-                        className="text-11.5 font-bold text-primary-dark"
-                      >
-                        +{list.length - 4}대 더 보기 (설정)
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -309,12 +340,9 @@ export default function StatusTab() {
           <SectionTitle
             title="탱크" sub="상세는 작업·공급 탭"
             right={
-              <button
-                onClick={() => router.push(`/farms/${farmId}/supply`)}
-                className="text-12.5 font-bold text-primary-dark"
-              >
-                작업·공급 →
-              </button>
+              <Link href={`/farms/${farmId}/supply`} className={GO_LINK}>
+                작업·공급
+              </Link>
             }
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

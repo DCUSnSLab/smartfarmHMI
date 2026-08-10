@@ -138,9 +138,10 @@ export default function Dashboard() {
     sevCount[farmSeverity(snap, warnByFarm(snap.farm.farm_id))] += 1;
   }
   const robots = snapList.flatMap((s) => s.robots);
-  const activeRobots = robots.filter((r) => r.mission_state === "moving" || r.mission_state === "working");
-  const charging = robots.filter((r) => r.charging || r.mission_state === "charging");
-  const errored = robots.filter((r) => r.mission_state === "error");
+  const activeRobots = robots.filter((r) => r.phase === "moving" || r.phase === "working");
+  const charging = robots.filter((r) => r.charging || r.phase === "charging");
+  // 오류는 진행 단계와 별개 축이다 — 이동 중에도 오류일 수 있다 (§4.2).
+  const errored = robots.filter((r) => r.error != null);
 
   const dateLabel = new Date().toLocaleDateString("ko-KR", {
     year: "numeric", month: "long", day: "numeric", weekday: "long",

@@ -46,6 +46,13 @@ function EstopIcon({ size = 17 }: { size?: number }) {
 /** 발동자 표기 — 배너에 이메일 전문을 노출하지 않는다 */
 const actor = (v?: string | null) => v?.split("@")[0] || "-";
 
+/** 왜 모르는지 — 현장에서 무엇을 볼지가 달라진다 (통신 규격 §4.7). */
+const ESTOP_UNKNOWN_REASON: Record<string, string> = {
+  not_read_yet: "엣지가 비상정지 장치를 아직 읽지 못했습니다",
+  read_failed: "비상정지 장치 읽기에 실패했습니다",
+  no_source: "비상정지 상태를 알려줄 장치가 연결돼 있지 않습니다",
+};
+
 /**
  * 배너 한 종 — **폭과 무관하게 접힌 상태는 항상 한 줄**이고 상세는 셰브론으로 펼친다.
  *
@@ -196,6 +203,10 @@ export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSum
     (id) => farms.find((f) => f.farm_id === id)?.name ?? id,
   );
 
+  // 판정은 "눌림"과 같지만(안전측) 사실은 다르다 — 배너가 "작동됨"이라고
+  // 단언하면 현장에 확인하러 갈 이유가 사라진다 (§4.7).
+  const estopUnknown = stops.physical_estop?.detail?.estop === "unknown";
+
   return (
     <>
       {/* 물리 비상정지 — 상위 심각도(적색 실선 강조), 해제 경로 없음 */}
@@ -204,9 +215,13 @@ export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSum
           bar="bg-gradient-to-r from-[#D32030] to-status-warning"
           icon={<EstopIcon size={20} />}
           title={
-            estopFarms.length > 1
-              ? `현장 비상정지 작동됨 · ${estopFarms.length}곳`
-              : "현장 비상정지 작동됨"
+            estopUnknown
+              ? estopFarms.length > 1
+                ? `현장 비상정지 확인 필요 · ${estopFarms.length}곳`
+                : "현장 비상정지 확인 필요"
+              : estopFarms.length > 1
+                ? `현장 비상정지 작동됨 · ${estopFarms.length}곳`
+                : "현장 비상정지 작동됨"
           }
           meta={timeAgo(stops.physical_estop.engaged_at)}
           detail={
@@ -215,11 +230,22 @@ export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSum
               {estopFarms.length > 0 && (
                 <>
                   <span className="font-extrabold text-white">{estopFarms.join(" · ")}</span>
-                  에서 작동했습니다.{" "}
+                  {estopUnknown ? "의 상태를 확인할 수 없습니다. " : "에서 작동했습니다. "}
                 </>
               )}
-              현장에서 수동 조작으로만 제어가 가능하며, 웹에서는 해제할 수 없습니다.
-              (ISO 13850).
+              {estopUnknown ? (
+                <>
+                  {ESTOP_UNKNOWN_REASON[stops.physical_estop.detail?.reason ?? ""] ??
+                    "엣지가 비상정지 상태를 보고하지 못했습니다"}
+                  . 안전을 위해 <span className="font-extrabold text-white">눌린 것으로 간주</span>
+                  하고 있습니다 — 현장에서 실제 상태를 확인하세요.
+                </>
+              ) : (
+                <>
+                  현장에서 수동 조작으로만 제어가 가능하며, 웹에서는 해제할 수 없습니다.
+                  (ISO 13850).
+                </>
+              )}
             </>
           }
         />

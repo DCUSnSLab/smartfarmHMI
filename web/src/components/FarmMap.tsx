@@ -66,7 +66,8 @@ function RobotMarker({ robot, meterPx }: { robot: RobotValue; meterPx: number })
   const y = flipY(robot.pos_y as number);
   // 화면 배율과 무관하게 일정 크기로 보이도록 미터 단위 반지름을 역산한다.
   const r = 12 / meterPx;
-  const stopped = robot.mission_state === "error";
+  // 오류는 phase 를 덮지 않으므로 별도 필드로 본다 (§4.2).
+  const stopped = robot.error != null;
   const color = stopped ? "#dc2626" : robot.charging ? "#16a34a" : "#2563eb";
   // heading 은 ROS 기준 반시계 양수인데 y 를 뒤집었으므로 회전도 뒤집는다.
   const deg = robot.heading_rad == null ? null : (-robot.heading_rad * 180) / Math.PI;

@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import {
-  Card, CONN_STYLE, Modal, SectionTitle, StatusDot, MISSION_LABEL,
+  Card, CONN_STYLE, Modal, SectionTitle, StatusDot, PHASE_LABEL,
 } from "@/components/ui";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
@@ -30,7 +30,7 @@ function ManualControlModal({
   return (
     <Modal
       title={`${robot.device_id} 수동 제어`}
-      sub={MISSION_LABEL[robot.mission_state] ?? robot.mission_state}
+      sub={PHASE_LABEL[robot.phase] ?? robot.phase}
       onClose={onClose}
       footer={
         <button onClick={onClose} className="w-full rounded-xl bg-primary py-3 text-14 font-extrabold text-white">
@@ -124,8 +124,18 @@ export default function RobotTab() {
                 <div className="mb-2.5 flex flex-wrap items-center gap-2">
                   <span className="text-15.5 font-extrabold">{r.device_id}</span>
                   <span className="rounded-lg bg-primary-bg px-2 py-0.5 text-11.5 font-extrabold text-primary-dark">
-                    {MISSION_LABEL[r.mission_state] ?? r.mission_state}
+                    {PHASE_LABEL[r.phase] ?? r.phase}
                   </span>
+                  {/* 오류는 단계를 덮지 않고 나란히 붙는다 — "이동 중 + 경로 실패"가
+                      동시에 보여야 어느 구간에서 멈췄는지 알 수 있다 (§4.2). */}
+                  {r.error && (
+                    <span
+                      className="rounded-lg bg-status-warning/15 px-2 py-0.5 text-11.5 font-extrabold text-status-warningDark"
+                      title={r.error.message ?? undefined}
+                    >
+                      이상 · {r.error.code}
+                    </span>
+                  )}
                   {c && <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />}
                   <span className="ml-auto text-11.5 font-semibold text-muted">{timeAgo(r.ts)}</span>
                 </div>

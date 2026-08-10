@@ -30,7 +30,17 @@ export interface RobotValue {
   speed: number | null;
   battery_pct: number | null;
   charging: boolean;
-  mission_state: string;
+  /** 임무가 어디까지 갔나 — 상태 (통신 규격 §4.2) */
+  phase: string;
+  /** 무엇이 틀어졌나 — 사건. phase 를 덮지 않고 나란히 온다 */
+  error: RobotError | null;
+}
+
+export interface RobotError {
+  code: string;
+  message?: string | null;
+  severity?: "warning" | "caution";
+  since?: string | null;
 }
 
 export interface ConnState {
@@ -57,6 +67,15 @@ export interface StopInfo {
   by?: string | null;
   reason?: string | null;
   farm_ids?: string[];   // 물리 비상정지 — 걸린 농장 전체 (농장별로 독립 성립)
+  /** 물리 비상정지 원 보고 (§4.7). `unknown` 도 정지로 판정되지만 문구는
+   *  "작동됨"이 아니라 "확인 필요"다. */
+  detail?: EstopDetail | null;
+}
+
+export interface EstopDetail {
+  estop: "engaged" | "released" | "unknown";
+  reason?: string | null;   // unknown 일 때: not_read_yet | read_failed | no_source
+  source?: string | null;
 }
 
 export interface StopState {

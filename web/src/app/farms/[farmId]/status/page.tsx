@@ -8,7 +8,7 @@
 import { useParams, useRouter } from "next/navigation";
 import {
   Card, CONN_STYLE, Gauge, SectionTitle, StatusDot,
-  MISSION_LABEL, SENSOR_META, TANK_LABEL,
+  SENSOR_META, TANK_LABEL,
 } from "@/components/ui";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
@@ -39,7 +39,7 @@ function useSummary(): { text: string; issues: string[] } {
       ? `내부 ${temp.value.toFixed(1)}℃ · 습도 ${hum.value.toFixed(0)}%`
       : "환경 데이터 수신 대기";
 
-  const working = Object.values(robots).filter((r) => r.mission_state === "working").length;
+  const working = Object.values(robots).filter((r) => r.phase === "working").length;
   const robotPart = working ? `로봇 ${working}대 작업 중` : "로봇 대기 중";
 
   return {

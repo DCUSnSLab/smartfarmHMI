@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
@@ -268,8 +268,34 @@ def seconds_until_next_collection(now: datetime | None = None) -> float:
     return (target - current).total_seconds()
 
 
+def last_collection_at(now: datetime | None = None) -> datetime:
+    """직전 수집 경계(가장 최근의 매시 40분) — 이번 시각대 자료를 받았는지 판정용."""
+    current = now.astimezone(KST) if now is not None else datetime.now(KST)
+    target = current.replace(minute=COLLECT_MINUTE, second=0, microsecond=0)
+    if target > current:
+        target -= timedelta(hours=1)
+    return target
+
+
+async def _has_current_slot(engine) -> bool:
+    """이번 시각대 자료를 이미 받아뒀는가."""
+    async with engine.connect() as conn:
+        newest = (
+            await conn.execute(select(func.max(m.weather_reading.c.received_at)))
+        ).scalar()
+    return newest is not None and newest >= last_collection_at()
+
+
 async def weather_collection_loop(engine) -> None:
-    """기상청 자료 갱신 후인 매시 40분에만 농장별 날씨를 수집한다."""
+    """기상청 자료 갱신 후인 매시 40분에 농장별 날씨를 수집한다.
+
+    **기동 직후 한 번은 즉시 받는다.** 대기부터 하면 배포·재기동 직후 접속한 사용자가
+    최대 1시간 동안 빈 날씨 카드를 보게 된다 (자료는 매시 갱신인데 화면은 계속 비어 있다).
+    단, 이번 시각대 자료가 이미 있으면 건너뛴다 — 재기동할 때마다 외부 API 를 부르면
+    일일 호출 한도만 소모하고 같은 값을 다시 받는다.
+    """
+    if not await _has_current_slot(engine):
+        await collect_weather(engine)
     while True:
         await asyncio.sleep(seconds_until_next_collection())
         await collect_weather(engine)

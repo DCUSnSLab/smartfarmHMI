@@ -20,21 +20,50 @@ export interface WeatherRow {
   provider: string | null;
 }
 
+/**
+ * 다음 조회 시각까지 남은 ms — 서버가 **매시 40분에만** 수집하므로(weather.py
+ * weather_collection_loop) 그 직후 한 번만 받는다. 고정 간격으로 돌리면 같은 값을
+ * 시간당 12번 받고, 정작 갱신 직후를 놓쳐 최대 55분 묵은 값을 보게 된다.
+ */
+const SLOT_MINUTE = 41;   // 수집(40분)이 끝날 여유 1분
+
+function msUntilNextSlot(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setMinutes(SLOT_MINUTE, 0, 0);
+  if (next <= now) next.setHours(next.getHours() + 1);
+  return next.getTime() - now.getTime();
+}
+
+/**
+ * 기상 조회 — **소유자는 FarmDataProvider 하나뿐이다.**
+ *
+ * 화면마다 부르면 이동할 때마다 새로 마운트돼 loading 이 true 로 되돌아가고,
+ * 이미 받아둔 값이 있는데도 「로딩중」이 한 번 스쳤다가 값으로 바뀐다. 소유자를
+ * 하나로 두면 마운트가 앱 시작 때 한 번이라, 이후 갱신은 값만 조용히 교체된다.
+ */
 export function useWeather() {
   const [rows, setRows] = useState<WeatherRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+
     const load = () => {
       void apiFetch("/api/weather")
         .then(async (response) => response.ok ? response.json() : [])
         .then((data: WeatherRow[]) => { if (active) setRows(data); })
-        .finally(() => { if (active) setLoading(false); });
+        .finally(() => {
+          if (!active) return;
+          setLoading(false);
+          // 매번 다음 시각을 다시 계산한다 — 절전에서 깨어나 늦게 실행돼도 스스로 정렬된다
+          timer = setTimeout(load, msUntilNextSlot());
+        });
     };
+
     load();
-    const timer = setInterval(load, 5 * 60_000);
-    return () => { active = false; clearInterval(timer); };
+    return () => { active = false; clearTimeout(timer); };
   }, []);
 
   return { rows, loading };

@@ -6,6 +6,8 @@
  * 데이터 CRUD 는 /lib/settings 헬퍼(→ api → middleware). 게이팅은 api 가 강제, 여기선 보조.
  */
 
+import { useRouter, useSearchParams } from "next/navigation";
+import { useRef } from "react";
 import { AlertRules } from "@/components/AlertRules";
 import { PlannedChip } from "@/components/Planned";
 import { useCallback, useEffect, useState } from "react";
@@ -645,10 +647,67 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
 export default function SettingsPage() {
   const user = useUser();
   const [farms, setFarms] = useState<FarmSummary[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // 다른 화면에서 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을
+  // 화면 위로 올린다. 농장·절이 모두 여럿이라, 그냥 보내면 어느 것인지 다시 찾아야 한다
+  const router = useRouter();
+  const params = useSearchParams();
+  // 진입 시점에 **한 번만** 읽는다. 주소를 곧바로 지우기 때문에, 매 렌더 다시 읽으면
+  // 지운 직후 값이 바뀌어 아래 이펙트가 재실행되고 정렬 추적이 즉시 끊긴다
+  const [focus] = useState(() => ({
+    farm: params.get("farm"),
+    section: params.get("section") === "rules" ? "rules" : "devices",
+    requested: params.has("farm") || params.has("section"),
+  }));
+  // 장치 관리로 올 때만 펼친다 — 알림 규칙은 접힌 절이 아니라 항상 보인다
+  const [expanded, setExpanded] = useState<string | null>(
+    focus.section === "devices" ? focus.farm : null,
+  );
+  const deviceRef = useRef<HTMLDivElement>(null);
+  const rulesRef = useRef<HTMLDivElement>(null);
+  const rulesSectionRef = useRef<HTMLElement>(null);
   const [addingFarm, setAddingFarm] = useState(false);
   const [editingFarm, setEditingFarm] = useState<FarmSummary | null>(null);
   const [deletingFarm, setDeletingFarm] = useState<FarmSummary | null>(null);
+
+  // 목록이 길면 펼쳐도 화면 밖이라 보이지 않는다 — 농장 목록이 온 뒤 스크롤한다.
+  // scrollIntoView 는 고정 헤더·정지 배너를 모르기 때문에 카드 윗부분이 가려진다.
+  // 고정 영역 높이를 실측해 그만큼 비켜, 카드가 본문 맨 위에 오도록 맞춘다.
+  useEffect(() => {
+    if (!focus.requested || !farms.length) return;
+    // 농장을 지정하면 그 농장의 블록, 안 하면(전역 알림에서 옴) 절 머리로 간다
+    const el = focus.section !== "rules" ? deviceRef.current
+      : focus.farm ? rulesRef.current
+      : rulesSectionRef.current;
+    if (!el) return;
+
+    const align = () => {
+      const chrome = document.querySelector<HTMLElement>("[data-app-chrome]");
+      window.scrollTo({
+        top: el.getBoundingClientRect().top + window.scrollY - (chrome?.offsetHeight ?? 0) - 12,
+      });
+    };
+    align();
+
+    // 위쪽의 「발견된 스마트팜」이 나중에 로드되며 높이가 바뀌어 목표를 밀어낸다 —
+    // 한 번만 맞추면 어긋난 채 남는다. 레이아웃이 잦아들 때까지 잠깐 따라간다.
+    // 사용자가 직접 스크롤하면 즉시 멈춘다 — 안 그러면 조작을 되돌려 버린다.
+    const observer = new ResizeObserver(align);
+    observer.observe(document.body);
+    const stop = () => observer.disconnect();
+    const timer = setTimeout(stop, 1500);
+    for (const ev of ["wheel", "touchstart", "keydown"]) {
+      window.addEventListener(ev, stop, { once: true, passive: true });
+    }
+    // 주소에서 즉시 지운다 — 「한 번 이 농장을 보여 달라」는 일회성 의도이지 화면 상태가
+    // 아니다. 남겨 두면 새로고침마다 다시 끌려가고, 다른 농장을 펼쳐 둔 것과도 어긋난다
+    router.replace("/settings", { scroll: false });
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const ev of ["wheel", "touchstart", "keydown"]) window.removeEventListener(ev, stop);
+    };
+  }, [focus, farms.length, router]);
 
   const reloadFarms = useCallback(() => {
     void apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
@@ -711,7 +770,11 @@ export default function SettingsPage() {
           <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">등록된 팜이 없습니다.</div>
         ) : (
           farms.map((f) => (
-            <div key={f.farm_id} className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
+            <div
+              key={f.farm_id}
+              ref={f.farm_id === focus.farm ? deviceRef : undefined}
+              className="mb-3 rounded-2xl bg-white p-4 shadow-sm"
+            >
               {/* 큰글씨에서 한 줄에 못 담으면 줄바꿈 — 눌러 담으면 메타 문구가 세로로 읽힌다.
                   조작 버튼 3개는 한 덩어리로 묶어 함께 내려간다 (흩어지면 짝을 잃는다) */}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -733,7 +796,7 @@ export default function SettingsPage() {
       </section>
 
       {/* 알림 규칙 (FR-34) — 디자인 설정 화면의 알림 섹션 */}
-      <section className="mt-8">
+      <section ref={rulesSectionRef} className="mt-8">
         <h2 className="mb-3 text-16 font-extrabold">알림 규칙</h2>
         {farms.length === 0 ? (
           <div className="rounded-2xl bg-white p-5 text-13 font-semibold text-muted shadow-sm">
@@ -741,7 +804,11 @@ export default function SettingsPage() {
           </div>
         ) : (
           farms.map((f) => (
-            <div key={f.farm_id} className="mb-3">
+            <div
+              key={f.farm_id}
+              ref={f.farm_id === focus.farm ? rulesRef : undefined}
+              className="mb-3"
+            >
               <div className="mb-1.5 text-13 font-extrabold text-gray-600">{f.name}</div>
               <AlertRules farmId={f.farm_id} editable={canControl(user)} />
             </div>

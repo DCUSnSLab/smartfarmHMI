@@ -7,14 +7,8 @@
 
 import { useParams } from "next/navigation";
 import { PlannedBox } from "@/components/Planned";
-import { Card, Gauge, SectionTitle, StatusDot, TANK_LABEL } from "@/components/ui";
+import { Card, Gauge, SectionTitle, StatusDot, STATION_STATE, TANK_LABEL } from "@/components/ui";
 import { useFarmSnapshot } from "@/lib/farmDetail";
-
-const STATION_STATE: Record<string, { label: string; sev: string }> = {
-  idle: { label: "대기", sev: "info" },
-  busy: { label: "작업 중", sev: "ok" },
-  fault: { label: "이상", sev: "warning" },
-};
 
 export default function SupplyTab() {
   const { farmId } = useParams<{ farmId: string }>();

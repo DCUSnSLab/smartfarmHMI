@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { AlertList } from "@/components/AlertPanel";
+import { GO_LINK } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
 
 export default function AlertsPage() {
@@ -23,8 +24,8 @@ export default function AlertsPage() {
         <span className="text-13 font-semibold text-muted">
           전 농장 대상 · 각 알림을 누르면 관련 화면으로 이동해요
         </span>
-        <Link href="/settings" className="ml-auto text-12.5 font-bold text-primary-dark">
-          알림 규칙 설정 →
+        <Link href="/settings?section=rules" className={`ml-auto ${GO_LINK}`}>
+          알림 규칙 설정
         </Link>
       </div>
 

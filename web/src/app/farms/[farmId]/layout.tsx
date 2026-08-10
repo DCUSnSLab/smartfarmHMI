@@ -5,13 +5,21 @@
  * 스코프 스위처와 탭 바는 전역 셸(AppShell)의 FarmScopeNav·FarmDetailNav 로 이관했다.
  */
 
-import { useParams } from "next/navigation";
+import { useEffect } from "react";
+import { useParams, usePathname } from "next/navigation";
 import { StatusDot } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
 
 export default function FarmLayout({ children }: { children: React.ReactNode }) {
   const { farmId } = useParams<{ farmId: string }>();
   useScope(farmId);
+
+  // 탭·농장을 바꾸면 화면 맨 위에서 시작한다. 내려서 보던 자리가 그대로 남으면
+  // 새 화면의 첫 카드를 지나친 채 열리고, 어디로 왔는지 알기 어렵다
+  const pathname = usePathname();
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [pathname]);
   const { farmName, conns } = useFarmData();
 
   const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));

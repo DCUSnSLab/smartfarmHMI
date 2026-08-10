@@ -24,7 +24,9 @@ function Chrome({ children }: { children: React.ReactNode }) {
       {/* 배너와 헤더를 한 sticky 컨테이너에 둔다. 각각 sticky top-0 이면 스크롤 시
           배너가 헤더를 덮어 네비를 가린다 — 정지 중에는 네비를 쓸 수 없게 된다.
           순서는 전달본과 같이 배너가 위 (design-change-spec §1) */}
-      <div className="sticky top-0 z-50">
+      {/* data-app-chrome — 화면 안 특정 위치로 스크롤할 때 이 높이만큼 비켜야 한다
+          (고정 영역에 가려짐). 배너 유무·글자 크기로 높이가 변해 상수로 둘 수 없다 */}
+      <div data-app-chrome className="sticky top-0 z-50">
         <StopBanners stops={stops} farms={farms} />
         <Header />
       </div>

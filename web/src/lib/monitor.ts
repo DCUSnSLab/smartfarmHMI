@@ -76,6 +76,55 @@ export function controlBlocked(stops: StopState, farmId: string): boolean {
   return stops.remote != null || estopHere;
 }
 
+/**
+ * 장치별 통신 상태 (FR-37) — 온라인 / 응답 지연 / 오프라인 3단계.
+ *
+ * 판정 근거가 장치 유형마다 다르다.
+ * - 엣지·로봇·생육기: 서버가 LWT·birth/death 로 판정한 `device_connection_state`
+ * - 센서: 자기 연결 레코드가 없다 (생육기가 묶어 발행한다). 마지막 수신 시각으로 본다
+ * - 탱크: 수위계 센서(`{탱크}-lv`)가 값의 출처이므로 그 센서의 수신 시각을 따른다
+ * - 그 외(워크스테이션): FR-37 대상이 아니다 — 발행 경로 자체가 없다
+ *
+ * 센서 임계값을 서버의 3배·10배 규칙으로 잡지 않은 이유: 센서별 발행 주기가
+ * 스냅샷에 없다(생육기 5초 주기 안에서 센서마다 간격이 다르고, 관측상 3~30초).
+ * 정상 동작에서는 절대 걸리지 않고 실제로 멈춘 센서는 몇 분 안에 잡히는 값으로 둔다.
+ * 부모(생육기)가 끊기면 센서 개별 판정보다 그쪽이 우선한다 — 원인이 통신이기 때문.
+ */
+const SENSOR_DEGRADED_SEC = 120;
+const SENSOR_OFFLINE_SEC = 600;
+
+export type LiveState = "online" | "degraded" | "offline" | "unmonitored";
+
+export function deviceLiveness(
+  deviceId: string,
+  deviceType: string,
+  conns: Record<string, ConnState>,
+  sensors: Record<string, SensorValue>,
+  /** 이 장치를 묶어 발행하는 생육기 (장비 등록의 parent_device_id) */
+  parentId?: string | null,
+): { state: LiveState; ts: string | null } {
+  const own = conns[deviceId];
+  if (own) return { state: own.state, ts: own.last_received_at };
+
+  // 탱크는 수위계 센서가 값의 출처 — 탱크 자체는 발행하지 않는다
+  const sensor = sensors[deviceType === "tank" ? `${deviceId}-lv` : deviceId];
+  if (!sensor) return { state: "unmonitored", ts: null };
+
+  // 센서를 묶어 발행하는 생육기. 등록값(parent_device_id)이 있으면 그것을 쓰고,
+  // 없으면(탱크 등) 접두사로 찾는다 — 식별자를 고정하면 생육기 이름이 다른 농장에서
+  // 조용히 판정이 빠진다
+  const parent = parentId
+    ? conns[parentId]
+    : Object.values(conns).find((c) => c.device_id.startsWith("growbed"));
+  if (parent && parent.state !== "online") return { state: parent.state, ts: sensor.ts };
+
+  if (!sensor.ts) return { state: "offline", ts: null };
+  const age = (Date.now() - new Date(sensor.ts).getTime()) / 1000;
+  if (age > SENSOR_OFFLINE_SEC) return { state: "offline", ts: sensor.ts };
+  if (age > SENSOR_DEGRADED_SEC) return { state: "degraded", ts: sensor.ts };
+  return { state: "online", ts: sensor.ts };
+}
+
 export interface AlertItem {
   id: number;
   farm_id?: string;
@@ -138,11 +187,17 @@ export function useMonitor(scope: string) {
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
 
+  // 이 스코프의 스냅샷이 도착했는가. 전체 스코프에서는 농장별 센서를 받지 않으므로,
+  // 상세로 들어온 직후에는 sensors 가 비어 있다. 「데이터 없음」과 구분하지 않으면
+  // 확정 문구(「환경 데이터 수신 대기」)가 한 프레임 보였다가 값으로 바뀌어 깜빡인다.
+  const [snapshotReady, setSnapshotReady] = useState(false);
+
   // ── 초기 로드 (REST) ──
   const loadSnapshot = useCallback(async (farmId: string) => {
     const res = await apiFetch(`/api/farms/${farmId}/snapshot`);
     if (!res.ok) return;
     const snap = await res.json();
+    setSnapshotReady(true);
     setFarmName(snap.farm.name);
     setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
     setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
@@ -169,6 +224,7 @@ export function useMonitor(scope: string) {
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
     }
+    setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
     if (scope !== "all") {
       void loadSnapshot(scope);
       apiFetch(`/api/farms/${scope}/commands`).then(async (r) => {
@@ -287,7 +343,10 @@ export function useMonitor(scope: string) {
     };
   }, [scope, loadStops]);
 
-  return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
+  return {
+    farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
+    snapshotReady,
+  };
 }
 
 /** 실패 문구를 돌려준다 (성공 null) — 정지는 조용히 실패하면 안 되는 조작이다 */

@@ -17,6 +17,17 @@ export const CONTROL =
 export const CONTROL_ICON = `${CONTROL} w-9 justify-center [@media(pointer:coarse)]:w-10`;
 
 /**
+ * 다른 화면으로 가는 링크 — 섹션 제목 오른쪽에 두는 그것 (「장치 관리」·「모두 보기」 등).
+ *
+ * 예전에는 「→」를 붙여 이동임을 알렸는데, 화살표가 문장 부호처럼 읽히고 화면마다
+ * 붙은 곳과 안 붙은 곳이 갈렸다. 대신 **눌리는 것처럼** 보이게 한다 — 커서를 바꾸고
+ * (브라우저 기본 button 커서는 화살표다), 배경이 들어오게 해서 클릭 영역을 드러낸다.
+ */
+export const GO_LINK =
+  "cursor-pointer whitespace-nowrap rounded-lg px-2 py-1 text-12.5 font-bold " +
+  "text-primary-dark transition-colors hover:bg-primary-bg";
+
+/**
  * 팝오버 위치 — 트리거 오른쪽에 맞추되 화면을 벗어나면 옆으로 밀어넣는다.
  * 특정 폭에서 갑자기 전체 폭으로 바뀌지 않고 연속적으로 이동·축소된다.
  */
@@ -97,6 +108,18 @@ export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
   online: { label: "정상", sev: "ok" },
   degraded: { label: "응답 지연", sev: "caution" },
   offline: { label: "오프라인", sev: "warning" },
+};
+
+/**
+ * 워크스테이션 작업 상태 — 통신 상태(CONN_STYLE)와 **다른 축**이다.
+ * 워크스테이션은 자기 통신 경로가 없어(FR-37 대상은 엣지·센서·로봇) 이 상태로 표시한다.
+ * 상태·작업공급 두 화면이 같은 문구를 쓰도록 여기 둔다 — 각자 적으면 갈라진다.
+ */
+export const STATION_STATE: Record<string, { label: string; sev: string }> = {
+  idle: { label: "대기", sev: "info" },
+  busy: { label: "작업 중", sev: "ok" },
+  // 「이상」은 통신 이상과 섞여 읽힌다 — 조작이 아니라 현장 점검이 필요한 상태다
+  fault: { label: "점검 필요", sev: "warning" },
 };
 
 export function Card({

@@ -25,4 +25,4 @@ actuators:
   - { id: doser-a,  command: set_ec,          affects: ec-a,   drains: tank-nutrient-lv }
 
 robots:
-  - { id: robot-01, behavior: transport, interval_sec: 5, cycle_sec: 360 }
+  - { id: robot-01, behavior: transport, interval_sec: 2, cycle_sec: 360 }

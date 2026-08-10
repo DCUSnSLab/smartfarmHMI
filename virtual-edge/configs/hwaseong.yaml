@@ -39,4 +39,4 @@ actuators:
   - { id: led-a,        command: set_led,         affects: illum-a, power_kw: 0.8 }
 
 robots:
-  - { id: robot-01, behavior: transport, interval_sec: 5, cycle_sec: 240 }
+  - { id: robot-01, behavior: transport, interval_sec: 2, cycle_sec: 240 }

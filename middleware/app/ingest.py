@@ -36,6 +36,11 @@ log = logging.getLogger("mw.ingest")
 
 DEGRADED_FACTOR = 3
 OFFLINE_FACTOR = 10
+# 배수만 쓰면 발행이 빠른 장치일수록 판정이 조여진다 — 2초 주기 로봇은 6초
+# 침묵에 degraded 가 된다. 화면을 촘촘히 보려고 주기를 내린 것이 통신 감시를
+# 예민하게 만들면 안 되므로 하한을 둔다. 잠정치 (OPN-04).
+MIN_DEGRADED_SEC = 20
+MIN_OFFLINE_SEC = 60
 
 
 def _now() -> datetime:
@@ -459,9 +464,9 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
                         continue
                     gap = (now - last).total_seconds()
                     new_state = None
-                    if gap > interval * OFFLINE_FACTOR:
+                    if gap > max(interval * OFFLINE_FACTOR, MIN_OFFLINE_SEC):
                         new_state = "offline"
-                    elif gap > interval * DEGRADED_FACTOR:
+                    elif gap > max(interval * DEGRADED_FACTOR, MIN_DEGRADED_SEC):
                         new_state = "degraded"
                     if new_state and new_state != row["state"]:
                         await conn.execute(

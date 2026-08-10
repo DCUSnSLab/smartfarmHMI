@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from middleware.app import conformance
 from middleware.app import models as m
 from middleware.app.config import settings
 from shared.schemas import (
@@ -296,6 +297,11 @@ async def handle_message(
         msg = parse_message(payload)
     except ValidationError as e:
         log.warning("invalid message on %s: %s", topic_str, e.errors()[:2])
+        return
+
+    # 계약 적합성 — 버전 호환 판정 + 필드명 오타 검출 (conformance.py).
+    # 스키마 검증만으로는 extra="allow" 때문에 오타가 그대로 통과한다.
+    if not conformance.inspect(msg):
         return
 
     received_at = _now()

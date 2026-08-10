@@ -10,6 +10,7 @@ from typing import Annotated, Union
 from pydantic import Field, TypeAdapter
 
 from shared.schemas.messages import (
+    CONTRACT_VERSION,
     Ack,
     Birth,
     BirthMetric,
@@ -61,6 +62,7 @@ def parse_message(raw: bytes | str):
 
 
 __all__ = [
+    "CONTRACT_VERSION",
     "Ack", "AnyMessage", "Birth", "BirthMetric", "Calibrate", "ControlCommand",
     "Death", "EstopState", "Heartbeat", "Layout", "LayoutGate", "LayoutPoint", "LayoutZone",
     "PalletTaskMsg", "Position", "RemoteStop",

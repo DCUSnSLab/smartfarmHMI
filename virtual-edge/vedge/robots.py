@@ -38,7 +38,7 @@ class RobotSim:
         if self.state.stopped:
             # 원격 전체 정지 — 제자리 정지 (모니터링을 위한 상태 발행은 유지)
             return {"x": 1.0, "y": 1.0, "speed": 0.0, "battery_pct": 80,
-                    "charging": False, "mission_state": "idle"}
+                    "charging": False, "phase": "idle"}
 
         phase = (t % s.cycle_sec) / s.cycle_sec
         if s.behavior == "transport":
@@ -49,7 +49,7 @@ class RobotSim:
                 "speed": 0.6 if moving else 0.0,
                 "battery_pct": max(20, 95 - int((t % 7200) / 7200 * 60)),
                 "charging": False,
-                "mission_state": "moving" if moving else "working",
+                "phase": "moving" if moving else "working",
             }
         # charge_cycle — 대기 70% / 충전 30%
         charging = phase > 0.7
@@ -57,7 +57,7 @@ class RobotSim:
             "x": 0.5, "y": 0.5, "speed": 0.0,
             "battery_pct": min(100, 40 + int(phase * 70)),
             "charging": charging,
-            "mission_state": "charging" if charging else "idle",
+            "phase": "charging" if charging else "idle",
         }
 
     async def run(self, client: aiomqtt.Client) -> None:
@@ -67,7 +67,7 @@ class RobotSim:
                 self.cfg.farm_id, self.spec.id,
                 x=st["x"], y=st["y"], frame=FRAME, speed=st["speed"],
                 battery_pct=st["battery_pct"], charging=st["charging"],
-                mission_state=st["mission_state"],
+                phase=st["phase"],
             )
             await client.publish(
                 contract.topic(self.cfg.farm_id, "robot", self.spec.id, "status"),

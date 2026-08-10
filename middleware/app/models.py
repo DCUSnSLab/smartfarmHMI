@@ -216,7 +216,9 @@ robot_status = sa.Table(
     sa.Column("speed", sa.Double),
     sa.Column("battery_pct", sa.SmallInteger),
     sa.Column("charging", sa.Boolean, nullable=False, server_default=sa.false()),
-    sa.Column("mission_state", sa.Text, nullable=False, server_default=sa.text("'idle'")),
+    # phase 는 "어디까지 갔나"(상태), error 는 "무엇이 틀어졌나"(사건).
+    # 0.2 의 mission_state 는 둘을 한 칸에 담아 사건이 상태를 덮었다 (§4.2).
+    sa.Column("phase", sa.Text, nullable=False, server_default=sa.text("'idle'")),
     sa.Column("current_task_id", sa.Text),
     sa.Column("error", JSONB),
     sa.Column("extra", JSONB, nullable=False, server_default=_JSONB_EMPTY),
@@ -225,8 +227,8 @@ robot_status = sa.Table(
         "battery_pct IS NULL OR (battery_pct BETWEEN 0 AND 100)", name="robot_battery_check"
     ),
     sa.CheckConstraint(
-        "mission_state IN ('idle','moving','working','charging','error')",
-        name="robot_mission_state_check",
+        "phase IN ('idle','moving','working','charging')",
+        name="robot_phase_check",
     ),
 )
 
@@ -589,6 +591,10 @@ stop_event = sa.Table(
     sa.Column("engaged_by", sa.Text),  # physical_estop 은 현장 조작 — NULL 허용
     sa.Column("released_by", sa.Text),
     sa.Column("reason", sa.Text),
+    # 물리 비상정지의 원 보고 {estop, reason} — engaged|released|unknown (§4.7).
+    # unknown 도 정지로 판정하되(안전측) 화면은 "현장 확인 필요"로 구분해야 하므로,
+    # 판정 결과와 별개로 엣지가 뭐라고 보고했는지를 남긴다.
+    sa.Column("detail", JSONB),
     sa.Column("command_id", sa.Text, sa.ForeignKey("command_log.command_id")),
     sa.CheckConstraint("stop_kind IN ('remote','physical_estop')", name="stop_kind_check"),
     sa.CheckConstraint("scope IN ('all','farm')", name="stop_scope_check"),

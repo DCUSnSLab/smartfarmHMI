@@ -88,10 +88,14 @@ def _publish_stop_state(publisher, edges, *, engaged: bool, scope: str,
 
 
 def _stream_payload(kind: str, active: bool, *, scope: str | None = None,
-                    engaged_at=None, released_at=None, by=None, reason=None) -> dict:
+                    engaged_at=None, released_at=None, by=None, reason=None,
+                    detail: dict | None = None) -> dict:
+    # detail 은 물리 비상정지의 원 보고 {estop, reason, source} — active 는 판정
+    # 결과(unknown 도 True)이고 detail 은 엣지가 실제로 뭐라고 했는지다. 화면이
+    # "작동됨"과 "확인 필요"를 구분하려면 둘 다 필요하다 (§4.7).
     return {"stop_kind": kind, "active": active, "scope": scope,
             "engaged_at": engaged_at, "released_at": released_at,
-            "by": by, "reason": reason}
+            "by": by, "reason": reason, "detail": detail}
 
 
 class StopRequest(BaseModel):
@@ -261,6 +265,9 @@ async def _active_stops(conn, farm_id: str | None) -> dict:
         out[r["stop_kind"]] = {
             "scope": r["scope"], "engaged_at": r["engaged_at"].isoformat(),
             "by": r["engaged_by"], "reason": r["reason"],
+            # 물리 비상정지의 3값 원 보고 — 화면이 "작동됨"과 "확인 필요"를
+            # 구분하려면 판정 결과(active)만으로는 부족하다 (§4.7).
+            "detail": r["detail"],
         }
     if out["physical_estop"]:
         out["physical_estop"]["farm_ids"] = estop_farms
@@ -283,13 +290,42 @@ async def stop_state(farm_id: str):
         return await _active_stops(conn, farm_id)
 
 
+def _estop_reason(msg: EstopState, reason: str | None) -> str:
+    """stop_event.reason — 사람이 읽는 한 줄. 기계가 읽을 값은 detail 에 있다."""
+    if msg.estop == "unknown":
+        return f"상태 확인 불가 ({reason or 'unknown'})"
+    return f"현장 장치 ({msg.source})"
+
+
+# unknown 사유별 화면 문구 — 왜 모르는지가 현장 조치를 가른다.
+_ESTOP_UNKNOWN_BODY = {
+    "not_read_yet": "엣지가 비상정지 장치를 아직 읽지 못했습니다",
+    "read_failed": "비상정지 장치 읽기에 실패했습니다",
+    "no_source": "비상정지 상태를 알려줄 장치가 연결돼 있지 않습니다",
+}
+
+
 async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                              publisher=None) -> None:
-    """물리 비상정지 상태 수신 (FR-36, ingest 훅) — 표시 전용."""
-    if msg.engaged:
+    """물리 비상정지 상태 수신 (FR-36, ingest 훅) — 표시 전용.
+
+    `estop` 은 3값이며 **`unknown` 도 `engaged` 와 같이 정지로 판정한다**
+    (§4.7). 판정 자체는 `msg.is_engaged` 한 곳에 있고, 여기서는 화면 문구만
+    갈린다.
+    """
+    # `estop` 이 아예 없으면 값이 없는 것이지 풀린 것이 아니다. 판정은 스키마
+    # 기본값이 이미 안전측이고, 여기서는 왜 모르는지만 남긴다 — 현장 확인과
+    # 발행자 점검은 다른 조치다.
+    reason = msg.reason
+    if msg.estop == "unknown" and reason is None:
+        reason = "no_report" if "estop" not in msg.model_fields_set else "unspecified"
+    detail = {"estop": msg.estop, "reason": reason, "source": msg.source}
+    unknown = msg.estop == "unknown"
+
+    if msg.is_engaged:
         exists = (
             await conn.execute(
-                select(m.stop_event.c.id).where(
+                select(m.stop_event.c.id, m.stop_event.c.detail).where(
                     m.stop_event.c.stop_kind == "physical_estop",
                     m.stop_event.c.released_at.is_(None),
                     m.stop_event.c.farm_id == msg.farm_id,
@@ -297,23 +333,38 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
             )
         ).first()
         if exists:
-            return
-        await conn.execute(
-            insert(m.stop_event).values(
-                stop_kind="physical_estop", scope="farm", farm_id=msg.farm_id,
-                engaged_at=msg.timestamp, reason=f"현장 장치 ({msg.source})",
+            if (exists[1] or {}) == detail:
+                return
+            # 같은 정지가 이어지되 보고가 달라졌다 (unknown → engaged 확정, 또는
+            # 사유만 변경). 사유도 화면 문구를 바꾸므로 함께 갱신한다.
+            await conn.execute(
+                update(m.stop_event)
+                .where(m.stop_event.c.id == exists[0])
+                .values(detail=detail, reason=_estop_reason(msg, reason))
             )
-        )
+        else:
+            await conn.execute(
+                insert(m.stop_event).values(
+                    stop_kind="physical_estop", scope="farm", farm_id=msg.farm_id,
+                    engaged_at=msg.timestamp, reason=_estop_reason(msg, reason), detail=detail,
+                )
+            )
         if publisher:
             publisher.publish(msg.farm_id, "stop", _stream_payload(
-                "physical_estop", True, scope="farm",
-                engaged_at=msg.timestamp.isoformat()))
+                "physical_estop", True, scope="farm", reason=_estop_reason(msg, reason),
+                engaged_at=msg.timestamp.isoformat(), detail=detail))
         from middleware.app.alerts import create_alert
-        await create_alert(conn, publisher, farm_id=msg.farm_id, severity="warning",
-                           alert_kind="stop", title="현장 비상정지 작동됨",
-                           body="현장에서 직접 해제해야 합니다 (웹 해제 불가)",
-                           dedup_key=f"estop:{msg.farm_id}")
-        log.warning("physical estop engaged: %s", msg.farm_id)
+        await create_alert(
+            conn, publisher, farm_id=msg.farm_id, severity="warning", alert_kind="stop",
+            title="현장 비상정지 상태 확인 필요" if unknown else "현장 비상정지 작동됨",
+            body=(
+                _ESTOP_UNKNOWN_BODY.get(reason, "비상정지 상태를 확인할 수 없습니다")
+                + " — 안전을 위해 눌린 것으로 간주합니다. 현장 확인이 필요합니다."
+            ) if unknown else "현장에서 직접 해제해야 합니다 (웹 해제 불가)",
+            # 값별로 나눈다 — "확인 불가" 뒤에 실제로 눌린 게 확인되면 새 알림이다.
+            dedup_key=f"estop:{msg.farm_id}:{msg.estop}",
+        )
+        log.warning("physical estop %s: %s (reason=%s)", msg.estop, msg.farm_id, msg.reason)
     else:
         row = (
             await conn.execute(
@@ -321,12 +372,12 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 .where(m.stop_event.c.stop_kind == "physical_estop",
                        m.stop_event.c.released_at.is_(None),
                        m.stop_event.c.farm_id == msg.farm_id)
-                .values(released_at=msg.timestamp)
+                .values(released_at=msg.timestamp, detail=detail)
                 .returning(m.stop_event.c.id)
             )
         ).first()
         if row and publisher:
             publisher.publish(msg.farm_id, "stop", _stream_payload(
                 "physical_estop", False, scope="farm",
-                released_at=msg.timestamp.isoformat()))
-            log.warning("physical estop released (현장 조작): %s", msg.farm_id)
+                released_at=msg.timestamp.isoformat(), detail=detail))
+            log.warning("physical estop released (현장 조작 확인): %s", msg.farm_id)

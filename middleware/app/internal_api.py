@@ -138,7 +138,7 @@ async def farm_snapshot(farm_id: str):
                 # 유령이 화면에 계속 떠 있게 된다. 미등록 장치(device_meta 행 없음)는
                 # 그대로 보인다: 발견 전 팜의 로봇이 사라지면 안 된다.
                 "SELECT DISTINCT ON (r.device_id) r.device_id, r.ts, r.pos_x, r.pos_y, r.speed, "
-                "r.battery_pct, r.charging, r.mission_state "
+                "r.battery_pct, r.charging, r.phase, r.error "
                 "FROM mw.robot_status r "
                 "LEFT JOIN mw.device_meta d "
                 "  ON d.farm_id = r.farm_id AND d.device_id = r.device_id "
@@ -222,7 +222,7 @@ async def farm_snapshot(farm_id: str):
             {"device_id": r["device_id"], "ts": r["ts"].isoformat(),
              "pos_x": r["pos_x"], "pos_y": r["pos_y"], "speed": r["speed"],
              "battery_pct": r["battery_pct"], "charging": r["charging"],
-             "mission_state": r["mission_state"]}
+             "phase": r["phase"], "error": r["error"]}
             for r in robots
         ],
         "connections": [

@@ -105,8 +105,8 @@ async def _handle_robot_status(conn, msg: RobotStatusMsg, received_at: datetime)
             pos_x=pos.x if pos else None, pos_y=pos.y if pos else None,
             pos_frame=pos.frame if pos else None,
             speed=msg.speed, battery_pct=msg.battery_pct, charging=msg.charging,
-            mission_state=msg.mission_state, current_task_id=msg.current_task_id,
-            error=msg.error,
+            phase=msg.phase, current_task_id=msg.current_task_id,
+            error=msg.error.model_dump(mode="json") if msg.error else None,
             # 엣지 확장 필드(heading_rad 등) 보존 — 지도 렌더가 방향 표시에 쓴다.
             # position 은 선언 필드라 model_extra 에 안 들어온다.
             extra=msg.model_extra or {},
@@ -351,6 +351,10 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
         elif isinstance(msg, RobotStatusMsg):
             await _handle_robot_status(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
+            if msg.error:
+                from middleware.app.alerts import alert_robot_error
+                await alert_robot_error(conn, publisher, msg.farm_id, msg.device_id,
+                                        msg.error.model_dump(mode="json"))
             if publisher:
                 publisher.publish(msg.farm_id, "robot", {
                     "device_id": msg.device_id,
@@ -360,7 +364,9 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                     # 배치도에 로봇 방향을 그리려면 실시간 스트림에도 실어야 한다.
                     "heading_rad": (msg.model_extra or {}).get("heading_rad"),
                     "speed": msg.speed, "battery_pct": msg.battery_pct,
-                    "charging": msg.charging, "mission_state": msg.mission_state,
+                    "charging": msg.charging, "phase": msg.phase,
+                    # 오류는 phase 를 덮지 않고 나란히 간다 (§4.2) — 화면도 둘 다 그린다.
+                    "error": msg.error.model_dump(mode="json") if msg.error else None,
                     "ts": msg.timestamp.isoformat(),
                 })
         elif isinstance(msg, Layout):

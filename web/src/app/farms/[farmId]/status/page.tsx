@@ -225,6 +225,7 @@ export default function StatusTab() {
                       return (
                         <div key={d.device_id} className="flex items-center gap-2 text-12.5">
                           <span className="min-w-0 flex-1 truncate font-bold">{d.name}</span>
+                          {/* 상태는 눌리면 안 된다 — 이름만 말줄임으로 양보한다 */}
                           {c ? (
                             <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />
                           ) : (

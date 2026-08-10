@@ -170,7 +170,12 @@ async def alert_command_failure(conn, publisher, farm_id: str, device_id: str,
         device_id=device_id, title=f"제어 명령 {label}",
         body=f"명령 {command_id} · 장치 {device_id}",
         deeplink=f"/farms/{farm_id}/env",
-        dedup_key=f"task_failed:{device_id}",
+        # 키에 명령 id 를 넣는다 — 장치 단위로만 잡으면(task_failed:{device_id}) 확인하지
+        # 않은 알림 하나가 그 장치의 이후 모든 실패를 가린다. 명령 실패는 조작 한 건에
+        # 대응하는 사건이라 억제 대상이 아니다 (상태 알림인 connection·threshold 와 다름).
+        # command_id 는 전역 유일하므로, 같은 명령이 실패·타임아웃으로 두 번 잡히는
+        # 경우는 여전히 한 건으로 합쳐진다.
+        dedup_key=f"task_failed:{device_id}:{command_id}",
     )
 
 

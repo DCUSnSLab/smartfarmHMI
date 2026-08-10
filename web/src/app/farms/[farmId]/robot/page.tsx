@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { RobotValue, timeAgo } from "@/lib/monitor";
+import { RobotValue, controlBlocked, timeAgo } from "@/lib/monitor";
 
 /** 완충 예상 — 충전 중일 때만 (디자인 "완충 예상 42분"). 단순 선형 추정 */
 function chargeEta(r: RobotValue): string | null {
@@ -42,7 +42,7 @@ function ManualControlModal({
         수동 제어 중에는 자동 스케줄이 일시 중지됩니다 (인터록 명세 예정)
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div>
           <div className="text-12 font-bold text-gray-500">배터리</div>
           <div className="text-20 font-extrabold">{robot.battery_pct ?? "—"}%</div>
@@ -79,7 +79,7 @@ function ManualControlModal({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           disabled title="자동 충전 지시는 개발 예정입니다 (FR-06)"
           className="flex-1 rounded-xl bg-gray-100 py-3 text-13.5 font-extrabold text-gray-400"
@@ -97,13 +97,13 @@ function ManualControlModal({
 }
 
 export default function RobotTab() {
-  const { farmId } = useParams<{ farmId: string }>();  // FR-06 충전 복귀 지시에 사용 예정
+  const { farmId } = useParams<{ farmId: string }>();
   const user = useUser();
   const { robots, conns, stops } = useFarmData();
   const [selected, setSelected] = useState<RobotValue | null>(null);
 
   const list = Object.values(robots);
-  const stopped = stops.remote != null || stops.physical_estop != null;
+  const stopped = controlBlocked(stops, farmId);
   const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
   const farmOnline = edge?.state === "online";
   const canOperate = canControl(user) && farmOnline && !stopped;
@@ -140,7 +140,8 @@ export default function RobotTab() {
                   <span className="ml-auto text-11.5 font-semibold text-muted">{timeAgo(r.ts)}</span>
                 </div>
 
-                <div className="mb-3 grid grid-cols-3 gap-2 text-12.5 font-semibold text-gray-600">
+                {/* 큰글씨에서 3열은 「속 도」처럼 라벨이 쪼개진다 — 좁을 때는 2열로 내린다 */}
+                <div className="mb-3 grid grid-cols-2 gap-2 text-12.5 font-semibold text-gray-600 sm:grid-cols-3">
                   <div>
                     배터리{" "}
                     <b className={low ? "text-status-warningDark" : ""}>{r.battery_pct ?? "—"}%</b>

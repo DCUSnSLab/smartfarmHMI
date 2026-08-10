@@ -20,7 +20,6 @@ import { StopButton, StopRelease } from "@/components/StopControls";
 import { CONTROL, CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AuthUser, ROLE_LABEL, canControl, logout, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { useGlobalAlerts } from "@/lib/monitor";
 import { LEVEL_LABEL, useFontLevel } from "@/lib/prefs";
 
 const EXPAND_MARGIN = 24;  // 되펼칠 때 요구하는 여유 폭(px) — 경계 깜빡임 방지
@@ -190,8 +189,7 @@ function NavDrawer({ pathname, onClose }: { pathname: string; onClose: () => voi
 export function Header() {
   const pathname = usePathname();
   const user = useUser();
-  const { stops } = useFarmData();
-  const globalAlerts = useGlobalAlerts();
+  const { stops, globalAlerts } = useFarmData();
   const { level } = useFontLevel();
   const [stage, setStage] = useState(0);          // 압축 단계 (0=전체 … MAX_STAGE)
   const [menuOpen, setMenuOpen] = useState(false);

@@ -361,8 +361,13 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 _ESTOP_UNKNOWN_BODY.get(reason, "비상정지 상태를 확인할 수 없습니다")
                 + " — 안전을 위해 눌린 것으로 간주합니다. 현장 확인이 필요합니다."
             ) if unknown else "현장에서 직접 해제해야 합니다 (웹 해제 불가)",
-            # 값별로 나눈다 — "확인 불가" 뒤에 실제로 눌린 게 확인되면 새 알림이다.
-            dedup_key=f"estop:{msg.farm_id}:{msg.estop}",
+            # 값과 발동 시각으로 나눈다. 값 — "확인 불가" 뒤에 실제로 눌린 게 확인되면
+            # 새 알림이다. 시각 — 농장 단위로만 잡으면(estop:{farm_id}) 확인하지 않은
+            # 알림 하나가 그 농장의 이후 모든 비상정지 알림을 영구히 막는다 (create_alert
+            # 의 중복 억제는 '미확인' 기준이고, 해제해도 그 알림이 사라지지 않는다).
+            # 값만으로는 해제 뒤 재발동이 같은 키라 막히므로 둘 다 필요하다.
+            # 재전달(retain 된 estop_state 재수신)은 위의 detail 비교에서 이미 걸러진다.
+            dedup_key=f"estop:{msg.farm_id}:{msg.estop}:{msg.timestamp.isoformat()}",
         )
         log.warning("physical estop %s: %s (reason=%s)", msg.estop, msg.farm_id, msg.reason)
     else:
@@ -376,8 +381,17 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 .returning(m.stop_event.c.id)
             )
         ).first()
-        if row and publisher:
+        if row is None:
+            return   # 열린 비상정지가 없음 — 재전달이거나 이미 해제된 상태
+        if publisher:
             publisher.publish(msg.farm_id, "stop", _stream_payload(
                 "physical_estop", False, scope="farm",
                 released_at=msg.timestamp.isoformat(), detail=detail))
-            log.warning("physical estop released (현장 조작 확인): %s", msg.farm_id)
+        # 해제도 알림으로 남긴다 — 원격 정지와 동작을 맞춘다(발동 1건·해제 1건).
+        # 없으면 벨에 「작동됨」만 쌓여, 지금 걸려 있는 것인지 지난 일인지 알 수 없다.
+        from middleware.app.alerts import create_alert
+        await create_alert(conn, publisher, farm_id=msg.farm_id, severity="info",
+                           alert_kind="stop", title="현장 비상정지 해제됨",
+                           body="현장에서 직접 해제했습니다",
+                           dedup_key=f"estop-release:{msg.farm_id}:{msg.timestamp.isoformat()}")
+        log.warning("physical estop released (현장 조작 확인): %s", msg.farm_id)

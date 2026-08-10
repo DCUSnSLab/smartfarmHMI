@@ -135,6 +135,32 @@ async def alert_connection_change(conn, publisher, farm_id: str, device_id: str,
     )
 
 
+async def alert_robot_error(conn, publisher, farm_id: str, device_id: str, error) -> None:
+    """로봇 오류 알림 (FR-32 robot_error ← 통신 규격 §4.2).
+
+    0.2 까지 `error` 는 적재만 되고 흔적을 남기지 않아, 서버가 발행하지 않은
+    명령의 실패가 알림도 이력도 없이 사라졌다 (`edge-state-recovery.md` 할 일 3).
+
+    dedup_key 에 `code` 를 넣어 오류 종류가 바뀌면 새 알림이 뜨고, 같은 오류가
+    이어지는 동안에는 재생성되지 않는다 — 사건이므로 전이에서만 울려야 한다.
+    alert_kind 는 FR-32 의 "장비 이상"(`device_fault`)이다.
+    """
+    code = error.get("code") if isinstance(error, dict) else getattr(error, "code", None)
+    if not code:
+        return
+    message = error.get("message") if isinstance(error, dict) else getattr(error, "message", None)
+    severity = (
+        error.get("severity") if isinstance(error, dict) else getattr(error, "severity", None)
+    ) or "warning"
+    await create_alert(
+        conn, publisher, farm_id=farm_id, severity=severity, alert_kind="device_fault",
+        device_id=device_id, title=f"{device_id} 오류 — {code}",
+        body=message or "로봇이 오류를 보고했습니다",
+        deeplink=f"/farms/{farm_id}/robot",
+        dedup_key=f"robot_error:{device_id}:{code}",
+    )
+
+
 async def alert_command_failure(conn, publisher, farm_id: str, device_id: str,
                                 command_id: str, status: str) -> None:
     """명령 실패·타임아웃 알림 (FR-32 task_failed)."""

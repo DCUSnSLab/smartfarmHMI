@@ -47,6 +47,12 @@ class FarmConfig:
     growbed_id: str
     mqtt_host: str
     mqtt_port: int
+    # 현장 비상정지 장치를 읽은 결과 (§4.7): engaged | released | unknown.
+    # 시뮬 팜은 정상 동작하는 장치를 가정해 released 가 기본이고, unknown 은
+    # "엣지가 장치를 못 읽는" 고장을 재현할 때 YAML 로 켠다 — 재시작 시 안전이
+    # 조용히 열리던 결함이 되살아나는지 확인하는 스위치다.
+    estop: str = "released"
+    estop_reason: str | None = None  # unknown 일 때: not_read_yet|read_failed|no_source
     sensors: list[SensorSpec] = field(default_factory=list)
     actuators: list[ActuatorSpec] = field(default_factory=list)
     robots: list[RobotSpec] = field(default_factory=list)
@@ -76,6 +82,10 @@ def load() -> FarmConfig:
         if a.drains and a.drains not in sensor_ids:
             raise ValueError(f"actuator {a.id}: drains '{a.drains}' 센서 없음")
 
+    estop = os.environ.get("VEDGE_ESTOP", raw.get("estop", "released"))
+    if estop not in ("engaged", "released", "unknown"):
+        raise ValueError(f"estop '{estop}': engaged|released|unknown 만 허용 (§4.7)")
+
     broker = raw.get("broker", {})
     return FarmConfig(
         farm_id=raw["farm_id"],
@@ -83,6 +93,8 @@ def load() -> FarmConfig:
         growbed_id=raw.get("growbed_id", "growbed-01"),
         mqtt_host=os.environ.get("MQTT_HOST", broker.get("host", "host.docker.internal")),
         mqtt_port=int(os.environ.get("MQTT_PORT", broker.get("port", 41883))),
+        estop=estop,
+        estop_reason=raw.get("estop_reason") or ("no_source" if estop == "unknown" else None),
         sensors=sensors,
         actuators=actuators,
         robots=robots,

@@ -383,8 +383,9 @@ export const TANK_LABEL: Record<string, string> = {
   nutrient: "양액", water: "급수", pesticide: "방재액", cleaning: "세정액",
 };
 
-export const MISSION_LABEL: Record<string, string> = {
-  idle: "대기", moving: "이동 중", working: "작업 중", charging: "충전 중", error: "이상",
+/** 임무 진행 단계 (§4.2 `phase`). 오류는 축이 달라 `robot.error` 로 따로 그린다 */
+export const PHASE_LABEL: Record<string, string> = {
+  idle: "대기", moving: "이동 중", working: "작업 중", charging: "충전 중",
 };
 
 export interface NavItemData {

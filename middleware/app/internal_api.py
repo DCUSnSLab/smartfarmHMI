@@ -72,7 +72,14 @@ async def list_farms():
             (await conn.execute(select(m.farm).where(m.farm.c.is_active))).mappings().all()
         )
         conns = (
-            (await conn.execute(select(m.device_connection_state))).mappings().all()
+            (await conn.execute(
+                select(m.device_connection_state).where(
+                    m.not_soft_deleted(
+                        m.device_connection_state.c.farm_id,
+                        m.device_connection_state.c.device_id,
+                    )
+                )
+            )).mappings().all()
         )
     by_farm: dict[str, list] = {}
     for c in conns:
@@ -126,15 +133,27 @@ async def farm_snapshot(farm_id: str):
         )
         robots = (
             (await conn.execute(text(
-                "SELECT DISTINCT ON (device_id) device_id, ts, pos_x, pos_y, speed, "
-                "battery_pct, charging, mission_state "
-                "FROM mw.robot_status WHERE farm_id = :farm ORDER BY device_id, ts DESC"
+                # 소프트 삭제된 장치는 제외한다. 이 목록은 이력 테이블에서 나오므로
+                # 한 번이라도 발행한 장치는 영원히 남는다 — 장비를 개명하거나 떼어내면
+                # 유령이 화면에 계속 떠 있게 된다. 미등록 장치(device_meta 행 없음)는
+                # 그대로 보인다: 발견 전 팜의 로봇이 사라지면 안 된다.
+                "SELECT DISTINCT ON (r.device_id) r.device_id, r.ts, r.pos_x, r.pos_y, r.speed, "
+                "r.battery_pct, r.charging, r.phase, r.error "
+                "FROM mw.robot_status r "
+                "LEFT JOIN mw.device_meta d "
+                "  ON d.farm_id = r.farm_id AND d.device_id = r.device_id "
+                "WHERE r.farm_id = :farm AND d.deleted_at IS NULL "
+                "ORDER BY r.device_id, r.ts DESC"
             ), {"farm": farm_id})).mappings().all()
         )
         connections = (
             (await conn.execute(
                 select(m.device_connection_state)
                 .where(m.device_connection_state.c.farm_id == farm_id)
+                .where(m.not_soft_deleted(
+                    m.device_connection_state.c.farm_id,
+                    m.device_connection_state.c.device_id,
+                ))
             )).mappings().all()
         )
         # 탱크·워크스테이션·랙 — 작업·공급 화면과 농장 카드 게이지 (FR-08·21~26 표시)
@@ -203,7 +222,7 @@ async def farm_snapshot(farm_id: str):
             {"device_id": r["device_id"], "ts": r["ts"].isoformat(),
              "pos_x": r["pos_x"], "pos_y": r["pos_y"], "speed": r["speed"],
              "battery_pct": r["battery_pct"], "charging": r["charging"],
-             "mission_state": r["mission_state"]}
+             "phase": r["phase"], "error": r["error"]}
             for r in robots
         ],
         "connections": [
@@ -270,3 +289,55 @@ async def environment_summary(farm_id: str, hours: int = 24):
          "count": r["n"]}
         for r in rows
     ]
+
+
+@router.get("/farms/{farm_id}/layout")
+async def farm_layout(farm_id: str):
+    """농장 배치도 (§4.9.1, FR-41) — 구역 폴리곤 + 지점.
+
+    엣지가 발행한 자기기술을 DB 에서 읽는다. 브로커 retained 가 아니라 DB 가
+    출처이므로 **엣지가 꺼져 있어도 도면이 뜬다.** 좌표는 변환하지 않고 엣지
+    프레임(미터) 그대로 내보낸다 — 화면 맞춤은 렌더러가 viewBox 로 처리한다.
+    """
+    async with _engine().connect() as conn:
+        layout = (
+            (await conn.execute(
+                select(m.farm_layout).where(m.farm_layout.c.farm_id == farm_id)
+            )).mappings().first()
+        )
+        if layout is None:
+            # 404 가 아니다 — 배치도 없음은 정상 상태이고, 화면은 빈 도면을 그린다.
+            return {"farm_id": farm_id, "frame": None, "zones": [], "gates": [], "points": [],
+                    "source": None, "updated_at": None}
+        elements = (
+            (await conn.execute(
+                select(m.layout_element)
+                .where(m.layout_element.c.layout_id == layout["id"])
+                .order_by(m.layout_element.c.element_type, m.layout_element.c.element_id)
+            )).mappings().all()
+        )
+
+    zones = [
+        {"id": e["element_id"], "zone_type": e["zone_type"], "polygon": e["geometry"] or []}
+        for e in elements if e["element_type"] == "zone"
+    ]
+    gates = [
+        {"id": e["element_id"], "between": e["connects"] or [], "segment": e["geometry"] or []}
+        for e in elements if e["element_type"] == "gate"
+    ]
+    points = [
+        {"id": e["element_id"], "point_type": e["element_type"],
+         "x": e["x"], "y": e["y"], "zone": e["zone"], "ref_device_id": e["ref_device_id"]}
+        for e in elements if e["element_type"] not in ("zone", "gate")
+    ]
+    return {
+        "farm_id": farm_id,
+        "frame": layout["coord_frame"],
+        "origin_desc": layout["origin_desc"],
+        "scale": layout["scale"],
+        "source": layout["source"],
+        "zones": zones,
+        "gates": gates,
+        "points": points,
+        "updated_at": layout["updated_at"].isoformat() if layout["updated_at"] else None,
+    }

@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from middleware.app import models as m
 from middleware.app.config import settings
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("mw.weather")  # mw.* 로 통일 — main._setup_logging 이 이 트리에 핸들러를 단다
 KST = ZoneInfo("Asia/Seoul")
 API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst"
 UV_API_URL = "https://apis.data.go.kr/1360000/LivingWthrIdxServiceV5/getUVIdxV5"

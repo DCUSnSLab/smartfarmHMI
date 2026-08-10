@@ -38,5 +38,5 @@ actuators:
 
 robots:
   # 시드의 R-1 운반로봇 / R-2 방제로봇 (edge-sim 행동 모델 이식)
-  - { id: robot-01, behavior: transport,    interval_sec: 5, cycle_sec: 300 }
-  - { id: robot-02, behavior: charge_cycle, interval_sec: 5, cycle_sec: 1800 }
+  - { id: robot-01, behavior: transport,    interval_sec: 2, cycle_sec: 300 }
+  - { id: robot-02, behavior: charge_cycle, interval_sec: 2, cycle_sec: 1800 }

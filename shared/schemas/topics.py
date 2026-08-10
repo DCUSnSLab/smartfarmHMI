@@ -9,7 +9,11 @@ from typing import NamedTuple
 PREFIX = "farmon/v1"
 INTERNAL_PREFIX = "farmon-internal/v1"
 
-MESSAGE_TYPES = ("telemetry", "status", "command", "ack", "birth", "death", "heartbeat")
+MESSAGE_TYPES = (
+    "telemetry", "status", "command", "ack", "birth", "death", "heartbeat",
+    "layout",      # §4.9.1 엣지 → 미들웨어 배치도 (retained)
+    "stop_state",  # §4.6.1 미들웨어 → 엣지 원격 정지 상태 (retained)
+)
 
 
 class ParsedTopic(NamedTuple):

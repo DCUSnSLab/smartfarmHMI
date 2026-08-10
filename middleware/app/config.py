@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # 외부 기상 정보 요청용
     weather_key: str = "change-me"
 
+    # mw.* 로거 출력 수준. uvicorn 기본 설정은 root 로거에 핸들러를 달지 않아,
+    # 이 값을 반영하지 않으면 애플리케이션 log.info 가 전부 사라진다 (main.py).
+    log_level: str = "INFO"
+
     @property
     def database_url(self) -> str:
         return (

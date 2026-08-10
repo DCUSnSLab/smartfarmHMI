@@ -6,11 +6,11 @@
  */
 
 import { useParams, useRouter } from "next/navigation";
-import { PlannedChip } from "@/components/Planned";
 import {
   Card, CONN_STYLE, Gauge, SectionTitle, StatusDot,
-  MISSION_LABEL, SENSOR_META, TANK_LABEL,
+  SENSOR_META, TANK_LABEL,
 } from "@/components/ui";
+import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
@@ -39,7 +39,7 @@ function useSummary(): { text: string; issues: string[] } {
       ? `내부 ${temp.value.toFixed(1)}℃ · 습도 ${hum.value.toFixed(0)}%`
       : "환경 데이터 수신 대기";
 
-  const working = Object.values(robots).filter((r) => r.mission_state === "working").length;
+  const working = Object.values(robots).filter((r) => r.phase === "working").length;
   const robotPart = working ? `로봇 ${working}대 작업 중` : "로봇 대기 중";
 
   return {
@@ -158,61 +158,10 @@ function FarmWeather({ farmId }: { farmId: string }) {
   );
 }
 
-/**
- * 간이 실시간 배치도 — 좌표계가 확정되지 않아(OPN-21) 논리 배치로 표현한다.
- * 로봇은 pos_x/pos_y 를 관측 범위로 정규화해 상대 위치만 보여준다.
- */
-function Layout2D() {
-  const { robots } = useFarmData();
-  const list = Object.values(robots);
-  const xs = list.map((r) => r.pos_x ?? 0);
-  const ys = list.map((r) => r.pos_y ?? 0);
-  const minX = Math.min(0, ...xs), maxX = Math.max(10, ...xs);
-  const minY = Math.min(0, ...ys), maxY = Math.max(6, ...ys);
-
-  return (
-    <Card>
-      <SectionTitle
-        title="실시간 배치도" sub="로봇 위치는 상대 표시"
-        right={<PlannedChip basis="OPN-21 좌표계 협의" />}
-      />
-      <div className="relative h-[220px] overflow-hidden rounded-2xl bg-surface">
-        {/* 논리 구역 — 좌표계 확정 시 실제 도면으로 교체 */}
-        <div className="absolute left-3 top-3 flex gap-2">
-          {["A동 랙", "B동 랙", "작업 구역"].map((zone) => (
-            <span key={zone} className="rounded-lg bg-white px-2.5 py-1 text-11.5 font-bold text-gray-500 shadow-sm">
-              {zone}
-            </span>
-          ))}
-        </div>
-        {list.map((r) => {
-          const left = ((r.pos_x ?? 0) - minX) / (maxX - minX || 1);
-          const top = ((r.pos_y ?? 0) - minY) / (maxY - minY || 1);
-          return (
-            <span
-              key={r.device_id}
-              className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-11.5 font-extrabold text-white shadow transition-all duration-1000"
-              style={{ left: `${12 + left * 76}%`, top: `${30 + top * 55}%` }}
-            >
-              🤖 {r.device_id}
-              {r.charging && <span>⚡</span>}
-            </span>
-          );
-        })}
-        {list.length === 0 && (
-          <span className="absolute inset-0 flex items-center justify-center text-13 font-semibold text-muted">
-            로봇 데이터가 없어요
-          </span>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
   const router = useRouter();
-  const { sensors, conns } = useFarmData();
+  const { sensors, conns, robots } = useFarmData();
   const snap = useFarmSnapshot(farmId);
   const ranges = useRanges(farmId);
   const devices = useDevices(farmId);
@@ -253,7 +202,7 @@ export default function StatusTab() {
 
       {/* 배치도 + 하드웨어 */}
       <section className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2"><Layout2D /></div>
+        <div className="lg:col-span-2"><FarmMap farmId={farmId} robots={Object.values(robots)} /></div>
         <Card>
           <SectionTitle title="하드웨어" sub={`${devices.length}대`} />
           <div className="space-y-3">

@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
+from middleware.app.region_lookup import coordinates_to_region
 
 from middleware.app import models as m
 from middleware.app.weather import collect_farm_weather, validate_coordinates
@@ -33,6 +34,17 @@ def _engine():
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+@router.get("/regions/reverse")
+def reverse_region(latitude: float, longitude: float):
+    """외부 API 없이 WGS84 좌표를 기상청 10자리 행정구역코드로 변환한다."""
+    try:
+        return coordinates_to_region(latitude, longitude)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
 
 
 # ── 스키마 ────────────────────────────────────────────────────

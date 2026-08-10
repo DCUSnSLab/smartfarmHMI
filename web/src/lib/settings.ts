@@ -65,8 +65,31 @@ export interface FarmInput {
   accuracy_m?: number;
 }
 
+export interface ResolvedRegion {
+  region_code: string;
+  level1: string;
+  level2: string;
+  level3: string;
+  latitude: number;
+  longitude: number;
+  boundary_code: string;
+  boundary_name: string;
+}
+
 async function jsonOk(res: Response): Promise<boolean> {
   return res.ok;
+}
+
+export async function resolveRegionFromCoordinates(
+  latitude: number,
+  longitude: number,
+): Promise<ResolvedRegion | null> {
+  const query = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+  });
+  const response = await apiFetch(`/api/regions/reverse?${query.toString()}`);
+  return response.ok ? response.json() : null;
 }
 
 // ── 발견(discovery) ──

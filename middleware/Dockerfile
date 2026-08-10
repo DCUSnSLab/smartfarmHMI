@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 WORKDIR /build
 COPY middleware/pyproject.toml ./
 RUN pip install --upgrade pip setuptools wheel \
- && pip install --prefix=/install ".[dev]"
+ && pip install --prefix=/install --ignore-installed ".[dev]"
 
 # ---- dev ----
 FROM python:3.12-slim AS dev

@@ -45,6 +45,16 @@ async def _proxy_write(request, method: str, path: str, *, inject_field: str | N
         resp = await client.request(method, path, json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
+async def reverse_region(request):
+    """GPS 좌표의 행정구역코드 조회 — 인증된 설정 화면 전용."""
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    if request_user(request) is None:
+        return unauthorized()
+    query = request.GET.urlencode()
+    return await _proxy_middleware(f"/internal/regions/reverse?{query}")
+
+
 
 @csrf_exempt
 async def farms(request):

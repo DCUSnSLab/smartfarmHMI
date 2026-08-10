@@ -139,6 +139,11 @@ export function useMonitor(scope: string) {
   const [wsOpen, setWsOpen] = useState(false);
 
   // ── 초기 로드 (REST) ──
+  const refreshFarms = useCallback(async () => {
+    const r = await apiFetch("/api/farms");
+    if (r.ok) setFarms(await r.json());
+  }, []);
+
   const loadSnapshot = useCallback(async (farmId: string) => {
     const res = await apiFetch(`/api/farms/${farmId}/snapshot`);
     if (!res.ok) return;
@@ -159,7 +164,7 @@ export function useMonitor(scope: string) {
   }, [scope]);
 
   useEffect(() => {
-    apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
+    void refreshFarms();
     void loadStops();
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
@@ -182,7 +187,7 @@ export function useMonitor(scope: string) {
         setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
       });
     }
-  }, [scope, loadSnapshot, loadStops]);
+  }, [scope, loadSnapshot, loadStops, refreshFarms]);
 
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
@@ -287,7 +292,7 @@ export function useMonitor(scope: string) {
     };
   }, [scope, loadStops]);
 
-  return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
+  return { farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
 }
 
 /** 실패 문구를 돌려준다 (성공 null) — 정지는 조용히 실패하면 안 되는 조작이다 */

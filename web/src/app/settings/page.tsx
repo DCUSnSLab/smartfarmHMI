@@ -11,6 +11,7 @@ import { PlannedChip } from "@/components/Planned";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
+import { useFarmData } from "@/lib/farmData";
 import { FarmSummary } from "@/lib/monitor";
 import {
   ACTUATOR_COMMANDS, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow, DiscoveredFarm,
@@ -644,16 +645,15 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
 // ── 메인 ──
 export default function SettingsPage() {
   const user = useUser();
-  const [farms, setFarms] = useState<FarmSummary[]>([]);
+  const { farms, refreshFarms } = useFarmData();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addingFarm, setAddingFarm] = useState(false);
   const [editingFarm, setEditingFarm] = useState<FarmSummary | null>(null);
   const [deletingFarm, setDeletingFarm] = useState<FarmSummary | null>(null);
 
   const reloadFarms = useCallback(() => {
-    void apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
-  }, []);
-  useEffect(reloadFarms, [reloadFarms]);
+    void refreshFarms();
+  }, [refreshFarms]);
 
   // 접근 게이트 — viewer 차단 (실제 강제는 api). user 로드 후 판정.
   useEffect(() => {

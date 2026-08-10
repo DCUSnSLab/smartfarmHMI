@@ -30,13 +30,6 @@ interface RegionRow {
   longitude: number;
 }
 
-type FarmPosition = {
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  label: string;
-};
-
 let regionRowsPromise: Promise<RegionRow[]> | null = null;
 
 function loadRegionRows(): Promise<RegionRow[]> {
@@ -118,9 +111,6 @@ function FarmModal({
   const [crop, setCrop] = useState(initialFarm?.crop ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [locating, setLocating] = useState(false);
-  const [atFarm, setAtFarm] = useState(false);
-  const [position, setPosition] = useState<FarmPosition | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<RegionRow | null>(null);
   const [locationMessage, setLocationMessage] = useState("");
   const [regions, setRegions] = useState<RegionRow[]>([]);
@@ -147,11 +137,6 @@ function FarmModal({
     setLevel2(row.level2 || NO_DISTRICT);
     setLevel3(row.level3);
     setSelectedRegion(row);
-    setPosition({
-      latitude: initialFarm.latitude ?? row.latitude,
-      longitude: initialFarm.longitude ?? row.longitude,
-      label: [row.level1, row.level2, row.level3].filter(Boolean).join(" "),
-    });
   }, [initialFarm, regions]);
 
   const level1Options = unique(regions.map((row) => row.level1));
@@ -168,55 +153,11 @@ function FarmModal({
   const regionLabel = (row: RegionRow) =>
     [row.level1, row.level2, row.level3].filter(Boolean).join(" ");
 
-  const representativePosition = (row: RegionRow): FarmPosition => ({
-    latitude: row.latitude,
-    longitude: row.longitude,
-    label: regionLabel(row),
-  });
-
-  const requestCurrentLocation = () => {
-    setErr("");
-    setLocationMessage("");
-    if (!selectedRegion) {
-      setLocationMessage("행정구역을 먼저 선택해 주세요.");
-      return;
-    }
-    if (!("geolocation" in navigator)) {
-      setLocationMessage("이 브라우저는 현재 위치 확인을 지원하지 않습니다.");
-      return;
-    }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        setPosition({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          accuracy: coords.accuracy,
-          label: `${regionLabel(selectedRegion)} · 현재 위치`,
-        });
-        setLocating(false);
-      },
-      (error) => {
-        const messages: Record<number, string> = {
-          1: "위치 권한이 거부되었습니다. 브라우저 설정에서 위치 권한을 허용해 주세요.",
-          2: "현재 위치를 확인할 수 없습니다. 위치 서비스를 켠 뒤 다시 시도해 주세요.",
-          3: "위치 확인 시간이 초과되었습니다. 다시 시도해 주세요.",
-        };
-        setPosition(null);
-        setLocationMessage(messages[error.code] ?? "현재 위치를 가져오지 못했습니다.");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
-    );
-  };
-
   const selectLevel1 = (value: string) => {
     setLevel1(value);
     setLevel2("");
     setLevel3("");
     setSelectedRegion(null);
-    setAtFarm(false);
-    setPosition(null);
     setLocationMessage("");
   };
 
@@ -224,8 +165,6 @@ function FarmModal({
     setLevel2(value);
     setLevel3("");
     setSelectedRegion(null);
-    setAtFarm(false);
-    setPosition(null);
     setLocationMessage("");
   };
 
@@ -239,24 +178,7 @@ function FarmModal({
         && candidate.level3 === value,
     ) ?? null;
     setSelectedRegion(row);
-    setAtFarm(false);
-    setPosition(row ? representativePosition(row) : null);
     setLocationMessage("");
-  };
-
-  const toggleAtFarm = (checked: boolean) => {
-    setAtFarm(checked);
-    setLocationMessage("");
-    if (!selectedRegion) {
-      setPosition(null);
-      return;
-    }
-    if (checked) {
-      setPosition(null);
-      setTimeout(requestCurrentLocation, 0);
-    } else {
-      setPosition(representativePosition(selectedRegion));
-    }
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -265,17 +187,12 @@ function FarmModal({
       setErr("시·도, 시·군·구, 읍·면·동을 모두 선택해 주세요.");
       return;
     }
-    if (!position) {
-      setErr(atFarm ? "현재 위치 확인을 완료해 주세요." : "농장의 위치를 지정해 주세요.");
-      return;
-    }
     setBusy(true);
     setErr("");
     const locationPatch = {
       region_code: selectedRegion.code,
-      latitude: position.latitude,
-      longitude: position.longitude,
-      ...(position.accuracy != null ? { accuracy_m: position.accuracy } : {}),
+      latitude: selectedRegion.latitude,
+      longitude: selectedRegion.longitude,
     };
     const ok = discovered
       ? await registerDiscovered(discovered.farm_id, {
@@ -340,37 +257,13 @@ function FarmModal({
               {level3Options.map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
           </div>
-
-          <label className={`mt-3 flex items-center gap-2 rounded-lg border px-3 py-2.5 ${selectedRegion ? "cursor-pointer border-gray-200" : "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-400"}`}>
-            <input
-              type="checkbox"
-              checked={atFarm}
-              disabled={!selectedRegion || locating}
-              onChange={(event) => toggleAtFarm(event.target.checked)}
-              className="h-4 w-4 accent-primary"
-            />
-            <span className="text-13 font-extrabold">지금 농장에 있어요</span>
-          </label>
           <p className="mt-1 text-11.5 font-semibold text-muted">
-            체크하면 브라우저의 정확한 현재 위치를, 체크하지 않으면 선택한 행정구역의 대표 좌표를 저장합니다.
+            선택한 행정구역의 코드와 대표 위도·경도를 저장합니다.
           </p>
-
-          {atFarm && (
-            <button
-              type="button"
-              onClick={requestCurrentLocation}
-              disabled={locating || !selectedRegion}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-primary px-3 py-2.5 text-13.5 font-extrabold text-primary-dark hover:bg-primary-bg disabled:cursor-wait disabled:opacity-60"
-            >
-              {locating ? "현재 위치 확인 중…" : position ? "현재 위치 다시 확인" : "현재 위치 확인"}
-            </button>
-          )}
-
-          {position && selectedRegion && (
+          {selectedRegion && (
             <p className="mt-2 text-12 font-bold text-primary-dark" role="status">
-              위치 지정 완료 · {position.label} · 코드 {selectedRegion.code}
-              {" · "}{position.latitude.toFixed(3)}-{position.longitude.toFixed(3)}
-              {position.accuracy != null && ` · 예상 정확도 약 ${Math.round(position.accuracy).toLocaleString()}m`}
+              위치 지정 완료 · {regionLabel(selectedRegion)} · 코드 {selectedRegion.code}
+              {" · "}{selectedRegion.latitude.toFixed(3)}-{selectedRegion.longitude.toFixed(3)}
             </p>
           )}
           {locationMessage && <p className="mt-1.5 text-12 font-bold text-status-warningDark" role="alert">{locationMessage}</p>}

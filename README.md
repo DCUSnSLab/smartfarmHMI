@@ -89,11 +89,16 @@ docker compose up -d virtual-edge         # 복구: online 복귀
 
 # 알림: 임계 초과 값 직접 발행 → 벨에 경고 도착
 docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/growbed/growbed-01/telemetry' -q 1 \
-  -m '{"type":"sensor_reading","version":"0.2","farm_id":"seongju","device_id":"growbed-01","sensor_id":"temp-a","sensor_type":"temperature","value":40,"unit":"celsius","sensor_state":"ok","timestamp":"2026-07-30T12:00:00+09:00"}'
+  -m '{"type":"sensor_reading","version":"0.3","farm_id":"seongju","device_id":"growbed-01","sensor_id":"temp-a","sensor_type":"temperature","value":40,"unit":"celsius","sensor_state":"ok","timestamp":"2026-07-30T12:00:00+09:00"}'
 
 # 물리 비상정지 표시(FR-36): 엣지 상태 발행 모사 → 빨간 배너 (웹 해제 불가)
 docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/status' -q 1 \
-  -m '{"type":"estop_state","version":"0.2","farm_id":"seongju","device_id":"edge-01","engaged":true,"source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
+  -m '{"type":"estop_state","version":"0.3","farm_id":"seongju","device_id":"edge-01","estop":"engaged","source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
+
+# 같은 토픽에 estop:"unknown" 을 보내면 "확인 필요" 배너가 뜬다 — 엣지가 장치를
+# 못 읽은 상태다. 정지로는 똑같이 잡히지만(안전측) 문구와 사유가 다르다 (§4.7)
+docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/status' -q 1 \
+  -m '{"type":"estop_state","version":"0.3","farm_id":"seongju","device_id":"edge-01","estop":"unknown","reason":"read_failed","source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
 ```
 
 ### 주요 명령 (Makefile)

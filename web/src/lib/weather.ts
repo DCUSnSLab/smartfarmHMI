@@ -113,5 +113,7 @@ export function weatherIcon(
   if ([1, 2, 4, 5, 6].includes(codes.pty)) return "🌧️";
   if ([3, 7].includes(codes.pty)) return "🌨️";
   const daytime = isKoreaDaytime(at);
-  return daytime ? "☀️" : "🌙";
+  if (codes.sky === 1) return daytime ? "☀️" : "🌙";
+  if (codes.sky === 3) return daytime ? "🌤️" : "☁️";
+  return "☁️";
 }

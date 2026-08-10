@@ -15,7 +15,7 @@ import {
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { timeAgo } from "@/lib/monitor";
-import { isKoreaDaytime, isValidWeatherLocation, refreshWeather, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import { isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather, uvIndexLabel, useWeather, weatherConditionLabel, weatherIcon } from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -66,7 +66,7 @@ function FarmWeather({ farmId }: { farmId: string }) {
   };
   const regionLabel = weather?.name.split(/\s+/)[0] ?? "";
   const conditionLabel = weatherConditionLabel(weather?.condition ?? null);
-  const isRainy = (weather?.precipitation_mm ?? 0) > 0;
+  const conditionCodes = parseWeatherCondition(weather?.condition ?? null);
   const isNight = !isKoreaDaytime();
   const weatherTheme = !weather?.ts
     ? {
@@ -75,33 +75,19 @@ function FarmWeather({ farmId }: { farmId: string }) {
         primary: "text-[#191F28]", secondary: "text-[#6B7684]",
         metric: "bg-[#F7F8FA]", advisory: "bg-[#F2F4F6] text-[#4E5968]",
       }
-    : isNight
-      ? {
-          panel: "border-[#243B63] bg-gradient-to-br from-[#17243D] to-[#2D466F]",
-          heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
-          primary: "text-white", secondary: "text-[#D8E5F7]",
-          metric: "bg-white/95", advisory: "bg-[#0E1729] text-white",
-        }
-      : isRainy
-      ? {
-        panel: "border-[#253B62] bg-gradient-to-br from-[#17243D] to-[#334D73]",
-        heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
-        primary: "text-white", secondary: "text-[#D8E5F7]",
-        metric: "bg-white/95", advisory: "bg-[#0E1729] text-white",
-      }
-    : weather?.condition === "4"
+    : conditionCodes?.sky === 4
       ? {
           panel: "border-[#C7CDD4] bg-gradient-to-br from-[#D9DDE2] to-[#EEF0F2]",
           heading: "text-[#303841]", badge: "bg-white/80 text-[#56616D]",
           primary: "text-[#252B31]", secondary: "text-[#5D6873]",
           metric: "bg-white/90", advisory: "bg-[#59636E] text-white",
         }
-      : weather?.condition === "3"
+      : isNight
         ? {
-            panel: "border-[#B9CADB] bg-gradient-to-br from-[#D9E4EE] to-[#F2F6F9]",
-            heading: "text-[#29445F]", badge: "bg-white/80 text-[#486783]",
-            primary: "text-[#203B55]", secondary: "text-[#536D84]",
-            metric: "bg-white/90", advisory: "bg-[#4B6E8D] text-white",
+            panel: "border-black bg-gradient-to-br from-[#090D16] to-[#182235]",
+            heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
+            primary: "text-white", secondary: "text-[#D8E5F7]",
+            metric: "bg-white/95", advisory: "bg-black/70 text-white",
           }
         : {
             panel: "border-[#B9D5F8] bg-gradient-to-br from-[#D2E6FF] to-[#EAF4FF]",
@@ -135,7 +121,7 @@ function FarmWeather({ farmId }: { farmId: string }) {
         <>
           <div className="mt-4 flex items-center gap-4">
             <span className="text-56 leading-none drop-shadow-sm" aria-hidden="true">
-              {weatherIcon(weather.condition, weather.precipitation_mm)}
+              {weatherIcon(weather.condition)}
             </span>
             <div className="min-w-0">
               <div className={`text-34 font-extrabold leading-none ${weatherTheme.primary}`}>

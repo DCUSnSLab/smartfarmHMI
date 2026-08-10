@@ -60,7 +60,7 @@ function FarmCard({
           {weather?.ts ? (
             <>
               <span className="text-15 leading-none" aria-hidden="true">
-                {weatherIcon(weather.condition, weather.precipitation_mm)}
+                {weatherIcon(weather.condition)}
               </span>
               <span>{weather.temperature_c != null ? `${weather.temperature_c.toFixed(1)}°` : "—"}</span>
             </>

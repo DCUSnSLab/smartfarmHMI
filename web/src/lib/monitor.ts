@@ -61,6 +61,21 @@ export interface StopState {
   physical_estop: StopInfo | null;
 }
 
+/**
+ * 이 농장의 제어를 막아야 하는가 — 제어 UI 잠금 판정.
+ *
+ * 물리 비상정지는 **표시 목적상 전 농장을 모아 온다** (FR-36). 그래서 값이 있다는
+ * 이유만으로 잠그면, 다른 현장에서 눌린 것으로 이 농장 제어까지 잠긴다. 걸린 농장
+ * 목록에 이 농장이 있는지를 따져야 한다.
+ * 원격 정지는 서버가 이미 스코프로 좁혀 주므로 존재 여부만 본다.
+ */
+export function controlBlocked(stops: StopState, farmId: string): boolean {
+  const estop = stops.physical_estop;
+  // farm_ids 가 없으면 어느 현장인지 알 수 없다 — 안전 쪽으로 잠근다 (계약상 항상 온다)
+  const estopHere = estop != null && (estop.farm_ids?.includes(farmId) ?? true);
+  return stops.remote != null || estopHere;
+}
+
 export interface AlertItem {
   id: number;
   farm_id?: string;
@@ -74,7 +89,11 @@ export interface AlertItem {
   acked_at: string | null;
 }
 
-/** 헤더 전용 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다. */
+/**
+ * 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다.
+ * 소유자는 FarmDataProvider 하나뿐이다 (globalAlerts) — 소비 측에서 직접 부르면
+ * 15 초마다 같은 요청이 겹친다.
+ */
 export function useGlobalAlerts(intervalMs = 15_000) {
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
 

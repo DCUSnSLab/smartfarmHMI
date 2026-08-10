@@ -32,8 +32,15 @@ _MISSION_STATE = "'idle','moving','working','charging','error'"
 def upgrade() -> None:
     # ── robot_status: mission_state → phase (+ error 값 제거) ──────────
     op.execute("ALTER TABLE mw.robot_status DROP CONSTRAINT IF EXISTS robot_mission_state_check")
+    # 0001 이 create_all 이라 새 DB 는 이미 phase 다. 개명은 기존 DB 에서만 필요하다.
     op.execute(
-        "ALTER TABLE mw.robot_status RENAME COLUMN mission_state TO phase"
+        "DO $$ BEGIN "
+        "  IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "             WHERE table_schema = 'mw' AND table_name = 'robot_status' "
+        "               AND column_name = 'mission_state') THEN "
+        "    ALTER TABLE mw.robot_status RENAME COLUMN mission_state TO phase; "
+        "  END IF; "
+        "END $$"
     )
     # 단계가 소실된 과거 행 — 오류였다는 사실만이라도 error 쪽에 남긴다.
     op.execute(
@@ -45,6 +52,8 @@ def upgrade() -> None:
         "WHERE phase = 'error'"
     )
     op.execute("UPDATE mw.robot_status SET phase = 'idle' WHERE phase = 'error'")
+    # 제약도 create_all 이 이미 만들어 뒀을 수 있다.
+    op.execute("ALTER TABLE mw.robot_status DROP CONSTRAINT IF EXISTS robot_phase_check")
     op.execute(
         f"ALTER TABLE mw.robot_status ADD CONSTRAINT robot_phase_check "
         f"CHECK (phase IN ({_PHASE}))"

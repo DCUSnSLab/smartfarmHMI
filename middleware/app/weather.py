@@ -289,10 +289,8 @@ async def _has_current_slot(engine) -> bool:
 async def weather_collection_loop(engine) -> None:
     """기상청 자료 갱신 후인 매시 40분에 농장별 날씨를 수집한다.
 
-    **기동 직후 한 번은 즉시 받는다.** 대기부터 하면 배포·재기동 직후 접속한 사용자가
-    최대 1시간 동안 빈 날씨 카드를 보게 된다 (자료는 매시 갱신인데 화면은 계속 비어 있다).
-    단, 이번 시각대 자료가 이미 있으면 건너뛴다 — 재기동할 때마다 외부 API 를 부르면
-    일일 호출 한도만 소모하고 같은 값을 다시 받는다.
+    기동 직후 한 번은 즉시 받는다 — 대기부터 하면 재기동 직후 접속한 사용자가 최대
+    1시간 빈 날씨 카드를 본다. 이번 시각대 자료가 있으면 건너뛴다 (외부 API 재호출 방지).
     """
     if not await _has_current_slot(engine):
         await collect_weather(engine)

@@ -107,10 +107,9 @@ export function controlBlocked(stops: StopState, farmId: string): boolean {
  * - 탱크: 수위계 센서(`{탱크}-lv`)가 값의 출처이므로 그 센서의 수신 시각을 따른다
  * - 그 외(워크스테이션): FR-37 대상이 아니다 — 발행 경로 자체가 없다
  *
- * 센서 임계값을 서버의 3배·10배 규칙으로 잡지 않은 이유: 센서별 발행 주기가
- * 스냅샷에 없다(생육기 5초 주기 안에서 센서마다 간격이 다르고, 관측상 3~30초).
- * 정상 동작에서는 절대 걸리지 않고 실제로 멈춘 센서는 몇 분 안에 잡히는 값으로 둔다.
- * 부모(생육기)가 끊기면 센서 개별 판정보다 그쪽이 우선한다 — 원인이 통신이기 때문.
+ * 센서 임계값이 서버의 3배·10배 규칙과 다른 이유: 센서별 발행 주기가 스냅샷에 없다
+ * (생육기가 묶어 보내고 센서마다 간격이 3~30초). 정상 동작에서 걸리지 않고 멈춘
+ * 센서는 몇 분 안에 잡히는 값으로 둔다. 부모가 끊기면 그쪽 판정이 우선한다.
  */
 const SENSOR_DEGRADED_SEC = 120;
 const SENSOR_OFFLINE_SEC = 600;
@@ -132,9 +131,7 @@ export function deviceLiveness(
   const sensor = sensors[deviceType === "tank" ? `${deviceId}-lv` : deviceId];
   if (!sensor) return { state: "unmonitored", ts: null };
 
-  // 센서를 묶어 발행하는 생육기. 등록값(parent_device_id)이 있으면 그것을 쓰고,
-  // 없으면(탱크 등) 접두사로 찾는다 — 식별자를 고정하면 생육기 이름이 다른 농장에서
-  // 조용히 판정이 빠진다
+  // 등록값(parent_device_id)이 있으면 그것을, 없으면(탱크 등) 접두사로 찾는다
   const parent = parentId
     ? conns[parentId]
     : Object.values(conns).find((c) => c.device_id.startsWith("growbed"));
@@ -209,9 +206,7 @@ export function useMonitor(scope: string) {
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
 
-  // 이 스코프의 스냅샷이 도착했는가. 전체 스코프에서는 농장별 센서를 받지 않으므로,
-  // 상세로 들어온 직후에는 sensors 가 비어 있다. 「데이터 없음」과 구분하지 않으면
-  // 확정 문구(「환경 데이터 수신 대기」)가 한 프레임 보였다가 값으로 바뀌어 깜빡인다.
+  // 이 스코프의 스냅샷이 도착했는가 — 「아직 안 받음」과 「데이터 없음」을 구분한다
   const [snapshotReady, setSnapshotReady] = useState(false);
 
   // ── 초기 로드 (REST) ──

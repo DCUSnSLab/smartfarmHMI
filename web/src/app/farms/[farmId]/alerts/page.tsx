@@ -19,7 +19,7 @@ export default function FarmAlertsTab() {
       <SectionTitle
         title="알림" sub={farmName || farmId}
         right={
-          <Link href={`/settings?farm=${farmId}&section=rules`} className={GO_LINK}>
+          <Link href={`/settings?farm=${farmId}&section=rules`} scroll={false} className={GO_LINK}>
             알림 규칙 설정
           </Link>
         }

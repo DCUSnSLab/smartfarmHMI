@@ -17,11 +17,8 @@ export const CONTROL =
 export const CONTROL_ICON = `${CONTROL} w-9 justify-center [@media(pointer:coarse)]:w-10`;
 
 /**
- * 다른 화면으로 가는 링크 — 섹션 제목 오른쪽에 두는 그것 (「장치 관리」·「모두 보기」 등).
- *
- * 예전에는 「→」를 붙여 이동임을 알렸는데, 화살표가 문장 부호처럼 읽히고 화면마다
- * 붙은 곳과 안 붙은 곳이 갈렸다. 대신 **눌리는 것처럼** 보이게 한다 — 커서를 바꾸고
- * (브라우저 기본 button 커서는 화살표다), 배경이 들어오게 해서 클릭 영역을 드러낸다.
+ * 다른 화면으로 가는 링크 — 섹션 제목 오른쪽 (「장치 관리」·「모두 보기」 등).
+ * 색만으로는 누를 수 있다는 게 약해 커서와 hover 배경으로 클릭 영역을 드러낸다.
  */
 export const GO_LINK =
   "cursor-pointer whitespace-nowrap rounded-lg px-2 py-1 text-12.5 font-bold " +

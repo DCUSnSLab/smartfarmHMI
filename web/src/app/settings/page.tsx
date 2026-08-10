@@ -7,11 +7,9 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertRules } from "@/components/AlertRules";
 import { PlannedChip } from "@/components/Planned";
-import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import { FarmSummary } from "@/lib/monitor";
@@ -644,25 +642,47 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   );
 }
 
+/**
+ * 요소를 본문 맨 위로 올린다. 고정 헤더·정지 배너 높이는 배너 유무·글자 크기로 변해
+ * 상수로 둘 수 없어 실측한다 (AppShell 의 data-app-chrome).
+ */
+// 페인트 전에 끝내야 옮겨가는 모습이 보이지 않는다 (SSR 경고는 피한다)
+const useAlignEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+function alignToTop(el: HTMLElement) {
+  const chrome = document.querySelector<HTMLElement>("[data-app-chrome]");
+  window.scrollTo({
+    top: el.getBoundingClientRect().top + window.scrollY - (chrome?.offsetHeight ?? 0) - 12,
+  });
+}
+
 // ── 메인 ──
+// useSearchParams 는 정적 렌더에서 Suspense 경계를 요구한다 — 없으면 next build 실패
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const user = useUser();
-  // 농장 목록은 공유 컨텍스트에서 (develop) — 화면마다 따로 조회하지 않는다
+  // 농장 목록은 공유 컨텍스트에서 — 화면마다 따로 조회하지 않는다
   const { farms, refreshFarms } = useFarmData();
-  // 다른 화면에서 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을
-  // 화면 위로 올린다. 농장·절이 모두 여럿이라, 그냥 보내면 어느 것인지 다시 찾아야 한다
+  // 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을 화면 위로 올린다.
+  // 진입 시점에 한 번만 읽는다 — 아래에서 주소를 지우므로 매 렌더 읽으면 값이 바뀐다
   const router = useRouter();
   const params = useSearchParams();
-  // 진입 시점에 **한 번만** 읽는다. 주소를 곧바로 지우기 때문에, 매 렌더 다시 읽으면
-  // 지운 직후 값이 바뀌어 아래 이펙트가 재실행되고 정렬 추적이 즉시 끊긴다
   const [focus] = useState(() => ({
     farm: params.get("farm"),
     section: params.get("section") === "rules" ? "rules" : "devices",
     requested: params.has("farm") || params.has("section"),
   }));
-  // 장치 관리로 올 때만 펼친다 — 알림 규칙은 접힌 절이 아니라 항상 보인다
-  const [expanded, setExpanded] = useState<string | null>(
-    focus.section === "devices" ? focus.farm : null,
+  // 여러 농장을 동시에 펼친다 — 하나만 열리면 다른 농장을 열 때 위쪽이 접히며 화면이
+  // 튀고, 두 농장의 장치를 나란히 비교할 수도 없다
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(focus.section === "devices" && focus.farm ? [focus.farm] : []),
   );
   const deviceRef = useRef<HTMLDivElement>(null);
   const rulesRef = useRef<HTMLDivElement>(null);
@@ -671,45 +691,25 @@ export default function SettingsPage() {
   const [editingFarm, setEditingFarm] = useState<FarmSummary | null>(null);
   const [deletingFarm, setDeletingFarm] = useState<FarmSummary | null>(null);
 
-  // 목록이 길면 펼쳐도 화면 밖이라 보이지 않는다 — 농장 목록이 온 뒤 스크롤한다.
-  // scrollIntoView 는 고정 헤더·정지 배너를 모르기 때문에 카드 윗부분이 가려진다.
-  // 고정 영역 높이를 실측해 그만큼 비켜, 카드가 본문 맨 위에 오도록 맞춘다.
-  useEffect(() => {
+  useAlignEffect(() => {
     if (!focus.requested || !farms.length) return;
-    // 농장을 지정하면 그 농장의 블록, 안 하면(전역 알림에서 옴) 절 머리로 간다
+    // 농장을 지정하면 그 농장의 블록, 안 하면(전역 알림에서 옴) 절 머리로
     const el = focus.section !== "rules" ? deviceRef.current
       : focus.farm ? rulesRef.current
       : rulesSectionRef.current;
-    if (!el) return;
+    if (el) alignToTop(el);
+    else window.scrollTo({ top: 0 });   // 이동 측이 scroll:false 라 방치하면 엉뚱한 위치
 
-    const align = () => {
-      const chrome = document.querySelector<HTMLElement>("[data-app-chrome]");
-      window.scrollTo({
-        top: el.getBoundingClientRect().top + window.scrollY - (chrome?.offsetHeight ?? 0) - 12,
-      });
-    };
-    align();
-
-    // 위쪽의 「발견된 스마트팜」이 나중에 로드되며 높이가 바뀌어 목표를 밀어낸다 —
-    // 한 번만 맞추면 어긋난 채 남는다. 레이아웃이 잦아들 때까지 잠깐 따라간다.
-    // 사용자가 직접 스크롤하면 즉시 멈춘다 — 안 그러면 조작을 되돌려 버린다.
-    const observer = new ResizeObserver(align);
-    observer.observe(document.body);
-    const stop = () => observer.disconnect();
-    const timer = setTimeout(stop, 1500);
-    for (const ev of ["wheel", "touchstart", "keydown"]) {
-      window.addEventListener(ev, stop, { once: true, passive: true });
-    }
-    // 주소에서 즉시 지운다 — 「한 번 이 농장을 보여 달라」는 일회성 의도이지 화면 상태가
-    // 아니다. 남겨 두면 새로고침마다 다시 끌려가고, 다른 농장을 펼쳐 둔 것과도 어긋난다
+    // 일회성 의도이지 화면 상태가 아니다 — 남기면 새로고침마다 다시 끌려간다
     router.replace("/settings", { scroll: false });
-
-    return () => {
-      observer.disconnect();
-      clearTimeout(timer);
-      for (const ev of ["wheel", "touchstart", "keydown"]) window.removeEventListener(ev, stop);
-    };
   }, [focus, farms.length, router]);
+
+  const toggleDevices = (farmId: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(farmId)) next.add(farmId);
+      return next;
+    });
 
   const reloadFarms = useCallback(() => {
     void refreshFarms();
@@ -783,14 +783,14 @@ export default function SettingsPage() {
                 <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-bold text-primary-dark">{f.farm_id}</span>
                 <span className="text-12.5 font-semibold text-muted">{farmTypeLabel(f.farm_type)} · {f.crop ?? "—"} · {f.devices_online}/{f.devices_total} 온라인</span>
                 <span className="ml-auto flex shrink-0 items-center gap-1">
-                <button onClick={() => setExpanded(expanded === f.farm_id ? null : f.farm_id)} className="whitespace-nowrap rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
-                  {expanded === f.farm_id ? "접기" : "장치 관리"}
+                <button onClick={() => toggleDevices(f.farm_id)} className="whitespace-nowrap rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">
+                  {expanded.has(f.farm_id) ? "접기" : "장치 관리"}
                 </button>
                 <button onClick={() => setEditingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-gray-500 hover:bg-gray-100">수정</button>
                 <button onClick={() => setDeletingFarm(f)} className="rounded-md px-2 py-1 text-12.5 font-bold text-status-warningDark hover:bg-gray-100">삭제</button>
                 </span>
               </div>
-              {expanded === f.farm_id && <FarmDevices farmId={f.farm_id} />}
+              {expanded.has(f.farm_id) && <FarmDevices farmId={f.farm_id} />}
             </div>
           ))
         )}

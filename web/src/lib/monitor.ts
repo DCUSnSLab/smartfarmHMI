@@ -116,6 +116,18 @@ const SENSOR_OFFLINE_SEC = 600;
 
 export type LiveState = "online" | "degraded" | "offline" | "unmonitored";
 
+/**
+ * 센서 값의 신선도 — 마지막 수신 시각만으로 보는 판정.
+ * 장치 목록(deviceLiveness)과 농장 상태(farmStatus)가 같은 임계를 쓰도록 여기 둔다.
+ */
+export function sensorLiveness(ts: string | null): "online" | "degraded" | "offline" {
+  if (!ts) return "offline";
+  const age = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (age > SENSOR_OFFLINE_SEC) return "offline";
+  if (age > SENSOR_DEGRADED_SEC) return "degraded";
+  return "online";
+}
+
 export function deviceLiveness(
   deviceId: string,
   deviceType: string,
@@ -137,11 +149,7 @@ export function deviceLiveness(
     : Object.values(conns).find((c) => c.device_id.startsWith("growbed"));
   if (parent && parent.state !== "online") return { state: parent.state, ts: sensor.ts };
 
-  if (!sensor.ts) return { state: "offline", ts: null };
-  const age = (Date.now() - new Date(sensor.ts).getTime()) / 1000;
-  if (age > SENSOR_OFFLINE_SEC) return { state: "offline", ts: sensor.ts };
-  if (age > SENSOR_DEGRADED_SEC) return { state: "degraded", ts: sensor.ts };
-  return { state: "online", ts: sensor.ts };
+  return { state: sensorLiveness(sensor.ts), ts: sensor.ts };
 }
 
 export interface AlertItem {

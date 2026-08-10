@@ -9,12 +9,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  Card, CONN_STYLE, Gauge, GO_LINK, SectionTitle, StatusDot,
-  SENSOR_META, STATION_STATE, TANK_LABEL,
+  Card, CONN_STYLE, Gauge, GO_LINK, SectionTitle, StatusDot, StatusMark,
+  SENSOR_META, SEV_STYLE, STATION_STATE, TANK_LABEL,
 } from "@/components/ui";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
+import { farmStatus } from "@/lib/fleet";
 import { deviceLiveness, timeAgo } from "@/lib/monitor";
 import {
   isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
@@ -183,8 +184,9 @@ function FarmWeather({ farmId }: { farmId: string }) {
 
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
-  const { sensors, conns, robots } = useFarmData();
+  const { sensors, conns, robots, stops } = useFarmData();
   const snap = useFarmSnapshot(farmId);
+  const status = snap ? farmStatus(snap, stops) : null;
   const ranges = useRanges(farmId);
   const devices = useDevices(farmId);
   const summary = useSummary();
@@ -218,6 +220,19 @@ export default function StatusTab() {
                   {i}
                 </span>
               ))}
+            </div>
+          )}
+          {/* 농장 이름 앞 점이 왜 그 색인지 — 판정은 화면 세 곳이 공유한다 (fleet.farmStatus) */}
+          {status && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl bg-surface px-3 py-2.5">
+              {/* 글자 첫 줄 높이에 맞춰 가운데 정렬 (leading-relaxed 기준 20px) */}
+              <span className="flex h-5 flex-none items-center">
+                <StatusMark sev={status.sev} label={status.label} />
+              </span>
+              <p className="text-12.5 font-semibold leading-relaxed text-gray-700">
+                <span className={`font-extrabold ${SEV_STYLE[status.sev].text}`}>{status.label}</span>
+                {" · "}{status.reasons.join(" · ")}
+              </p>
             </div>
           )}
           <p className="mt-3 text-11.5 font-semibold text-muted">

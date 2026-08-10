@@ -10,28 +10,28 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import {
-  Card, Gauge, GO_LINK, KpiTile, SectionTitle, StatusDot,
+  Card, Gauge, GO_LINK, KpiTile, SectionTitle, StatusDot, StatusMark,
   SENSOR_META, SEV_STYLE, TANK_LABEL,
 } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
-import { FarmSnapshot, farmSeverity, sensorOf } from "@/lib/fleet";
-import { timeAgo } from "@/lib/monitor";
+import { FarmSnapshot, farmStatus, sensorOf } from "@/lib/fleet";
+import { timeAgo, type StopState } from "@/lib/monitor";
 import { isValidWeatherLocation, weatherConditionLabel, weatherIcon, type WeatherRow } from "@/lib/weather";
 
 const KPI_SENSORS = ["temperature", "humidity", "co2"] as const;
 
 function FarmCard({
   snap,
-  unackedWarnings,
+  stops,
   weather,
 }: {
   snap: FarmSnapshot;
-  unackedWarnings: number;
+  stops: StopState;
   weather?: WeatherRow;
 }) {
   const router = useRouter();
-  const sev = farmSeverity(snap, unackedWarnings);
-  const s = SEV_STYLE[sev];
+  const status = farmStatus(snap, stops);
+  const s = SEV_STYLE[status.sev];
   const weatherTitle = weather?.ts
     ? [
         weatherConditionLabel(weather.condition),
@@ -51,7 +51,7 @@ function FarmCard({
       onClick={() => router.push(`/farms/${snap.farm.farm_id}/status`)}
     >
       <div className="mb-3 flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 flex-none rounded-full ${s.dot}`} />
+        <StatusMark sev={status.sev} label={status.label} />
         <span className="min-w-0 flex-1 truncate text-16 font-extrabold">{snap.farm.name}</span>
         <span
           title={weatherTitle}
@@ -69,8 +69,11 @@ function FarmCard({
               && !isValidWeatherLocation(weather.latitude, weather.longitude) ? "정보 없음" : "날씨 —"}</span>
           )}
         </span>
-        <span className={`rounded-lg px-2 py-0.5 text-11.5 font-extrabold ${s.bg} ${s.text}`}>
-          {s.label}
+        <span
+          title={status.reasons.join(" · ")}
+          className={`rounded-lg px-2 py-0.5 text-11.5 font-extrabold ${s.bg} ${s.text}`}
+        >
+          {status.label}
         </span>
       </div>
 
@@ -121,19 +124,19 @@ function FarmCard({
 
 export default function Dashboard() {
   useScope("all");
-  const { farms, alerts, wsOpen, snaps, weather: weatherRows } = useFarmData();
+  const { farms, alerts, wsOpen, snaps, stops, weather: weatherRows } = useFarmData();
   const weatherByFarm = new Map(weatherRows.map((row) => [row.farm_id, row]));
 
   const alertList = Object.values(alerts);
   const unacked = alertList.filter((a) => !a.acked_at);
-  const warnByFarm = (farmId: string) =>
-    unacked.filter((a) => a.farm_id === farmId && a.severity === "warning").length;
 
   const snapList = Object.values(snaps);
   const sevCount = { ok: 0, caution: 0, warning: 0 };
   for (const snap of snapList) {
-    sevCount[farmSeverity(snap, warnByFarm(snap.farm.farm_id))] += 1;
+    sevCount[farmStatus(snap, stops).sev] += 1;
   }
+  // 스냅샷이 아직 안 온 농장 — 합계가 농장 수와 어긋나 보이지 않게 따로 센다
+  const pending = farms.length - snapList.length;
   const robots = snapList.flatMap((s) => s.robots);
   const activeRobots = robots.filter((r) => r.phase === "moving" || r.phase === "working");
   const charging = robots.filter((r) => r.charging || r.phase === "charging");
@@ -159,7 +162,8 @@ export default function Dashboard() {
       <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile
           label="운영 농장" value={farms.length} unit="곳"
-          detail={`정상 ${sevCount.ok} · 주의 ${sevCount.caution} · 경고 ${sevCount.warning}`}
+          detail={`정상 ${sevCount.ok} · 주의 ${sevCount.caution} · 경고 ${sevCount.warning}`
+            + (pending > 0 ? ` · 확인 중 ${pending}` : "")}
         />
         <KpiTile
           label="가동 로봇" value={`${activeRobots.length} / ${robots.length}`} unit="대"
@@ -185,7 +189,7 @@ export default function Dashboard() {
               <FarmCard
                 key={f.farm_id}
                 snap={snap}
-                unackedWarnings={warnByFarm(f.farm_id)}
+                stops={stops}
                 weather={weatherByFarm.get(f.farm_id)}
               />
             ) : (

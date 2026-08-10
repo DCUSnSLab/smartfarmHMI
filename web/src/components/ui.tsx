@@ -148,6 +148,34 @@ export function SectionTitle({
   );
 }
 
+/**
+ * 농장 상태 표식 — 색과 **도형**을 함께 쓴다 (비기능 §5: 색으로만 구분하지 않는다).
+ * 원=정상 · 마름모=주의 · 삼각형=경고. 옆에 문구를 둘 자리가 없는 곳(스코프 스위처)에서도
+ * 색각 이상 사용자가 판별할 수 있어야 한다. 자세한 사유는 상세 화면의 상태 요약이 적는다.
+ *
+ * StatusDot 은 항상 문구를 데리고 다니므로 원을 유지한다 — 도형까지 바꾸면 같은 화면에
+ * 같은 뜻의 표식이 둘로 갈린다.
+ */
+export function StatusMark({ sev, label }: { sev: string; label?: string }) {
+  const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
+  const shape =
+    sev === "warning" ? "h-2.5 w-2.5 [clip-path:polygon(50%_0%,100%_100%,0%_100%)]"
+    : sev === "caution" ? "h-2 w-2 rotate-45"
+    : "h-2 w-2 rounded-full";
+  // 도형마다 크기가 다르므로 같은 크기의 상자 안에 넣어 가운데에 둔다.
+  // 상자가 없으면 상태가 바뀔 때 옆 글자가 밀리고, 줄 높이에 따라 위아래로 어긋난다.
+  return (
+    <span
+      role="img"
+      aria-label={label ?? s.label}
+      title={label ?? s.label}
+      className="inline-flex h-3 w-3 flex-none items-center justify-center align-middle"
+    >
+      <span className={`${shape} ${s.dot}`} />
+    </span>
+  );
+}
+
 export function StatusDot({ sev, label }: { sev: string; label?: string }) {
   const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
   return (

@@ -3,9 +3,11 @@
 실시간은 내부 MQTT 재발행으로 흐르고, 여기는 초기 로드·이력 조회를 담당한다.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
@@ -112,6 +114,46 @@ async def latest_weather():
             ))
         ).mappings().all()
     return [dict(row) for row in rows]
+
+
+@router.post("/farms/{farm_id}/weather/refresh")
+async def refresh_farm_weather(farm_id: str):
+    """위치는 있지만 기상 정보가 없는 농장의 날씨를 즉시 다시 수집한다."""
+    async with _engine().connect() as conn:
+        farm = (
+            await conn.execute(
+                select(m.farm).where(
+                    m.farm.c.farm_id == farm_id,
+                    m.farm.c.is_active,
+                )
+            )
+        ).mappings().first()
+    if farm is None:
+        raise HTTPException(404, f"unknown farm: {farm_id}")
+    if (
+        farm["region_code"] is None
+        or farm["latitude"] is None
+        or farm["longitude"] is None
+    ):
+        raise HTTPException(400, "농장 위치 정보가 설정되지 않았습니다")
+
+    # 수집기는 실패를 로그로만 남기고 예외를 삼킨다 (weather.collect_location_weather).
+    # 이번 호출로 실제 적재됐는지로만 성공을 판정할 수 있고, 이 확인이 없으면
+    # 기상청이 죽어 있어도 화면에는 「새로고침 완료」로 보인다.
+    started = datetime.now(timezone.utc)
+    await collect_farm_weather(
+        _engine(), farm_id, farm["region_code"], farm["latitude"], farm["longitude"],
+    )
+    async with _engine().connect() as conn:
+        newest = (
+            await conn.execute(
+                select(func.max(m.weather_reading.c.received_at))
+                .where(m.weather_reading.c.farm_id == farm_id)
+            )
+        ).scalar()
+    if newest is None or newest < started:
+        raise HTTPException(502, "기상 정보를 받아오지 못했습니다")
+    return {"ok": True}
 
 
 @router.get("/farms/{farm_id}/snapshot")

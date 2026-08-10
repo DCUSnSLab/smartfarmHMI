@@ -30,6 +30,8 @@ interface FarmDataCtx extends MonitorData {
   /** 농장별 기상 — 서버가 매시 40분에만 수집하므로 여기서 한 번만 조회한다. */
   weather: WeatherRow[];
   weatherLoading: boolean;
+  /** 수동 새로고침 뒤 다시 읽기 (상태 화면의 날씨 카드) */
+  reloadWeather: () => Promise<void>;
 }
 
 const Ctx = createContext<FarmDataCtx | null>(null);
@@ -46,11 +48,14 @@ export function FarmDataProvider({ children }: { children: React.ReactNode }) {
     showsFleetNav(pathname) ? data.farms.map((f) => f.farm_id) : [],
   );
 
-  const { rows: weather, loading: weatherLoading } = useWeather();
+  const { rows: weather, loading: weatherLoading, reload: reloadWeather } = useWeather();
 
   return (
     <Ctx.Provider
-      value={{ ...data, scope, setScope, globalAlerts, snaps, weather, weatherLoading }}
+      value={{
+        ...data, scope, setScope, globalAlerts, snaps,
+        weather, weatherLoading, reloadWeather,
+      }}
     >
       {children}
     </Ctx.Provider>

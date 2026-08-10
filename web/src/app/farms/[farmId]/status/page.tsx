@@ -2,9 +2,10 @@
 
 /**
  * 농장 상세 · 상태 (디자인 "농장 상세: 상태").
- * 상태 요약 · 지역 날씨(Planned) · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
+ * 상태 요약 · 지역 날씨 · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
  */
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -15,7 +16,10 @@ import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { deviceLiveness, timeAgo } from "@/lib/monitor";
-import { isValidWeatherLocation, uvIndexLabel, weatherConditionLabel, weatherIcon } from "@/lib/weather";
+import {
+  isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
+  uvIndexLabel, weatherConditionLabel, weatherIcon,
+} from "@/lib/weather";
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -54,12 +58,24 @@ function useSummary(): { text: string; issues: string[]; ready: boolean } {
 }
 
 function FarmWeather({ farmId }: { farmId: string }) {
-  // 컨텍스트에서 받는다 — 화면마다 훅을 부르면 이동할 때마다 「로딩중」이 되살아난다
-  const { weather: rows, weatherLoading: loading } = useFarmData();
+  // 컨텍스트에서 받는다 — 화면마다 훅을 부르면 이동할 때마다 「로딩중」이 되살아난다.
+  // 수동 새로고침은 같은 소유자의 reload 를 쓴다 (따로 부르면 폴링이 이중이 된다)
+  const { weather: rows, weatherLoading: loading, reloadWeather: reload } = useFarmData();
+  const [refreshing, setRefreshing] = useState(false);
   const weather = rows.find((row) => row.farm_id === farmId);
+  const hasValidLocation = isValidWeatherLocation(
+    weather?.latitude ?? null, weather?.longitude ?? null,
+  );
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshWeather(farmId);
+    await reload();
+    setRefreshing(false);
+  };
   const regionLabel = weather?.name.split(/\s+/)[0] ?? "";
   const conditionLabel = weatherConditionLabel(weather?.condition ?? null);
-  const isRainy = (weather?.precipitation_mm ?? 0) > 0;
+  const conditionCodes = parseWeatherCondition(weather?.condition ?? null);
+  const isNight = !isKoreaDaytime();
   const weatherTheme = !weather?.ts
     ? {
         panel: "border-[#E5E8EB] bg-white",
@@ -67,26 +83,19 @@ function FarmWeather({ farmId }: { farmId: string }) {
         primary: "text-[#191F28]", secondary: "text-[#6B7684]",
         metric: "bg-[#F7F8FA]", advisory: "bg-[#F2F4F6] text-[#4E5968]",
       }
-    : isRainy
-      ? {
-        panel: "border-[#253B62] bg-gradient-to-br from-[#17243D] to-[#334D73]",
-        heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
-        primary: "text-white", secondary: "text-[#D8E5F7]",
-        metric: "bg-white/95", advisory: "bg-[#0E1729] text-white",
-      }
-    : weather?.condition === "4"
+    : conditionCodes?.sky === 4
       ? {
           panel: "border-[#C7CDD4] bg-gradient-to-br from-[#D9DDE2] to-[#EEF0F2]",
           heading: "text-[#303841]", badge: "bg-white/80 text-[#56616D]",
           primary: "text-[#252B31]", secondary: "text-[#5D6873]",
           metric: "bg-white/90", advisory: "bg-[#59636E] text-white",
         }
-      : weather?.condition === "3"
+      : isNight
         ? {
-            panel: "border-[#B9CADB] bg-gradient-to-br from-[#D9E4EE] to-[#F2F6F9]",
-            heading: "text-[#29445F]", badge: "bg-white/80 text-[#486783]",
-            primary: "text-[#203B55]", secondary: "text-[#536D84]",
-            metric: "bg-white/90", advisory: "bg-[#4B6E8D] text-white",
+            panel: "border-black bg-gradient-to-br from-[#090D16] to-[#182235]",
+            heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
+            primary: "text-white", secondary: "text-[#D8E5F7]",
+            metric: "bg-white/95", advisory: "bg-black/70 text-white",
           }
         : {
             panel: "border-[#B9D5F8] bg-gradient-to-br from-[#D2E6FF] to-[#EAF4FF]",
@@ -120,7 +129,7 @@ function FarmWeather({ farmId }: { farmId: string }) {
         <>
           <div className="mt-4 flex items-center gap-4">
             <span className="text-56 leading-none drop-shadow-sm" aria-hidden="true">
-              {weatherIcon(weather.condition, weather.precipitation_mm)}
+              {weatherIcon(weather.condition)}
             </span>
             <div className="min-w-0">
               <div className={`text-34 font-extrabold leading-none ${weatherTheme.primary}`}>
@@ -152,10 +161,20 @@ function FarmWeather({ farmId }: { farmId: string }) {
           </div>
         </>
       ) : (
-        <div className="py-10 text-center text-15 font-extrabold text-[#3A5A86]">
-          {weather?.latitude != null || weather?.longitude != null
-            ? isValidWeatherLocation(weather.latitude, weather.longitude) ? "로딩중" : "정보 없음"
-            : "날씨 조회 위치가 설정되지 않았습니다."}
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span className="text-15 font-extrabold text-[#3A5A86]">
+            {weather?.latitude != null || weather?.longitude != null
+              ? "정보 없음"
+              : "날씨 조회 위치가 설정되지 않았습니다."}
+          </span>
+          {hasValidLocation && (
+            <button
+              type="button" onClick={() => void handleRefresh()} disabled={refreshing}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-12.5 font-extrabold text-[#4E5968] hover:bg-gray-50 disabled:opacity-50"
+            >
+              {refreshing ? "새로고침 중…" : "새로고침"}
+            </button>
+          )}
         </div>
       )}
     </Card>
@@ -266,7 +285,7 @@ export default function StatusTab() {
                           className="flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left text-12.5 hover:bg-surface"
                         >
                           <span className="min-w-0 flex-1 truncate font-bold">{d.name}</span>
-                          {/* 상태는 눌리면 안 된다 — 이름만 말줄임으로 양보한다 */}
+                          {/* 상태는 줄이지 않는다 — 좁아지면 이름만 말줄임으로 양보한다 */}
                           <StatusDot sev={badge?.sev ?? "info"} label={badge?.label ?? "—"} />
                         </Link>
                       );

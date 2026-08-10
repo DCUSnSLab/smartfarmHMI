@@ -697,11 +697,31 @@ function SettingsContent() {
     const el = focus.section !== "rules" ? deviceRef.current
       : focus.farm ? rulesRef.current
       : rulesSectionRef.current;
-    if (el) alignToTop(el);
-    else window.scrollTo({ top: 0 });   // 이동 측이 scroll:false 라 방치하면 엉뚱한 위치
+    if (!el) {
+      window.scrollTo({ top: 0 });   // 이동 측이 scroll:false 라 방치하면 엉뚱한 위치
+      return;
+    }
+    alignToTop(el);
+
+    // 알림 규칙은 페이지 맨 아래인데 각 블록이 규칙을 받아오기 전에는 비어 있다.
+    // 첫 렌더에는 문서가 짧아 목표까지 스크롤이 잘리므로, 높이가 자리 잡을 때까지
+    // 다시 맞춘다. 사용자가 스크롤하면 즉시 멈춘다 — 조작을 되돌리면 안 된다.
+    const observer = new ResizeObserver(() => alignToTop(el));
+    observer.observe(document.body);
+    const stop = () => observer.disconnect();
+    const timer = setTimeout(stop, 1200);
+    window.addEventListener("wheel", stop, { once: true, passive: true });
+    window.addEventListener("touchstart", stop, { once: true, passive: true });
 
     // 일회성 의도이지 화면 상태가 아니다 — 남기면 새로고침마다 다시 끌려간다
     router.replace("/settings", { scroll: false });
+
+    return () => {
+      stop();
+      clearTimeout(timer);
+      window.removeEventListener("wheel", stop);
+      window.removeEventListener("touchstart", stop);
+    };
   }, [focus, farms.length, router]);
 
   const toggleDevices = (farmId: string) =>

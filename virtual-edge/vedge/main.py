@@ -84,6 +84,20 @@ async def run() -> None:
                 log.info("birth published (edge + growbed + robots=%d, metrics=%d)",
                          len(cfg.robots), len(cfg.sensors))
 
+                # §4.7 물리 비상정지 상태 — retained. 재접속할 때마다 현재 값을
+                # 다시 낸다. 못 읽었으면 released 가 아니라 unknown 이어야 한다:
+                # "확인해 보니 풀림"과 "확인하지 못함"을 같게 두면 엣지가 재시작할
+                # 때마다 안전 기능이 조용히 열린다.
+                await client.publish(
+                    contract.topic(cfg.farm_id, "edge", cfg.edge_id, "status"),
+                    contract.dump(contract.estop_state(
+                        cfg.farm_id, cfg.edge_id,
+                        estop=cfg.estop, reason=cfg.estop_reason,
+                    )),
+                    qos=contract.QOS, retain=True,
+                )
+                log.info("estop_state published: %s (reason=%s)", cfg.estop, cfg.estop_reason)
+
                 await client.subscribe(
                     f"{contract.PREFIX}/{cfg.farm_id}/+/+/command", qos=contract.QOS
                 )

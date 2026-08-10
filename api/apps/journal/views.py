@@ -23,6 +23,7 @@ def _serialize(memo: FarmMemo) -> dict:
         "body": memo.body,
         "via_voice": memo.via_voice,
         "author": memo.author.name,
+        "author_email": memo.author.email,
         "created_at": memo.created_at.isoformat(),
     }
 
@@ -53,6 +54,19 @@ def _delete_memo(memo_id: int, user_id: int, is_admin: bool) -> bool:
     if not is_admin:
         qs = qs.filter(author_id=user_id)  # 작성자 본인만 (admin 은 전체)
     return qs.delete()[0] > 0
+
+
+@sync_to_async
+def _update_memo(memo_id: int, user_id: int, is_admin: bool, body: str) -> dict | None:
+    qs = FarmMemo.objects.select_related("author").filter(pk=memo_id)
+    if not is_admin:
+        qs = qs.filter(author_id=user_id)
+    memo = qs.first()
+    if memo is None:
+        return None
+    memo.body = body
+    memo.save(update_fields=["body", "updated_at"])
+    return _serialize(memo)
 
 
 @csrf_exempt
@@ -86,12 +100,28 @@ async def memos(request):
 
 @csrf_exempt
 async def memo_detail(request, memo_id: int):
-    """DELETE — 작성자 본인 또는 admin."""
-    if request.method != "DELETE":
-        return HttpResponseNotAllowed(["DELETE"])
+    """PATCH 수정 / DELETE 삭제 — 작성자 본인 또는 admin."""
     user = request_user(request)
     if user is None:
         return unauthorized()
+
+    if request.method == "PATCH":
+        if user.role not in CONTROL_ROLES:
+            return forbidden("메모 수정")
+        try:
+            payload = json.loads(request.body)
+            text = (payload.get("body") or "").strip()
+        except ValueError:
+            return JsonResponse({"error": "올바른 JSON 본문이 필요합니다"}, status=400)
+        if not text:
+            return JsonResponse({"error": "내용을 입력하세요"}, status=400)
+        memo = await _update_memo(memo_id, user.id, user.role == "admin", text)
+        if memo is None:
+            return JsonResponse({"error": "메모를 찾을 수 없거나 권한이 없습니다"}, status=404)
+        return JsonResponse(memo)
+
+    if request.method != "DELETE":
+        return HttpResponseNotAllowed(["PATCH", "DELETE"])
     ok = await _delete_memo(memo_id, user.id, user.role == "admin")
     if not ok:
         return JsonResponse({"error": "메모를 찾을 수 없거나 권한이 없습니다"}, status=404)

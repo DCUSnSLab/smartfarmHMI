@@ -13,6 +13,7 @@ import { PlannedChip } from "@/components/Planned";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
+import { useFarmData } from "@/lib/farmData";
 import { FarmSummary } from "@/lib/monitor";
 import {
   ACTUATOR_COMMANDS, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow, DiscoveredFarm,
@@ -646,7 +647,8 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
 // ── 메인 ──
 export default function SettingsPage() {
   const user = useUser();
-  const [farms, setFarms] = useState<FarmSummary[]>([]);
+  // 농장 목록은 공유 컨텍스트에서 (develop) — 화면마다 따로 조회하지 않는다
+  const { farms, refreshFarms } = useFarmData();
   // 다른 화면에서 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을
   // 화면 위로 올린다. 농장·절이 모두 여럿이라, 그냥 보내면 어느 것인지 다시 찾아야 한다
   const router = useRouter();
@@ -710,9 +712,8 @@ export default function SettingsPage() {
   }, [focus, farms.length, router]);
 
   const reloadFarms = useCallback(() => {
-    void apiFetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
-  }, []);
-  useEffect(reloadFarms, [reloadFarms]);
+    void refreshFarms();
+  }, [refreshFarms]);
 
   // 접근 게이트 — viewer 차단 (실제 강제는 api). user 로드 후 판정.
   useEffect(() => {

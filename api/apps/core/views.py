@@ -123,6 +123,13 @@ async def farm_snapshot(request, farm_id: str):
     return await _proxy_middleware(f"/internal/farms/{farm_id}/snapshot")
 
 
+async def farm_layout(request, farm_id: str):
+    """농장 배치도 (FR-41). 엣지 자기기술을 DB 에서 읽으므로 엣지 오프라인에도 응답한다."""
+    if request_user(request) is None:
+        return unauthorized()
+    return await _proxy_middleware(f"/internal/farms/{farm_id}/layout")
+
+
 async def farm_commands(request, farm_id: str):
     """최근 제어 명령 이력 (FR-10 상태 표시 초기 로드). 인증 필수."""
     if request_user(request) is None:

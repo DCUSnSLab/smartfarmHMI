@@ -116,6 +116,18 @@ async def weather(request):
     return await _proxy_middleware("/internal/weather")
 
 
+@csrf_exempt
+async def weather_refresh(request, farm_id: str):
+    """인증된 사용자의 농장 날씨 즉시 재수집 요청을 미들웨어에 위임한다."""
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    if request_user(request) is None:
+        return unauthorized()
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=30) as client:
+        resp = await client.post(f"/internal/farms/{farm_id}/weather/refresh")
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
 async def farm_snapshot(request, farm_id: str):
     """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
     if request_user(request) is None:

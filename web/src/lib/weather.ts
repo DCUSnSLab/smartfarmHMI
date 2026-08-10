@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 export interface WeatherRow {
@@ -24,20 +24,23 @@ export function useWeather() {
   const [rows, setRows] = useState<WeatherRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    const load = () => {
-      void apiFetch("/api/weather")
-        .then(async (response) => response.ok ? response.json() : [])
-        .then((data: WeatherRow[]) => { if (active) setRows(data); })
-        .finally(() => { if (active) setLoading(false); });
-    };
-    load();
-    const timer = setInterval(load, 5 * 60_000);
-    return () => { active = false; clearInterval(timer); };
+  const reload = useCallback(async () => {
+    const response = await apiFetch("/api/weather");
+    if (response.ok) setRows(await response.json() as WeatherRow[]);
+    setLoading(false);
   }, []);
 
-  return { rows, loading };
+  useEffect(() => {
+    void reload();
+    const timer = setInterval(() => void reload(), 5 * 60_000);
+    return () => clearInterval(timer);
+  }, [reload]);
+
+  return { rows, loading, reload };
+}
+
+export async function refreshWeather(farmId: string): Promise<boolean> {
+  return (await apiFetch(`/api/farms/${farmId}/weather/refresh`, { method: "POST" })).ok;
 }
 
 export function weatherConditionLabel(condition: string | null): string {
@@ -66,14 +69,27 @@ export function uvIndexLabel(value: string | null): string {
   return "위험";
 }
 
-export function weatherIcon(condition: string | null, precipitationMm: number | null): string {
-  if ((precipitationMm ?? 0) > 0) return "🌧️";
-  if (condition === "1" || condition?.includes("맑음")) return "☀️";
-  if (condition === "3" || condition?.includes("구름")) return "🌤️";
-  if (condition === "4" || condition?.includes("흐림")) return "☁️";
+export function isKoreaDaytime(at: Date | string = new Date()): boolean {
+  const date = at instanceof Date ? at : new Date(at);
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul", hour: "2-digit", hourCycle: "h23",
+  }).format(date));
+  return hour >= 6 && hour < 18;
+}
+
+export function weatherIcon(
+  condition: string | null,
+  precipitationMm: number | null,
+  at: Date | string = new Date(),
+): string {
   if (condition?.includes("비/눈")) return "🌨️";
   if (condition?.includes("눈")) return "❄️";
   if (condition?.includes("소나기")) return "🌦️";
   if (condition?.includes("비")) return "🌧️";
+  if ((precipitationMm ?? 0) > 0) return "🌧️";
+  const daytime = isKoreaDaytime(at);
+  if (condition === "1" || condition?.includes("맑음")) return daytime ? "☀️" : "🌙";
+  if (condition === "3" || condition?.includes("구름")) return daytime ? "🌤️" : "☁️";
+  if (condition === "4" || condition?.includes("흐림")) return "☁️";
   return "🌤️";
 }

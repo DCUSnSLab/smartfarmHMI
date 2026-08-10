@@ -1,4 +1,4 @@
-"""MQTT 메시지 스키마 0.2 전체 — communication-interface.md §4.
+"""MQTT 메시지 스키마 0.3 전체 — communication-interface.md §4.
 
 sensor_reading 은 sensor.py (증분 0에서 선행 정의).
 모든 모델은 extra="allow" — 확장 필드에 열려 있다 (비기능 §1).
@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class _Msg(BaseModel):
     model_config = ConfigDict(extra="allow")
-    version: str = "0.2"
+    version: str = "0.3"
     farm_id: str
     timestamp: datetime
 
@@ -24,8 +24,26 @@ class Position(BaseModel):
     frame: str | None = None  # 좌표계 식별 (OPN-21)
 
 
+class RobotError(BaseModel):
+    """로봇 오류 — 상태가 아니라 사건이다 (§4.2).
+
+    `phase` 와 한 필드에 담으면 사건이 상태를 덮어 어느 구간에서 멈췄는지가
+    사라진다.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    code: str
+    message: str | None = None
+    severity: Literal["warning", "caution"] = "warning"
+    since: datetime | None = None
+
+
 class RobotStatusMsg(_Msg):
-    """엣지 → 미들웨어: 로봇 상태 (§4.2, FR-04·06)."""
+    """엣지 → 미들웨어: 로봇 상태 (§4.2, FR-04·06).
+
+    0.3 에서 `mission_state` 를 `phase` + `error` 두 축으로 나눠, 이제
+    `phase="moving"` 과 `error={...}` 가 동시에 성립한다.
+    """
 
     type: Literal["robot_status"] = "robot_status"
     device_id: str
@@ -33,9 +51,9 @@ class RobotStatusMsg(_Msg):
     speed: float | None = None
     battery_pct: int | None = None
     charging: bool = False
-    mission_state: Literal["idle", "moving", "working", "charging", "error"] = "idle"
+    phase: Literal["idle", "moving", "working", "charging"] = "idle"
     current_task_id: str | None = None
-    error: dict | None = None
+    error: RobotError | None = None
 
 
 class PalletTaskMsg(_Msg):
@@ -119,12 +137,27 @@ class EstopState(_Msg):
     """엣지 → 미들웨어: 물리 비상정지 상태 (§4.7, FR-36) — 표시 전용.
 
     해제 역방향 메시지는 존재하지 않는다 (현장 수동 조작만).
+
+    0.3 에서 `engaged: bool` 을 3값 `estop` 으로 바꿨다. "확인해 보니 풀림"과
+    "확인하지 못함"이 같은 `false` 이면 엣지가 재시작할 때마다 현장 래치가 눌린
+    채여도 서버가 해제로 본다. 기본값이 `unknown` 이라 필드가 없는 메시지도
+    모름으로 떨어진다 (하위호환 매핑 없음).
     """
 
     type: Literal["estop_state"] = "estop_state"
     device_id: str
-    engaged: bool
+    estop: Literal["engaged", "released", "unknown"] = "unknown"
+    # unknown 일 때만: not_read_yet | read_failed | no_source
+    reason: str | None = None
     source: str = "field_device"
+
+    @property
+    def is_engaged(self) -> bool:
+        """정지로 판정할지. **unknown 은 engaged 와 같다** (안전측 실패).
+
+        수신 측이 각자 구현하면 한 곳만 빠져도 안전이 조용히 열리므로 여기 모은다.
+        """
+        return self.estop != "released"
 
 
 class Ack(_Msg):

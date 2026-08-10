@@ -97,6 +97,9 @@ farmon-internal/v1/{farm_id}/{stream}
 
 ### 4.2 엣지 → 미들웨어: 로봇 상태 (FR-04, FR-06)
 
+> **0.3 개정 (GEN-1280) — 아래 본문은 0.2 다.** `mission_state` 는 `phase` + `error` 로 갈렸다.
+> 현행 계약은 [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §1 을 따른다.
+
 ```json
 {
   "type": "robot_status",
@@ -217,6 +220,10 @@ retained 이므로 엣지가 재부팅해 구독하는 순간 브로커가 현�
 > **이 메시지는 안전 기능이 아니다.** IEC 60204-1 Stop Category 2(제어된 정지, 전원 유지)에 해당하는 운전 정지이며, MQTT가 안전등급 통신이 아니므로 안전 기능을 이 경로에 의존시키지 않는다. 실제 비상정지는 현장 물리 장치가 담당한다 (`../01-requirements/non-functional.md` §2).
 
 ### 4.7 엣지 → 미들웨어: 물리 비상정지 상태 (FR-36)
+
+> **0.3 개정 (GEN-1280) — 아래 본문은 0.2 다.** `engaged: bool` 은 `estop` 3값
+> (`engaged`\|`released`\|`unknown`)이 됐다. 현행 계약은
+> [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §2 를 따른다.
 
 ```json
 {
@@ -354,6 +361,9 @@ birth(§4.9)가 "내가 어떤 데이터를 내는지"를 자기기술하듯, �
 
 ## 5. 통신 상태 판정 (FR-37)
 
+> **0.3 개정 (GEN-1280)** — 배수에 하한이 붙었다 (`degraded` 20초, `offline` 60초).
+> [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §3.
+
 | 상태 | 판정 근거 |
 |---|---|
 | `online` | birth 수신 후, 마지막 수신(telemetry·status·**heartbeat** 포함)이 발행 주기의 3배 이내 |
@@ -401,6 +411,7 @@ birth(§4.9)가 "내가 어떤 데이터를 내는지"를 자기기술하듯, �
 - Eclipse Sparkplug 규격 — 토픽 네임스페이스 계층과 birth/death certificate 방식을 참고했다. 본 규격은 Sparkplug를 그대로 채택하지 않고(페이로드는 protobuf가 아닌 JSON) 구조만 차용한다.
 
 ## 변경 이력
+- 2026-08-10 · 스키마 0.2→0.3 (GEN-1280) — §4.2·§4.7·§5 개정. 본문은 `contract-amendments/0.3-state-axis-split.md`
 - 2026-07-07 · 최초 작성
 - 2026-07-31 · `heartbeat` 메시지 신설(GEN-1225) — 주기 발행이 없는 엣지 컨트롤러의 생존 신호. §2 message_type·§3 정책·§4.9·§5 판정 반영. birth 유실 시 online 자가 복구, LWT 와 이중 방어
 - 2026-07-30 · 구현(증분 2~7)에서 확정된 계약 반영 — LWT death 정리 계약(§3), remote_stop·estop_state 발행 토픽 명시(§4.6·4.7)

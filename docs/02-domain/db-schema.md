@@ -130,6 +130,9 @@
 
 **robot_status** — 로봇 상태 실시간 스냅샷 (FR-04·06) — **하이퍼테이블**
 
+> **0.3 개정 (GEN-1280, 마이그레이션 0006)** — `mission_state` → `phase`(4값, `error` 제거).
+> [../03-architecture/contract-amendments/0.3-state-axis-split.md](../03-architecture/contract-amendments/0.3-state-axis-split.md) §4.
+
 | 컬럼 | 타입 | 제약 |
 |---|---|---|
 | ts | TIMESTAMPTZ | NOT NULL — 파티션 키 |
@@ -376,6 +379,9 @@ UNIQUE(farm_id, alert_kind, sensor_type).
 
 **stop_event** (FR-35·36)
 
+> **0.3 개정 (GEN-1280, 마이그레이션 0006)** — `detail JSONB` 신설.
+> [../03-architecture/contract-amendments/0.3-state-axis-split.md](../03-architecture/contract-amendments/0.3-state-axis-split.md) §4.
+
 | 컬럼 | 타입 | 제약 |
 |---|---|---|
 | id | BIGINT | PK |
@@ -528,4 +534,5 @@ UNIQUE(farm_id, alert_kind, sensor_type).
 - data_statistics의 continuous aggregate 전환 — 증분 9+에서 실측 후
 
 ## 변경 이력
+- 2026-08-10 · 스키마 0.3 반영 (GEN-1280, 마이그레이션 0006). 본문은 `../03-architecture/contract-amendments/0.3-state-axis-split.md`
 - 2026-07-29 · 최초 작성 (OPN-09 해소). app/mw 스키마 분리·소유권 규칙, 테이블 31개 정의(mw 27 + app 4), 하이퍼테이블 3종, MQTT 0.2 매핑, FarmLog 분리(farm_report/farm_memo), command_log 신설

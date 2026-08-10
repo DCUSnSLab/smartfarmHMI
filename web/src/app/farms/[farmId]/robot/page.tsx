@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { RobotValue, timeAgo } from "@/lib/monitor";
+import { RobotValue, controlBlocked, timeAgo } from "@/lib/monitor";
 
 /** 완충 예상 — 충전 중일 때만 (디자인 "완충 예상 42분"). 단순 선형 추정 */
 function chargeEta(r: RobotValue): string | null {
@@ -97,13 +97,13 @@ function ManualControlModal({
 }
 
 export default function RobotTab() {
-  const { farmId } = useParams<{ farmId: string }>();  // FR-06 충전 복귀 지시에 사용 예정
+  const { farmId } = useParams<{ farmId: string }>();
   const user = useUser();
   const { robots, conns, stops } = useFarmData();
   const [selected, setSelected] = useState<RobotValue | null>(null);
 
   const list = Object.values(robots);
-  const stopped = stops.remote != null || stops.physical_estop != null;
+  const stopped = controlBlocked(stops, farmId);
   const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
   const farmOnline = edge?.state === "online";
   const canOperate = canControl(user) && farmOnline && !stopped;

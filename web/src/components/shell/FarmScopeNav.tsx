@@ -6,39 +6,28 @@
  * 현재 선택된 전체 또는 농장 버튼을 활성화하고, 농장 변경 시 현재 상세 탭을 유지한다.
  */
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { apiFetch } from "@/lib/api";
 import { useFarmData } from "@/lib/farmData";
-import { farmSeverity, useFleetSnapshots } from "@/lib/fleet";
+import { farmSeverity, showsFleetNav } from "@/lib/fleet";
 import { NavItemData, ScopeBar, SEV_STYLE } from "@/components/ui";
 
 export function FarmScopeNav() {
   const pathname = usePathname();
-  const { farms } = useFarmData();
 
   // 대시보드 '농장별 현황' 카드와 동일한 상태색을 쓰기 위해 스냅샷(통신)과
-  // 미확인 경고 알림을 함께 반영한다. 공유 alerts 는 선택 스코프에 따라 좁혀지므로,
-  // 네비는 전 농장 알림을 독립적으로 폴링해 클릭과 무관하게 유지한다.
-  const snaps = useFleetSnapshots(farms.map((f) => f.farm_id));
+  // 미확인 경고 알림을 함께 반영한다. 스코프에 따라 좁혀지는 alerts 가 아니라
+  // globalAlerts 를 써야 농장을 클릭해도 다른 농장의 점이 살아 있다.
+  const { farms, globalAlerts, snaps } = useFarmData();
 
-  const [warnByFarm, setWarnByFarm] = useState<Record<string, number>>({});
-  useEffect(() => {
-    const load = async () => {
-      const r = await apiFetch("/api/alerts?limit=100");
-      if (!r.ok) return;
-      const list: { farm_id?: string; severity: string; acked_at: string | null }[] = await r.json();
-      const counts: Record<string, number> = {};
-      for (const a of list) {
-        if (a.acked_at || a.severity !== "warning" || !a.farm_id) continue;
-        counts[a.farm_id] = (counts[a.farm_id] ?? 0) + 1;
-      }
-      setWarnByFarm(counts);
-    };
-    void load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
-  }, []);
+  const warnByFarm = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of Object.values(globalAlerts)) {
+      if (a.acked_at || a.severity !== "warning" || !a.farm_id) continue;
+      counts[a.farm_id] = (counts[a.farm_id] ?? 0) + 1;
+    }
+    return counts;
+  }, [globalAlerts]);
 
   const isDashboard = pathname === "/";
   const farmMatch = pathname.match(/^\/farms\/([^/]+)/);
@@ -48,8 +37,9 @@ export function FarmScopeNav() {
   const tabMatch = pathname.match(/^\/farms\/[^/]+\/([^/]+)/);
   const currentTab = tabMatch?.[1] ?? "status";
 
-  // 통합 대시보드와 농장 상세에서만 표시
-  if (!isDashboard && !currentFarmId) {
+  // 통합 대시보드와 농장 상세에서만 표시. 셸의 스냅샷 폴링 판정과 **같은 함수**를 쓴다 —
+  // 조건을 따로 적으면 갈라져서, 폴링이 꺼진 화면에 네비가 뜨고 점이 빈 채로 남는다.
+  if (!showsFleetNav(pathname)) {
     return null;
   }
 

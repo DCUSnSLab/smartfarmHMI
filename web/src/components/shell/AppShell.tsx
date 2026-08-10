@@ -11,6 +11,7 @@ import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
 import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
 import { Header } from "@/components/shell/Header";
 import { StopBanners } from "@/components/StopControls";
+import { UserProvider } from "@/lib/auth";
 import { FarmDataProvider, useFarmData } from "@/lib/farmData";
 import { PrefsProvider } from "@/lib/prefs";
 
@@ -43,11 +44,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   if (BARE_PATHS.some((p) => pathname.startsWith(p))) return <>{children}</>;
 
+  // 사용자 조회가 제일 밖 — 만료(401) 판정은 팜 데이터와 무관하게 먼저 돌아야 한다
   return (
     <PrefsProvider>
-      <FarmDataProvider>
-        <Chrome>{children}</Chrome>
-      </FarmDataProvider>
+      <UserProvider>
+        <FarmDataProvider>
+          <Chrome>{children}</Chrome>
+        </FarmDataProvider>
+      </UserProvider>
     </PrefsProvider>
   );
 }

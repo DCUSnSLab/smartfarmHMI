@@ -27,8 +27,15 @@ def put_attachment(storage_key: str, source: BinaryIO, size: int, content_type: 
     )
 
 
-def get_attachment(storage_key: str):
-    return _client().get_object(settings.MINIO_BUCKET_ATTACHMENTS, storage_key)
+def get_attachment(storage_key: str, *, offset: int = 0, length: int | None = None):
+    options = {"offset": offset}
+    if length is not None:
+        options["length"] = length
+    return _client().get_object(
+        settings.MINIO_BUCKET_ATTACHMENTS,
+        storage_key,
+        **options,
+    )
 
 
 def remove_attachments(storage_keys: list[str]) -> None:

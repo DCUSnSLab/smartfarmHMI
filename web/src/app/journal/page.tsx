@@ -35,20 +35,106 @@ interface Memo {
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_IMAGE_COUNT = 10;
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
+const MAX_VIDEO_COUNT = 1;
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-function SelectedImagePreview({ image, onRemove }: { image: File; onRemove: () => void }) {
+type AttachmentKind = "image" | "video";
+
+const attachmentKind = (file: File): AttachmentKind | null => {
+  const name = file.name.toLowerCase();
+  if (IMAGE_TYPES.includes(file.type) || /\.(?:jpe?g|png|webp)$/.test(name))
+    return "image";
+  if (VIDEO_TYPES.includes(file.type) || /\.(?:mp4|webm|mov)$/.test(name))
+    return "video";
+  return null;
+};
+
+const appendSelectedFiles = (
+  current: File[],
+  incoming: File[],
+  existingImageCount = 0,
+  existingVideoCount = 0,
+): { files: File[]; error: string } => {
+  const invalidType = incoming.some((file) => attachmentKind(file) === null);
+  const oversizedImage = incoming.some(
+    (file) => attachmentKind(file) === "image" && file.size > MAX_IMAGE_SIZE,
+  );
+  const oversizedVideo = incoming.some(
+    (file) => attachmentKind(file) === "video" && file.size > MAX_VIDEO_SIZE,
+  );
+  const seenKeys = new Set(
+    current.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+  );
+  const files = [...current];
+  let imageCount =
+    existingImageCount +
+    current.filter((file) => attachmentKind(file) === "image").length;
+  let videoCount =
+    existingVideoCount +
+    current.filter((file) => attachmentKind(file) === "video").length;
+  let imageLimitExceeded = false;
+  let videoLimitExceeded = false;
+
+  incoming.forEach((file) => {
+    const kind = attachmentKind(file);
+    if (!kind) return;
+    if (kind === "image" && file.size > MAX_IMAGE_SIZE) return;
+    if (kind === "video" && file.size > MAX_VIDEO_SIZE) return;
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    if (kind === "image") {
+      if (imageCount >= MAX_IMAGE_COUNT) {
+        imageLimitExceeded = true;
+        return;
+      }
+      imageCount += 1;
+    } else {
+      if (videoCount >= MAX_VIDEO_COUNT) {
+        videoLimitExceeded = true;
+        return;
+      }
+      videoCount += 1;
+    }
+    files.push(file);
+  });
+
+  let error = "";
+  if (invalidType) {
+    error = "JPEG, PNG, WebP 사진과 MP4, WebM, MOV 동영상만 선택할 수 있어요.";
+  } else if (oversizedImage) {
+    error = "사진은 한 장당 10MB 이하만 선택할 수 있어요.";
+  } else if (oversizedVideo) {
+    error = "동영상은 100MB 이하만 선택할 수 있어요.";
+  } else if (imageLimitExceeded) {
+    error = `사진은 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있어요.`;
+  } else if (videoLimitExceeded) {
+    error = `동영상은 최대 ${MAX_VIDEO_COUNT}개까지 선택할 수 있어요.`;
+  }
+  return { files, error };
+};
+
+function SelectedFilePreview({
+  file,
+  onRemove,
+}: {
+  file: File;
+  onRemove: () => void;
+}) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [open, setOpen] = useState(false);
+  const isVideo = attachmentKind(file) === "video";
 
   useEffect(() => {
-    const url = URL.createObjectURL(image);
+    const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [image]);
+  }, [file]);
 
   useEffect(() => {
     if (!open) return;
@@ -64,37 +150,66 @@ function SelectedImagePreview({ image, onRemove }: { image: File; onRemove: () =
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`${image.name} 크게 보기`}
-        className="block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+        aria-label={`${file.name} 크게 보기`}
+        className="relative block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
       >
-        {previewUrl && (
-          <img src={previewUrl} alt={`${image.name} 미리보기`} className="h-full w-full object-cover" />
-        )}
+        {previewUrl &&
+          (isVideo ? (
+            <>
+              <video
+                src={previewUrl}
+                muted
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-15 text-white">
+                ▶
+              </span>
+            </>
+          ) : (
+            <img
+              src={previewUrl}
+              alt={`${file.name} 미리보기`}
+              className="h-full w-full object-cover"
+            />
+          ))}
       </button>
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`${image.name} 선택 취소`}
+        aria-label={`${file.name} 선택 취소`}
         className="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-gray-700 text-12 font-bold text-white shadow-sm"
       >
         ×
       </button>
-      {open && previewUrl && createPortal(
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setOpen(false)}
-        >
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={previewUrl}
-              alt={image.name}
-              className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
-            />
-
-          </div>
-        </div>,
-        document.body,
-      )}
+      {open &&
+        previewUrl &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+            onClick={() => setOpen(false)}
+          >
+            {isVideo ? (
+              <video
+                src={previewUrl}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[85vh] max-w-[90vw] rounded-2xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                alt={file.name}
+                className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
+          </div>,
+          document.body,
+        )}
     </span>
   );
 }
@@ -109,7 +224,8 @@ function MemoAttachmentPreview({
   onRemove?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const label = `첨부 사진 ${index + 1}`;
+  const isVideo = attachment.media_type === "video";
+  const label = `첨부 ${isVideo ? "동영상" : "사진"} ${index + 1}`;
 
   useEffect(() => {
     if (!open) return;
@@ -126,9 +242,28 @@ function MemoAttachmentPreview({
         type="button"
         onClick={() => setOpen(true)}
         aria-label={`${label} 크게 보기`}
-        className="block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+        className="relative block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
       >
-        <img src={attachment.url} alt={label} className="h-full w-full object-cover" />
+        {isVideo ? (
+          <>
+            <video
+              src={attachment.url}
+              muted
+              playsInline
+              preload="metadata"
+              className="h-full w-full object-cover"
+            />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-15 text-white">
+              ▶
+            </span>
+          </>
+        ) : (
+          <img
+            src={attachment.url}
+            alt={label}
+            className="h-full w-full object-cover"
+          />
+        )}
       </button>
       {onRemove && (
         <button
@@ -140,20 +275,32 @@ function MemoAttachmentPreview({
           ×
         </button>
       )}
-      {open && createPortal(
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setOpen(false)}
-        >
-          <img
-            src={attachment.url}
-            alt={label}
-            className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>,
-        document.body,
-      )}
+      {open &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+            onClick={() => setOpen(false)}
+          >
+            {isVideo ? (
+              <video
+                src={attachment.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[85vh] max-w-[90vw] rounded-2xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <img
+                src={attachment.url}
+                alt={label}
+                className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
+          </div>,
+          document.body,
+        )}
     </span>
   );
 }
@@ -164,7 +311,9 @@ export default function JournalPage() {
   const { farms } = useFarmData();
 
   const today = new Date();
-  const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [month, setMonth] = useState(
+    new Date(today.getFullYear(), today.getMonth(), 1),
+  );
   const [selected, setSelected] = useState<string>(iso(today));
   const [memos, setMemos] = useState<Memo[]>([]);
   const [farmId, setFarmId] = useState("");
@@ -175,38 +324,43 @@ export default function JournalPage() {
   const [editingMemoId, setEditingMemoId] = useState<number | null>(null);
   const [editBody, setEditBody] = useState("");
   const [editBusy, setEditBusy] = useState(false);
-  const [editImages, setEditImages] = useState<File[]>([]);
-  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([]);
-  const [editImageError, setEditImageError] = useState("");
+  const [editFiles, setEditFiles] = useState<File[]>([]);
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>(
+    [],
+  );
+  const [editAttachmentError, setEditAttachmentError] = useState("");
   const [memoFarmFilter, setMemoFarmFilter] = useState("all");
   const [viewingMemo, setViewingMemo] = useState<Memo | null>(null);
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [imageError, setImageError] = useState("");
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const editImageInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const editAttachmentInputRef = useRef<HTMLInputElement>(null);
 
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
 
-  const clearEditImages = useCallback(() => {
-    setEditImages([]);
+  const clearEditFiles = useCallback(() => {
+    setEditFiles([]);
     setRemovedAttachmentIds([]);
-    setEditImageError("");
-    if (editImageInputRef.current) editImageInputRef.current.value = "";
+    setEditAttachmentError("");
+    if (editAttachmentInputRef.current)
+      editAttachmentInputRef.current.value = "";
   }, []);
 
   const closeMemoDetail = useCallback(() => {
     setViewingMemo(null);
     setEditingMemoId(null);
     setEditBody("");
-    clearEditImages();
-  }, [clearEditImages]);
+    clearEditFiles();
+  }, [clearEditFiles]);
 
   const load = useCallback(async () => {
     const r = await apiFetch(`/api/memos?month=${monthKey}`);
     if (r.ok) setMemos(await r.json());
   }, [monthKey]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   useEffect(() => {
     if (!farms.length) {
       if (farmId) setFarmId("");
@@ -215,7 +369,10 @@ export default function JournalPage() {
     if (!farms.some((f) => f.farm_id === farmId)) setFarmId(farms[0].farm_id);
   }, [farms, farmId]);
   useEffect(() => {
-    if (memoFarmFilter !== "all" && !farms.some((f) => f.farm_id === memoFarmFilter)) {
+    if (
+      memoFarmFilter !== "all" &&
+      !farms.some((f) => f.farm_id === memoFarmFilter)
+    ) {
       setMemoFarmFilter("all");
     }
   }, [farms, memoFarmFilter]);
@@ -228,25 +385,25 @@ export default function JournalPage() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [viewingMemo, closeMemoDetail]);
 
-  const clearSelectedImages = () => {
-    setSelectedImages([]);
-    setImageError("");
-    if (imageInputRef.current) imageInputRef.current.value = "";
+  const clearSelectedFiles = () => {
+    setSelectedFiles([]);
+    setAttachmentError("");
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!body.trim() || !farmId) return;
     setBusy(true);
-    setImageError("");
+    setAttachmentError("");
     try {
       let r: Response;
-      if (selectedImages.length > 0) {
+      if (selectedFiles.length > 0) {
         const formData = new FormData();
         formData.append("farm_id", farmId);
         formData.append("memo_date", selected);
         formData.append("body", body);
-        selectedImages.forEach((image) => formData.append("files", image));
+        selectedFiles.forEach((file) => formData.append("files", file));
         r = await apiFetch("/api/memos/with-attachments", {
           method: "POST",
           body: formData,
@@ -259,15 +416,21 @@ export default function JournalPage() {
         });
       }
       if (!r.ok) {
-        const result = await r.json().catch(() => null) as { error?: string } | null;
-        setImageError(result?.error ?? "메모 저장에 실패했습니다. 다시 시도해 주세요.");
+        const result = (await r.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setAttachmentError(
+          result?.error ?? "메모 저장에 실패했습니다. 다시 시도해 주세요.",
+        );
         return;
       }
       setBody("");
-      clearSelectedImages();
+      clearSelectedFiles();
       void load();
     } catch {
-      setImageError("메모 저장에 실패했습니다. 네트워크 연결을 확인해 주세요.");
+      setAttachmentError(
+        "메모 저장에 실패했습니다. 네트워크 연결을 확인해 주세요.",
+      );
     } finally {
       setBusy(false);
     }
@@ -276,7 +439,9 @@ export default function JournalPage() {
   const remove = async () => {
     if (deletingMemoId === null) return;
     setDeleteBusy(true);
-    const r = await apiFetch(`/api/memos/${deletingMemoId}`, { method: "DELETE" });
+    const r = await apiFetch(`/api/memos/${deletingMemoId}`, {
+      method: "DELETE",
+    });
     setDeleteBusy(false);
     if (r.ok) {
       setDeletingMemoId(null);
@@ -287,26 +452,29 @@ export default function JournalPage() {
   const startEdit = (memo: Memo) => {
     setEditingMemoId(memo.id);
     setEditBody(memo.body);
-    clearEditImages();
+    clearEditFiles();
   };
 
   const cancelEdit = () => {
     setEditingMemoId(null);
     setEditBody("");
-    clearEditImages();
+    clearEditFiles();
   };
 
   const saveEdit = async () => {
     if (editingMemoId === null || !editBody.trim()) return;
     setEditBusy(true);
-    setEditImageError("");
+    setEditAttachmentError("");
     try {
       let r: Response;
-      if (editImages.length > 0 || removedAttachmentIds.length > 0) {
+      if (editFiles.length > 0 || removedAttachmentIds.length > 0) {
         const formData = new FormData();
         formData.append("body", editBody);
-        formData.append("remove_attachment_ids", JSON.stringify(removedAttachmentIds));
-        editImages.forEach((image) => formData.append("files", image));
+        formData.append(
+          "remove_attachment_ids",
+          JSON.stringify(removedAttachmentIds),
+        );
+        editFiles.forEach((file) => formData.append("files", file));
         r = await apiFetch(`/api/memos/${editingMemoId}/attachments`, {
           method: "POST",
           body: formData,
@@ -319,103 +487,79 @@ export default function JournalPage() {
         });
       }
       if (!r.ok) {
-        const result = await r.json().catch(() => null) as { error?: string } | null;
-        setEditImageError(result?.error ?? "메모 수정에 실패했습니다. 다시 시도해 주세요.");
+        const result = (await r.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setEditAttachmentError(
+          result?.error ?? "메모 수정에 실패했습니다. 다시 시도해 주세요.",
+        );
         return;
       }
       closeMemoDetail();
       void load();
     } catch {
-      setEditImageError("메모 수정에 실패했습니다. 네트워크 연결을 확인해 주세요.");
+      setEditAttachmentError(
+        "메모 수정에 실패했습니다. 네트워크 연결을 확인해 주세요.",
+      );
     } finally {
       setEditBusy(false);
     }
   };
 
-  const selectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+  const selectAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!files.length) return;
-
-    const invalidType = files.some((file) => !IMAGE_TYPES.includes(file.type));
-    const oversized = files.some((file) => file.size > MAX_IMAGE_SIZE);
-    const currentKeys = new Set(
-      selectedImages.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
-    );
-    const validFiles = files.filter(
-      (file) => IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE,
-    );
-    const uniqueFiles = validFiles.filter(
-      (file) => !currentKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
-    );
-    const countExceeded = selectedImages.length + uniqueFiles.length > MAX_IMAGE_COUNT;
-
-    setSelectedImages([...selectedImages, ...uniqueFiles].slice(0, MAX_IMAGE_COUNT));
-
-    if (countExceeded) {
-      setImageError(`사진은 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있어요.`);
-    } else if (invalidType) {
-      setImageError("JPEG, PNG, WebP 사진만 선택할 수 있어요.");
-    } else if (oversized) {
-      setImageError("사진은 한 장당 10MB 이하만 선택할 수 있어요.");
-    } else {
-      setImageError("");
-    }
+    if (!incoming.length) return;
+    const result = appendSelectedFiles(selectedFiles, incoming);
+    setSelectedFiles(result.files);
+    setAttachmentError(result.error);
   };
 
-  const removeSelectedImage = (target: File) => {
-    setSelectedImages((current) => current.filter((file) => file !== target));
-    setImageError("");
+  const removeSelectedFile = (target: File) => {
+    setSelectedFiles((current) => current.filter((file) => file !== target));
+    setAttachmentError("");
   };
 
-  const selectEditImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
+  const selectEditAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!files.length) return;
+    if (!incoming.length) return;
 
-    const existingCount = Math.max(
-      (viewingMemo?.attachments?.length ?? 0) - removedAttachmentIds.length,
-      0,
+    const remainingAttachments = (viewingMemo?.attachments ?? []).filter(
+      (attachment) => !removedAttachmentIds.includes(attachment.id),
     );
-    const availableCount = Math.max(MAX_IMAGE_COUNT - existingCount, 0);
-    const invalidType = files.some((file) => !IMAGE_TYPES.includes(file.type));
-    const oversized = files.some((file) => file.size > MAX_IMAGE_SIZE);
-    const currentKeys = new Set(
-      editImages.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+    const existingImageCount = remainingAttachments.filter(
+      (attachment) => attachment.media_type === "image",
+    ).length;
+    const existingVideoCount = remainingAttachments.filter(
+      (attachment) => attachment.media_type === "video",
+    ).length;
+    const result = appendSelectedFiles(
+      editFiles,
+      incoming,
+      existingImageCount,
+      existingVideoCount,
     );
-    const validFiles = files.filter(
-      (file) => IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE,
-    );
-    const uniqueFiles = validFiles.filter(
-      (file) => !currentKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
-    );
-    const countExceeded = existingCount + editImages.length + uniqueFiles.length > MAX_IMAGE_COUNT;
-
-    setEditImages([...editImages, ...uniqueFiles].slice(0, availableCount));
-
-    if (countExceeded) {
-      setEditImageError(`사진은 기존 첨부를 포함해 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있어요.`);
-    } else if (invalidType) {
-      setEditImageError("JPEG, PNG, WebP 사진만 선택할 수 있어요.");
-    } else if (oversized) {
-      setEditImageError("사진은 한 장당 10MB 이하만 선택할 수 있어요.");
-    } else {
-      setEditImageError("");
-    }
+    setEditFiles(result.files);
+    setEditAttachmentError(result.error);
   };
 
-  const removeEditImage = (target: File) => {
-    setEditImages((current) => current.filter((file) => file !== target));
-    setEditImageError("");
+  const removeEditFile = (target: File) => {
+    setEditFiles((current) => current.filter((file) => file !== target));
+    setEditAttachmentError("");
   };
 
   const removeExistingAttachment = (attachmentId: number) => {
     setRemovedAttachmentIds((current) => [...current, attachmentId]);
-    setEditImageError("");
+    setEditAttachmentError("");
   };
 
   const moveMonth = (offset: number) => {
-    const nextMonth = new Date(month.getFullYear(), month.getMonth() + offset, 1);
+    const nextMonth = new Date(
+      month.getFullYear(),
+      month.getMonth() + offset,
+      1,
+    );
     setMonth(nextMonth);
     setSelected(iso(nextMonth));
   };
@@ -428,15 +572,21 @@ export default function JournalPage() {
 
   // 달력 격자
   const firstDow = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
-  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(
+    month.getFullYear(),
+    month.getMonth() + 1,
+    0,
+  ).getDate();
   const activeFarmIds = new Set(farms.map((f) => f.farm_id));
   const visibleMemos = memos.filter((m) => activeFarmIds.has(m.farm_id));
   const memoDays = new Set(visibleMemos.map((m) => m.memo_date));
   const dayMemos = visibleMemos.filter((m) => m.memo_date === selected);
-  const filteredMemos = memoFarmFilter === "all"
-    ? visibleMemos
-    : visibleMemos.filter((m) => m.farm_id === memoFarmFilter);
-  const farmName = (id: string) => farms.find((f) => f.farm_id === id)?.name ?? id;
+  const filteredMemos =
+    memoFarmFilter === "all"
+      ? visibleMemos
+      : visibleMemos.filter((m) => m.farm_id === memoFarmFilter);
+  const farmName = (id: string) =>
+    farms.find((f) => f.farm_id === id)?.name ?? id;
   const selectedDateLabel = `${Number(selected.slice(5, 7))}월 ${Number(selected.slice(8, 10))}일`;
 
   return (
@@ -449,8 +599,12 @@ export default function JournalPage() {
       </div>
 
       <section className="mb-5">
-        <PlannedBox feature="자동 리포트 (일간·주간·월간·년간)" basis="FR-17 · 통계 엔진">
-          통계 데이터를 바탕으로 리포트가 자동 생성되어 메모와 함께 날짜별로 표시됩니다.
+        <PlannedBox
+          feature="자동 리포트 (일간·주간·월간·년간)"
+          basis="FR-17 · 통계 엔진"
+        >
+          통계 데이터를 바탕으로 리포트가 자동 생성되어 메모와 함께 날짜별로
+          표시됩니다.
         </PlannedBox>
       </section>
 
@@ -462,7 +616,9 @@ export default function JournalPage() {
               onClick={() => moveMonth(-1)}
               className="h-8 w-8 rounded-lg bg-surface text-14 font-extrabold text-gray-500"
               aria-label="이전 달"
-            >‹</button>
+            >
+              ‹
+            </button>
             <span className="text-15 font-extrabold">
               {month.getFullYear()}년 {month.getMonth() + 1}월
             </span>
@@ -470,11 +626,15 @@ export default function JournalPage() {
               onClick={() => moveMonth(1)}
               className="h-8 w-8 rounded-lg bg-surface text-14 font-extrabold text-gray-500"
               aria-label="다음 달"
-            >›</button>
+            >
+              ›
+            </button>
             <button
               onClick={moveToday}
               className="h-8 rounded-lg border border-line bg-white px-3 text-12 font-bold text-gray-600 hover:bg-surface"
-            >오늘</button>
+            >
+              오늘
+            </button>
             <span className="ml-auto flex items-center gap-1.5 text-11.5 font-semibold text-muted">
               <span className="h-1.5 w-1.5 rounded-full bg-primary" /> 메모 있음
             </span>
@@ -482,11 +642,20 @@ export default function JournalPage() {
 
           <div className="grid grid-cols-7 gap-1 text-center">
             {WEEK.map((w) => (
-              <span key={w} className="py-1 text-11.5 font-extrabold text-muted">{w}</span>
+              <span
+                key={w}
+                className="py-1 text-11.5 font-extrabold text-muted"
+              >
+                {w}
+              </span>
             ))}
-            {Array.from({ length: firstDow }).map((_, i) => <span key={`e${i}`} />)}
+            {Array.from({ length: firstDow }).map((_, i) => (
+              <span key={`e${i}`} />
+            ))}
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((d) => {
-              const date = iso(new Date(month.getFullYear(), month.getMonth(), d));
+              const date = iso(
+                new Date(month.getFullYear(), month.getMonth(), d),
+              );
               const isToday = date === iso(today);
               const isSel = date === selected;
               return (
@@ -494,15 +663,19 @@ export default function JournalPage() {
                   key={d}
                   onClick={() => setSelected(date)}
                   className={`flex h-11 flex-col items-center justify-center rounded-xl text-13.5 font-bold ${
-                    isSel ? "bg-primary text-white"
-                    : isToday ? "bg-primary-bg text-primary-dark"
-                    : "text-gray-700 hover:bg-surface"
+                    isSel
+                      ? "bg-primary text-white"
+                      : isToday
+                        ? "bg-primary-bg text-primary-dark"
+                        : "text-gray-700 hover:bg-surface"
                   }`}
                 >
                   {d}
                   <span className="mt-0.5 h-1.5">
                     {memoDays.has(date) && (
-                      <span className={`block h-1.5 w-1.5 rounded-full ${isSel ? "bg-white" : "bg-primary"}`} />
+                      <span
+                        className={`block h-1.5 w-1.5 rounded-full ${isSel ? "bg-white" : "bg-primary"}`}
+                      />
                     )}
                   </span>
                 </button>
@@ -513,7 +686,10 @@ export default function JournalPage() {
 
         {/* 선택일 일지 */}
         <Card className="flex h-full min-h-0 flex-col">
-          <SectionTitle title={`${selected} 일지`} sub={`메모 ${dayMemos.length}건`} />
+          <SectionTitle
+            title={`${selected} 일지`}
+            sub={`메모 ${dayMemos.length}건`}
+          />
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {dayMemos.map((m) => (
               <div key={m.id} className="rounded-xl bg-surface p-3.5">
@@ -521,7 +697,9 @@ export default function JournalPage() {
                   <span className="rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
                     {farmName(m.farm_id)}
                   </span>
-                  <span className="text-11.5 font-semibold text-muted">{m.author}</span>
+                  <span className="text-11.5 font-semibold text-muted">
+                    {m.author}
+                  </span>
                   <span className="text-11.5 font-semibold text-muted">
                     첨부 {m.attachment_count ?? 0}건
                   </span>
@@ -550,14 +728,21 @@ export default function JournalPage() {
       {/* 메모 작성 */}
       <section className="mb-5">
         <Card className="border border-primary/40 shadow-none">
-          <SectionTitle title={`${selectedDateLabel} 메모 작성`} sub="달력에서 날짜를 선택하면 해당 날짜로 작성돼요" />
+          <SectionTitle
+            title={`${selectedDateLabel} 메모 작성`}
+            sub="달력에서 날짜를 선택하면 해당 날짜로 작성돼요"
+          />
           {canControl(user) ? (
             <form onSubmit={save}>
-              <p className="mb-2 text-13 font-extrabold text-gray-700">대상 농장</p>
+              <p className="mb-2 text-13 font-extrabold text-gray-700">
+                대상 농장
+              </p>
               <div className="mb-3 flex flex-wrap gap-2">
                 {farms.map((f) => (
                   <button
-                    key={f.farm_id} type="button" onClick={() => setFarmId(f.farm_id)}
+                    key={f.farm_id}
+                    type="button"
+                    onClick={() => setFarmId(f.farm_id)}
                     className={`rounded-xl border px-3 py-1.5 text-12.5 ${
                       farmId === f.farm_id
                         ? "border-primary bg-primary-bg font-extrabold text-primary-dark"
@@ -570,12 +755,16 @@ export default function JournalPage() {
               </div>
               <div className="relative">
                 <textarea
-                  value={body} onChange={(e) => setBody(e.target.value)} rows={4}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={4}
                   placeholder="메모를 입력하거나 음성으로 작성하세요…"
                   className="w-full rounded-xl border border-gray-200 px-3.5 pb-14 pt-3 text-13.5 font-semibold outline-none focus:border-primary"
                 />
                 <button
-                  type="button" disabled title="음성 작성은 개발 예정입니다 (FR-28)"
+                  type="button"
+                  disabled
+                  title="음성 작성은 개발 예정입니다 (FR-28)"
                   className="absolute bottom-3 right-3 rounded-xl bg-gray-100 px-3.5 py-2 text-12.5 font-bold text-gray-400"
                 >
                   🎤 음성으로 작성
@@ -583,48 +772,64 @@ export default function JournalPage() {
               </div>
               <div className="mt-3 flex flex-wrap items-end gap-2">
                 <input
-                  ref={imageInputRef}
+                  ref={attachmentInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,.mov"
                   multiple
-                  onChange={selectImage}
+                  onChange={selectAttachment}
                   className="hidden"
                 />
                 <button
                   type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  aria-label="사진 선택"
-                  title="사진 선택"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  aria-label="사진 또는 동영상 선택"
+                  title="사진 또는 동영상 선택"
                   className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary-dark"
                 >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                  >
+                    <path
+                      d="M12 5v14M5 12h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
                   </svg>
                 </button>
-                {selectedImages.map((image) => (
-                  <SelectedImagePreview
-                    key={`${image.name}:${image.size}:${image.lastModified}`}
-                    image={image}
-                    onRemove={() => removeSelectedImage(image)}
+                {selectedFiles.map((file) => (
+                  <SelectedFilePreview
+                    key={`${file.name}:${file.size}:${file.lastModified}`}
+                    file={file}
+                    onRemove={() => removeSelectedFile(file)}
                   />
                 ))}
                 <span className="relative bottom-1">
                   <PlannedChip basis="FR-28 음성" />
                 </span>
-                {imageError && (
-                  <span className="w-full text-11.5 font-bold text-status-warningDark">{imageError}</span>
+                {attachmentError && (
+                  <span className="w-full text-11.5 font-bold text-status-warningDark">
+                    {attachmentError}
+                  </span>
                 )}
                 <div className="ml-auto flex gap-2">
                   <button
                     type="button"
-                    onClick={() => { setBody(""); clearSelectedImages(); }}
-                    disabled={!body && selectedImages.length === 0}
+                    onClick={() => {
+                      setBody("");
+                      clearSelectedFiles();
+                    }}
+                    disabled={!body && selectedFiles.length === 0}
                     className="rounded-xl bg-gray-100 px-5 py-2 text-13.5 font-extrabold text-gray-600 disabled:text-gray-400"
                   >
                     초기화
                   </button>
                   <button
-                    type="submit" disabled={busy || !body.trim()}
+                    type="submit"
+                    disabled={busy || !body.trim()}
                     className="rounded-xl bg-primary px-5 py-2 text-13.5 font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
                   >
                     {busy ? "저장 중…" : "저장"}
@@ -646,13 +851,15 @@ export default function JournalPage() {
           <SectionTitle
             title="전체 일지"
             sub={`${monthKey} · ${filteredMemos.length}건`}
-            right={(
+            right={
               <span className="inline-flex rounded-xl bg-surface p-1">
                 <button
                   type="button"
                   onClick={() => setMemoFarmFilter("all")}
                   className={`rounded-lg px-3 py-1.5 text-11.5 font-extrabold ${
-                    memoFarmFilter === "all" ? "bg-white text-gray-700 shadow-sm" : "text-muted"
+                    memoFarmFilter === "all"
+                      ? "bg-white text-gray-700 shadow-sm"
+                      : "text-muted"
                   }`}
                 >
                   전체
@@ -663,20 +870,25 @@ export default function JournalPage() {
                     type="button"
                     onClick={() => setMemoFarmFilter(f.farm_id)}
                     className={`rounded-lg px-3 py-1.5 text-11.5 font-extrabold ${
-                      memoFarmFilter === f.farm_id ? "bg-white text-gray-700 shadow-sm" : "text-muted"
+                      memoFarmFilter === f.farm_id
+                        ? "bg-white text-gray-700 shadow-sm"
+                        : "text-muted"
                     }`}
                   >
                     {f.name.split(" ")[0]}
                   </button>
                 ))}
               </span>
-            )}
+            }
           />
           <div className="space-y-2">
             {filteredMemos.map((m) => (
               <button
                 key={m.id}
-                onClick={() => { setSelected(m.memo_date); setViewingMemo(m); }}
+                onClick={() => {
+                  setSelected(m.memo_date);
+                  setViewingMemo(m);
+                }}
                 className="flex w-full items-center gap-3 rounded-xl bg-surface px-3.5 py-3 text-left hover:bg-gray-100"
               >
                 <span className="flex-none rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-12 font-extrabold text-gray-600">
@@ -686,7 +898,9 @@ export default function JournalPage() {
                   <span className="flex-none rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
                     {farmName(m.farm_id)}
                   </span>
-                  <span className="min-w-0 truncate text-13.5 font-semibold text-gray-700">{m.body}</span>
+                  <span className="min-w-0 truncate text-13.5 font-semibold text-gray-700">
+                    {m.body}
+                  </span>
                 </span>
                 <span className="flex-none text-11.5 font-semibold text-muted">
                   첨부 {m.attachment_count ?? 0}건 · {m.author}
@@ -716,8 +930,12 @@ export default function JournalPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id="memo-detail-title" className="text-16 font-extrabold">메모 전체 내용</h3>
-                <p className="mt-1 text-12.5 font-semibold text-muted">{viewingMemo.memo_date}</p>
+                <h3 id="memo-detail-title" className="text-16 font-extrabold">
+                  메모 전체 내용
+                </h3>
+                <p className="mt-1 text-12.5 font-semibold text-muted">
+                  {viewingMemo.memo_date}
+                </p>
               </div>
               <button
                 type="button"
@@ -732,9 +950,18 @@ export default function JournalPage() {
               <span className="rounded-md bg-primary-bg px-2 py-1 text-11.5 font-extrabold text-primary-dark">
                 {farmName(viewingMemo.farm_id)}
               </span>
-              <span className="text-12 font-semibold text-muted">{viewingMemo.author}</span>
               <span className="text-12 font-semibold text-muted">
-                첨부 {Math.max((viewingMemo.attachment_count ?? 0) - removedAttachmentIds.length + (editingMemoId === viewingMemo.id ? editImages.length : 0), 0)}건
+                {viewingMemo.author}
+              </span>
+              <span className="text-12 font-semibold text-muted">
+                첨부{" "}
+                {Math.max(
+                  (viewingMemo.attachment_count ?? 0) -
+                    removedAttachmentIds.length +
+                    (editingMemoId === viewingMemo.id ? editFiles.length : 0),
+                  0,
+                )}
+                건
               </span>
             </div>
             {editingMemoId === viewingMemo.id ? (
@@ -749,40 +976,54 @@ export default function JournalPage() {
                 <div className="mt-3 flex items-center gap-3">
                   <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 pr-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <input
-                      ref={editImageInputRef}
+                      ref={editAttachmentInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,.mov"
                       multiple
-                      onChange={selectEditImage}
+                      onChange={selectEditAttachment}
                       className="hidden"
                     />
                     <button
                       type="button"
-                      onClick={() => editImageInputRef.current?.click()}
-                      disabled={(viewingMemo.attachments?.length ?? 0) - removedAttachmentIds.length + editImages.length >= MAX_IMAGE_COUNT}
-                      aria-label="사진 추가"
-                      title="사진 추가"
-                      className="flex h-12 w-12 flex-none items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => editAttachmentInputRef.current?.click()}
+                      aria-label="사진 또는 동영상 추가"
+                      title="사진 또는 동영상 추가"
+                      className="flex h-12 w-12 flex-none items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary-dark"
                     >
-                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                      >
+                        <path
+                          d="M12 5v14M5 12h14"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
                       </svg>
                     </button>
                     {viewingMemo.attachments
-                      .filter((attachment) => !removedAttachmentIds.includes(attachment.id))
+                      .filter(
+                        (attachment) =>
+                          !removedAttachmentIds.includes(attachment.id),
+                      )
                       .map((attachment, index) => (
                         <MemoAttachmentPreview
                           key={attachment.id}
                           attachment={attachment}
                           index={index}
-                          onRemove={() => removeExistingAttachment(attachment.id)}
+                          onRemove={() =>
+                            removeExistingAttachment(attachment.id)
+                          }
                         />
                       ))}
-                    {editImages.map((image) => (
-                      <SelectedImagePreview
-                        key={`edit-${image.name}:${image.size}:${image.lastModified}`}
-                        image={image}
-                        onRemove={() => removeEditImage(image)}
+                    {editFiles.map((file) => (
+                      <SelectedFilePreview
+                        key={`edit-${file.name}:${file.size}:${file.lastModified}`}
+                        file={file}
+                        onRemove={() => removeEditFile(file)}
                       />
                     ))}
                   </div>
@@ -805,8 +1046,10 @@ export default function JournalPage() {
                     </button>
                   </div>
                 </div>
-                {editImageError && (
-                  <p className="mt-2 text-11.5 font-bold text-status-warningDark">{editImageError}</p>
+                {editAttachmentError && (
+                  <p className="mt-2 text-11.5 font-bold text-status-warningDark">
+                    {editAttachmentError}
+                  </p>
                 )}
               </div>
             ) : (
@@ -814,35 +1057,42 @@ export default function JournalPage() {
                 {viewingMemo.body}
               </p>
             )}
-            {editingMemoId !== viewingMemo.id && (viewingMemo.attachments ?? []).length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {viewingMemo.attachments.map((attachment, index) => (
-                  <MemoAttachmentPreview
-                    key={attachment.id}
-                    attachment={attachment}
-                    index={index}
-                  />
-                ))}
-              </div>
-            )}
-            {(user?.role === "admin" || user?.email === viewingMemo.author_email) && editingMemoId !== viewingMemo.id && (
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => startEdit(viewingMemo)}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
-                >
-                  수정
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { const memoId = viewingMemo.id; closeMemoDetail(); setDeletingMemoId(memoId); }}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
-                >
-                  삭제
-                </button>
-              </div>
-            )}
+            {editingMemoId !== viewingMemo.id &&
+              (viewingMemo.attachments ?? []).length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {viewingMemo.attachments.map((attachment, index) => (
+                    <MemoAttachmentPreview
+                      key={attachment.id}
+                      attachment={attachment}
+                      index={index}
+                    />
+                  ))}
+                </div>
+              )}
+            {(user?.role === "admin" ||
+              user?.email === viewingMemo.author_email) &&
+              editingMemoId !== viewingMemo.id && (
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(viewingMemo)}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const memoId = viewingMemo.id;
+                      closeMemoDetail();
+                      setDeletingMemoId(memoId);
+                    }}
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
+                  >
+                    삭제
+                  </button>
+                </div>
+              )}
           </div>
         </div>
       )}
@@ -850,7 +1100,9 @@ export default function JournalPage() {
       {deletingMemoId !== null && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => { if (!deleteBusy) setDeletingMemoId(null); }}
+          onClick={() => {
+            if (!deleteBusy) setDeletingMemoId(null);
+          }}
         >
           <div
             role="dialog"
@@ -859,7 +1111,9 @@ export default function JournalPage() {
             className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="delete-memo-title" className="text-16 font-extrabold">삭제 확인</h3>
+            <h3 id="delete-memo-title" className="text-16 font-extrabold">
+              삭제 확인
+            </h3>
             <p className="mt-3 text-13.5 font-semibold text-gray-700">
               이 메모를 삭제할까요? 삭제한 메모는 복구할 수 없어요.
             </p>

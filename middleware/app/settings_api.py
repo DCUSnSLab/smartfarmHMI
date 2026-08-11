@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
 from middleware.app.weather import collect_farm_weather, validate_coordinates
-from shared.schemas.topics import internal_topic, topic
+from shared.schemas.topics import STREAMS, internal_topic, topic
 
 router = APIRouter(prefix="/internal")
 
@@ -246,13 +246,11 @@ async def deactivate_farm(farm_id: str):
 # api-bridge 는 내부 스트림을 다시 읽어 화면에. 소유자를 잃은 시점이 여기라
 # 여기서 지운다. 빈 payload + retain 이 삭제 신호다.
 #
-# 두 목록은 짝이다. 한쪽만 지우면 되살아나는 자리가 옮겨갈 뿐이다.
-# 발행처가 늘면 여기도 같이 늘려야 한다 — 토픽 문자열이 발행 지점에 흩어져 있어
-# 자동으로 따라오지 않는다.
+# 지울 곳은 두 군데다. 한쪽만 지우면 되살아나는 자리가 옮겨갈 뿐이다.
+# 내부 스트림은 topics.STREAMS 를 그대로 쓴다 — 새 스트림이 등록되면 지울 목록도
+# 같이 따라온다. 엣지 쪽 종류는 여기서 고른다: MESSAGE_TYPES 전체가 아니라
+# retained 로 발행되는 것만이다 (command·ack·heartbeat 은 retain 하지 않는다).
 _RETAINED_TYPES = ("birth", "death", "telemetry", "status", "layout", "stop_state")
-_RETAINED_STREAMS = (
-    "environment", "robot", "connection", "layout", "alert", "command", "stop",
-)
 
 
 def _clear_retained(farm_id: str, devices) -> int:
@@ -267,7 +265,7 @@ def _clear_retained(farm_id: str, devices) -> int:
             count += 1
     # 내부 스트림은 장치가 아니라 농장 단위다 (farmon-internal/v1/{farm}/{stream}).
     # 장치가 하나도 없어도 지울 것이 남는다.
-    for stream in _RETAINED_STREAMS:
+    for stream in STREAMS:
         publisher.publish_raw(internal_topic(farm_id, stream), "", retain=True)
         count += 1
     return count

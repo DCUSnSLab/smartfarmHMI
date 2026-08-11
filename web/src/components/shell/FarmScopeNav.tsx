@@ -46,7 +46,7 @@ export function FarmScopeNav() {
         label: farm.name,
         active: currentFarmId === farm.farm_id,
         lead: status
-          ? <StatusMark sev={status.sev} label={`${status.label} · ${status.reasons.join(" · ")}`} />
+          ? <StatusMark sev={status.sev} label={[status.label, ...status.reasons.map((r) => r.text)].join(" · ")} />
           : <span aria-hidden="true" className="h-2 w-2 flex-none rounded-full bg-gray-200" />,
         trail: farm.farm_type === "open_field" ? (
           <span className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-10.5 font-extrabold text-blue-600">

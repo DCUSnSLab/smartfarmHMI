@@ -167,6 +167,17 @@ async def farm_snapshot(farm_id: str):
         if farm is None:
             raise HTTPException(404, f"unknown farm: {farm_id}")
 
+        # 표시 이름을 따로 모아 붙인다 — 화면이 사유를 적을 때 device_id 를 그대로 쓰면
+        # 「co2-a 값 두절」처럼 사람이 못 알아보는 문구가 된다 (목록은 「CO₂센서」로 부른다).
+        # 조인 대신 map 을 쓰는 이유: not_soft_deleted 가 device_meta 를 참조하는
+        # 상관 서브쿼리라, 같은 표를 FROM 에 넣으면 자동 상관으로 서브쿼리가 비어 버린다.
+        names = {
+            r["device_id"]: r["name"]
+            for r in (await conn.execute(
+                select(m.device_meta.c.device_id, m.device_meta.c.name)
+                .where(m.device_meta.c.farm_id == farm_id)
+            )).mappings().all()
+        }
         sensors = (
             (await conn.execute(
                 select(m.sensor).where(m.sensor.c.farm_id == farm_id)
@@ -254,7 +265,8 @@ async def farm_snapshot(farm_id: str):
         "farm": {"farm_id": farm["farm_id"], "name": farm["name"],
                  "farm_type": farm["farm_type"], "crop": farm["crop"]},
         "sensors": [
-            {"sensor_id": s["sensor_id"], "sensor_type": s["sensor_type"], "unit": s["unit"],
+            {"sensor_id": s["sensor_id"], "name": names.get(s["sensor_id"]),
+             "sensor_type": s["sensor_type"], "unit": s["unit"],
              "location": s["location"], "value": s["last_value"],
              "ts": s["last_ts"].isoformat() if s["last_ts"] else None,
              "sensor_state": s["sensor_state"]}
@@ -268,7 +280,7 @@ async def farm_snapshot(farm_id: str):
             for r in robots
         ],
         "connections": [
-            {"device_id": c["device_id"], "state": c["state"],
+            {"device_id": c["device_id"], "name": names.get(c["device_id"]), "state": c["state"],
              "device_type": c["device_type"],
              "last_received_at": c["last_received_at"].isoformat()
              if c["last_received_at"] else None}

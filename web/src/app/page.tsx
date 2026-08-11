@@ -70,7 +70,7 @@ function FarmCard({
           )}
         </span>
         <span
-          title={status.reasons.join(" · ")}
+          title={status.reasons.map((r) => r.text).join(" · ") || undefined}
           className={`rounded-lg px-2 py-0.5 text-11.5 font-extrabold ${s.bg} ${s.text}`}
         >
           {status.label}
@@ -154,7 +154,7 @@ export default function Dashboard() {
         <span className="text-13.5 font-bold text-muted">스마트팜 {farms.length}곳</span>
         <span className="text-13 font-semibold text-muted">{dateLabel}</span>
         <span className="ml-auto flex items-center gap-1.5 text-12.5 font-semibold text-muted">
-          <span className={`h-2 w-2 rounded-full ${wsOpen ? "bg-status-ok" : "bg-status-warning"}`} />
+          <StatusMark sev={wsOpen ? "ok" : "warning"} label={wsOpen ? "실시간 연결됨" : "실시간 연결 끊김"} />
           {wsOpen ? "실시간 연결됨" : "실시간 연결 끊김"}
         </span>
       </div>
@@ -230,7 +230,7 @@ export default function Dashboard() {
                 key={a.id} href={a.deeplink?.startsWith("/") ? a.deeplink : "/alerts"}
                 className={`flex items-center gap-2.5 border-b border-gray-50 py-2.5 last:border-0 ${a.acked_at ? "opacity-50" : ""}`}
               >
-                <span className={`h-2 w-2 flex-none rounded-full ${SEV_STYLE[a.severity]?.dot}`} />
+                <StatusMark sev={a.severity} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-13.5 font-bold">
                     {a.farm_id && <span className="mr-1.5 text-muted">{a.farm_id}</span>}

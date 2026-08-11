@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CONTROL_ICON, useAnchoredPanel, useLightDismiss } from "@/components/ui";
+import { CONTROL_ICON, StatusMark, useAnchoredPanel, useLightDismiss } from "@/components/ui";
 import { AlertItem, ackAlert, ackAllAlerts, timeAgo } from "@/lib/monitor";
 
 const SEV: Record<string, { label: string; dot: string; text: string }> = {
@@ -129,7 +129,7 @@ export function AlertPanel({
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className={`h-2 w-2 flex-none rounded-full ${SEV[a.severity].dot}`} />
+                  <StatusMark sev={a.severity} />
                   <span className="min-w-0 flex-1 truncate text-13.5 font-bold">
                     {a.title}
                   </span>
@@ -207,7 +207,7 @@ export function AlertList({
               a.acked_at ? "opacity-50" : ""
             }`}
           >
-            <span className={`h-2.5 w-2.5 flex-none rounded-full ${SEV[a.severity].dot}`} />
+            <StatusMark sev={a.severity} />
             <span className="min-w-0 flex-1">
               <span className="block text-14 font-bold">
                 {showFarm && a.farm_id && (

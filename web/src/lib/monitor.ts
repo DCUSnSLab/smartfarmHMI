@@ -6,11 +6,13 @@
  * 통신 상태·마지막 수신 시각을 함께 유지한다 (FR-37, 페일세이프 ③).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
 
 export interface SensorValue {
   sensor_id: string;
+  /** 장비 등록의 표시 이름 (미등록이면 없음) */
+  name?: string | null;
   sensor_type: string;
   unit: string;
   location?: string | null;
@@ -211,11 +213,24 @@ export function useMonitor(scope: string) {
   const [commands, setCommands] = useState<Record<string, CommandState>>({});
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
   const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
-  const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
+
+  // 통신·정지 변화가 실시간으로 오면 값이 증가한다. 전 농장 스냅샷(15초 폴링)을 쓰는
+  // 화면들이 이 값을 보고 즉시 다시 읽는다 — 안 그러면 상세 화면의 하드웨어 목록은
+  // 바로 바뀌는데 농장 점·헤더만 최대 15초 늦게 따라온다.
+  const [liveTick, setLiveTick] = useState(0);
+  // 직전에 받은 통신 상태 — 전 농장분을 스코프와 무관하게 기억한다.
+  // conns 를 쓰면 안 된다: 전체 스코프에서는 농장별 스냅샷을 받지 않아 늘 비어 있고,
+  // 그러면 「이전 값 없음 = 바뀜」이 되어 하트비트마다 틱이 올라간다.
+  const lastConnState = useRef<Record<string, string>>({});
+
+  // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
+  // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
+  const farmName = farms.find((f) => f.farm_id === scope)?.name ?? "";
 
   // 이 스코프의 스냅샷이 도착했는가 — 「아직 안 받음」과 「데이터 없음」을 구분한다
   const [snapshotReady, setSnapshotReady] = useState(false);
+
 
   // ── 초기 로드 (REST) ──
   const refreshFarms = useCallback(async () => {
@@ -228,7 +243,6 @@ export function useMonitor(scope: string) {
     if (!res.ok) return;
     const snap = await res.json();
     setSnapshotReady(true);
-    setFarmName(snap.farm.name);
     setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
     setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
     setConns(Object.fromEntries(snap.connections.map((c: ConnState) => [c.device_id, c])));
@@ -298,6 +312,7 @@ export function useMonitor(scope: string) {
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
         }));
       } else if (msg.stream === "stop") {
+          setLiveTick((n) => n + 1);
         // 원격/물리 정지는 독립 표시 — 동시 성립 가능 (non-functional §2.4)
         if (d.stop_kind === "physical_estop") {
           // 농장별로 독립 성립하므로 단일 값으로 덮어쓸 수 없다 — 한 농장이 해제되면
@@ -330,6 +345,14 @@ export function useMonitor(scope: string) {
           [d.command_id]: { issued_at: msg.timestamp, ...prev[d.command_id], ...d },
         }));
       } else if (msg.stream === "connection") {
+        // 하트비트는 상태가 그대로여도 매 주기 온다. 그때마다 틱을 올리면 전 농장
+        // 스냅샷을 10초마다 다시 읽어, 줄이려던 폴링보다 되레 늘어난다.
+        // 값이 바뀐 순간과, 처음 본 장치가 정상이 아닌 경우에만 올린다.
+        const before = lastConnState.current[d.device_id];
+        lastConnState.current[d.device_id] = d.state;
+        if (d.cascade || (before === undefined ? d.state !== "online" : before !== d.state)) {
+          setLiveTick((n) => n + 1);
+        }
         setConns((prev) => {
           if (d.cascade) {
             // 엣지 단절 — 농장 전체 오프라인 (페일세이프 ②의 화면 반영)
@@ -374,7 +397,7 @@ export function useMonitor(scope: string) {
   }, [scope, loadStops]);
 
   return {
-    farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
+    farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen, liveTick,
     snapshotReady,
   };
 }

@@ -32,25 +32,32 @@ export interface FarmSnapshot {
   farm: { farm_id: string; name: string; farm_type: string; crop: string | null };
   sensors: SensorValue[];
   robots: RobotValue[];
-  connections: (ConnState & { device_type?: string | null })[];
+  connections: (ConnState & { device_type?: string | null; name?: string | null })[];
   tanks: TankInfo[];
   stations: StationInfo[];
   rack: { slots?: number; pallets?: number; stored?: number; moving?: number; at_station?: number };
 }
 
-/** 헤더 한 줄에 들어가야 한다 — 셋까지 이름을 적고 나머지는 「외 N」 */
-function nameList(ids: string[]): string {
-  return ids.length <= 3
-    ? ids.join(", ")
-    : `${ids.slice(0, 3).join(", ")} 외 ${ids.length - 3}`;
+/** 한 줄에 들어가야 한다 — 셋까지 이름을 적고 나머지는 「외 N」.
+ *  쉼표는 이 목록에서만 쓴다 — 사유 문구에 넣으면 장치 이름 구분과 섞여 읽힌다. */
+function nameList(names: string[]): string {
+  return names.length <= 3
+    ? names.join(", ")
+    : `${names.slice(0, 3).join(", ")} 외 ${names.length - 3}`;
+}
+
+/** 사유 한 건 — 화면은 이걸 칩 하나로 그린다 (색은 sev) */
+export interface FarmReason {
+  sev: "caution" | "warning";
+  text: string;
 }
 
 export interface FarmStatus {
   sev: "ok" | "caution" | "warning";
   /** 점 옆 배지 문구 */
   label: string;
-  /** 왜 그 색인지 — 상세 화면의 상태 요약이 그대로 읽어 준다 */
-  reasons: string[];
+  /** 왜 그 색인지 — 상세 화면의 상태 요약이 칩으로 나열한다 */
+  reasons: FarmReason[];
 }
 
 /**
@@ -65,41 +72,48 @@ export interface FarmStatus {
  */
 export function farmStatus(snap: FarmSnapshot, stops: StopState): FarmStatus {
   const farmId = snap.farm.farm_id;
-  const reasons: string[] = [];
+  const reasons: FarmReason[] = [];
+  let warn = false;
+  let caution = false;
 
-  // 정지가 최우선 — 다른 축이 모두 정상이어도 현장은 멈춰 있다
-  if (stops.remote) reasons.push("원격 전체 정지 발동 중");
+  // ── 정지 ──
+  if (stops.remote) reasons.push({ sev: "warning", text: "원격 전체정지 발동 중" });
   const estop = stops.physical_estop;
   // farm_ids 가 없으면 어느 현장인지 알 수 없다 — 안전 쪽으로 본다 (controlBlocked 와 같은 규칙)
-  if (estop && (estop.farm_ids?.includes(farmId) ?? true)) reasons.push("물리 비상정지 발동 중");
-  if (reasons.length) return { sev: "warning", label: "정지 중", reasons };
+  if (estop && (estop.farm_ids?.includes(farmId) ?? true)) {
+    reasons.push({ sev: "warning", text: "물리 비상정지 발동 중" });
+  }
+  const stopped = reasons.length > 0;
 
+  // ── 통신 ──
+  // 장치와 센서를 한 목록으로 합친다. 상태 이름은 하드웨어 목록과 같은 말을 쓴다
+  // (정상 · 응답 지연 · 오프라인) — 같은 장치가 화면마다 다른 말로 불리면 안 된다.
+  // 엣지를 맨 앞에 두어 원인이 먼저 읽히게 한다 (뒤의 장치는 대개 그 결과다).
   const isEdge = (c: { device_type?: string | null; device_id: string }) =>
     c.device_type === "edge" || c.device_id.startsWith("edge");
-  const edgeDown = snap.connections.find((c) => isEdge(c) && c.state !== "online");
-  // 엣지가 끊기면 그 뒤의 모든 값이 함께 멎는다. 개수를 세면 자기 통신 레코드가 있는
-  // 장치(엣지·로봇·생육기)만 잡혀, 센서·탱크까지 오프라인으로 나오는 하드웨어 목록과
-  // 숫자가 어긋난다. 파생 결과를 세는 대신 원인 하나를 말한다.
-  if (edgeDown) {
-    return edgeDown.state === "offline"
-      ? { sev: "warning", label: "경고", reasons: ["엣지 통신 단절, 농장 데이터 수신 중단"] }
-      : { sev: "caution", label: "주의", reasons: ["엣지 응답 지연, 값 갱신 느려짐"] };
-  }
+  const byEdgeFirst = [...snap.connections].sort(
+    (a, b) => Number(isEdge(b)) - Number(isEdge(a)),
+  );
 
-  const offline = snap.connections.filter((c) => c.state === "offline");
-  const degraded = snap.connections.filter((c) => c.state === "degraded");
-  const staleSensors = snap.sensors.filter((s) => sensorLiveness(s.ts) === "offline");
-  const lateSensors = snap.sensors.filter((s) => sensorLiveness(s.ts) === "degraded");
+  // 탱크는 빼둔다 — 발행 주체가 아니라 수위계 센서가 값의 출처이고, 그 센서는
+  // 아래 목록에 이미 들어 있다. 둘 다 세면 같은 고장이 두 번 잡힌다
+  // (하드웨어 목록의 탱크 행도 통신이 아니라 잔량을 보여준다).
+  const pick = (want: "offline" | "degraded") => [
+    ...byEdgeFirst.filter((c) => c.state === want).map((c) => c.name || c.device_id),
+    ...snap.sensors.filter((s) => sensorLiveness(s.ts) === want).map((s) => s.name || s.sensor_id),
+  ];
+  const offline = pick("offline");
+  const degraded = pick("degraded");
+  if (offline.length) { reasons.push({ sev: "warning", text: `오프라인: ${nameList(offline)}` }); warn = true; }
+  if (degraded.length) { reasons.push({ sev: "caution", text: `응답 지연: ${nameList(degraded)}` }); caution = true; }
 
-  if (offline.length) reasons.push(`통신 단절: ${nameList(offline.map((c) => c.device_id))}`);
-  if (staleSensors.length) reasons.push(`값 두절: ${nameList(staleSensors.map((s) => s.sensor_id))}`);
-  if (reasons.length) return { sev: "warning", label: "경고", reasons };
-
-  if (degraded.length) reasons.push(`응답 지연: ${nameList(degraded.map((c) => c.device_id))}`);
-  if (lateSensors.length) reasons.push(`수신 지연: ${nameList(lateSensors.map((s) => s.sensor_id))}`);
-  if (reasons.length) return { sev: "caution", label: "주의", reasons };
-
-  return { sev: "ok", label: "정상", reasons: ["정지·통신·센서 모두 정상"] };
+  // 색은 가장 높은 단계를 따르되, 사유는 지금 걸린 것을 모두 남긴다. 정지는 제어·작업을
+  // 멈출 뿐 통신을 끊지 않는다 — 센서를 손보려고 정지시킨 사람은 정지 중에도 그 센서가
+  // 붙었는지 봐야 하고, 정지를 풀어야 비로소 알 수 있게 되면 안 된다.
+  if (stopped) return { sev: "warning", label: "정지 중", reasons };
+  if (warn) return { sev: "warning", label: "경고", reasons };
+  if (caution) return { sev: "caution", label: "주의", reasons };
+  return { sev: "ok", label: "정상", reasons: [] };
 }
 
 /**
@@ -116,7 +130,7 @@ export const showsFleetNav = (pathname: string) =>
  * farmIds 가 비면 요청을 건너뛰고 직전 값을 유지한다 — 쓰지 않는 화면에서 폴링을
  * 멈추되, 되돌아왔을 때 빈 카드가 보이지 않게 하기 위한 것이다.
  */
-export function useFleetSnapshots(farmIds: string[], intervalMs = 15000) {
+export function useFleetSnapshots(farmIds: string[], liveTick = 0, intervalMs = 15000) {
   const [snaps, setSnaps] = useState<Record<string, FarmSnapshot>>({});
   const key = farmIds.join(",");
 
@@ -138,6 +152,13 @@ export function useFleetSnapshots(farmIds: string[], intervalMs = 15000) {
     const t = setInterval(() => void load(), intervalMs);
     return () => clearInterval(t);
   }, [key, load, intervalMs]);
+
+  // 통신·정지 변화가 실시간으로 오면 다음 폴링을 기다리지 않는다. 현장에서 엣지가
+  // 끊긴 순간 농장 점과 헤더가 같이 바뀌어야 한다 (새로고침 없이).
+  useEffect(() => {
+    if (!key || !liveTick) return;
+    void load();
+  }, [liveTick, key, load]);
 
   return snaps;
 }

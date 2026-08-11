@@ -10,13 +10,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Card, CONN_STYLE, Gauge, GO_LINK, SectionTitle, StatusDot, StatusMark,
-  SENSOR_META, SEV_STYLE, STATION_STATE, TANK_LABEL,
+  SENSOR_META, SEV_STYLE, STATION_STATE, TANK_LABEL, TANK_LOW_PCT, tankBadge,
 } from "@/components/ui";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
 import { farmStatus } from "@/lib/fleet";
-import { deviceLiveness, timeAgo } from "@/lib/monitor";
+import { controlBlocked, deviceLiveness, sensorLiveness, timeAgo, type SensorValue } from "@/lib/monitor";
 import {
   isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
   uvIndexLabel, weatherConditionLabel, weatherIcon,
@@ -26,33 +26,32 @@ import {
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
  * "자동 생성" 라벨을 붙여 사람이 쓴 문장과 구분한다 (FR-30 비고).
  */
-function useSummary(): { text: string; issues: string[]; ready: boolean } {
-  const { sensors, conns, robots, snapshotReady } = useFarmData();
-  const issues: string[] = [];
+function useSummary(farmId: string): { text: string; ready: boolean } {
+  const { sensors, conns, robots, stops, snapshotReady } = useFarmData();
 
-  const offline = Object.values(conns).filter((c) => c.state === "offline");
-  const degraded = Object.values(conns).filter((c) => c.state === "degraded");
-  if (offline.length) issues.push(`${offline.map((c) => c.device_id).join(", ")} 통신 단절`);
-  if (degraded.length) issues.push(`${degraded.map((c) => c.device_id).join(", ")} 응답 지연`);
-
-  const lowBattery = Object.values(robots).filter((r) => (r.battery_pct ?? 100) < 30);
-  if (lowBattery.length) issues.push(`${lowBattery.map((r) => r.device_id).join(", ")} 배터리 부족`);
-
-  const temp = Object.values(sensors).find((s) => s.sensor_type === "temperature");
-  const hum = Object.values(sensors).find((s) => s.sensor_type === "humidity");
+  // 값과 상태는 살아 있는 장치의 것만 말한다. 마지막으로 받은 값을 그대로 읽으면
+  // 통신이 끊긴 뒤에도 「25.0℃ · 로봇 1대 작업 중」이 현재형으로 남는다 —
+  // 하드웨어 목록은 전부 오프라인인데 요약만 정상인 것처럼 보인다.
+  const fresh = (s: SensorValue | undefined) =>
+    s && s.value != null && sensorLiveness(s.ts) === "online" ? s : undefined;
+  const temp = fresh(Object.values(sensors).find((s) => s.sensor_type === "temperature"));
+  const hum = fresh(Object.values(sensors).find((s) => s.sensor_type === "humidity"));
   const envPart =
     temp?.value != null && hum?.value != null
       ? `내부 ${temp.value.toFixed(1)}℃ · 습도 ${hum.value.toFixed(0)}%`
-      : "환경 데이터 수신 대기";
+      : "환경 데이터 수신 중단";
 
-  const working = Object.values(robots).filter((r) => r.phase === "working").length;
-  const robotPart = working ? `로봇 ${working}대 작업 중` : "로봇 대기 중";
+  const all = Object.values(robots);
+  const live = all.filter((r) => conns[r.device_id]?.state === "online");
+  const working = live.filter((r) => r.phase === "working").length;
+  const robotPart = controlBlocked(stops, farmId)
+    ? "로봇 정지 중"
+    : all.length === 0 ? "등록된 로봇 없음"
+    : live.length === 0 ? "로봇 상태 확인 불가"
+    : working ? `로봇 ${working}대 작업 중` : "로봇 대기 중";
 
   return {
-    text: issues.length
-      ? `${envPart} · ${robotPart} · 확인 필요: ${issues.join(", ")}`
-      : `${envPart} · ${robotPart} · 특이사항 없음`,
-    issues,
+    text: `${envPart} · ${robotPart}`,
     // 전체 스코프에서는 농장별 센서를 받지 않아, 상세 진입 직후 sensors 가 비어 있다
     ready: snapshotReady,
   };
@@ -189,7 +188,7 @@ export default function StatusTab() {
   const status = snap ? farmStatus(snap, stops) : null;
   const ranges = useRanges(farmId);
   const devices = useDevices(farmId);
-  const summary = useSummary();
+  const summary = useSummary(farmId);
 
   const envSensors = Object.values(sensors).filter((s) => s.sensor_type !== "water_level");
   const byType = (t: string) => devices.filter((d) => d.device_type === t);
@@ -213,26 +212,48 @@ export default function StatusTab() {
           ) : (
             <p aria-hidden="true" className="h-6 w-3/4 animate-pulse rounded bg-gray-100" />
           )}
-          {summary.ready && summary.issues.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {summary.issues.map((i) => (
-                <span key={i} className="rounded-lg bg-status-caution/10 px-2.5 py-1 text-12 font-bold text-status-cautionDark">
-                  {i}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* 농장 이름 앞 점이 왜 그 색인지 — 판정은 화면 세 곳이 공유한다 (fleet.farmStatus) */}
-          {status && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-surface px-3 py-2.5">
-              {/* 글자 첫 줄 높이에 맞춰 가운데 정렬 (leading-relaxed 기준 20px) */}
-              <span className="flex h-5 flex-none items-center">
-                <StatusMark sev={status.sev} label={status.label} />
-              </span>
-              <p className="text-12.5 font-semibold leading-relaxed text-gray-700">
-                <span className={`font-extrabold ${SEV_STYLE[status.sev].text}`}>{status.label}</span>
-                {" · "}{status.reasons.join(" · ")}
-              </p>
+          {/* 심각도별로 한 줄씩 — 지금 걸린 이슈를 등급별로 모아 보여준다.
+              정지·엣지 문제가 센서 문제를 가리면 안 된다 (고치는 사람도 시점도 다르다) */}
+          {summary.ready && (
+            <div className="mt-3 space-y-1.5">
+              {(["warning", "caution"] as const).map((sev) => {
+                const hit = status?.reasons.filter((r) => r.sev === sev) ?? [];
+                if (!hit.length) return null;
+                return (
+                  // 등급은 고정폭 칸, 이슈는 그 오른쪽에서만 줄바꿈한다 — 한 컨테이너에
+                  // 나란히 두면 넘칠 때 둘째 줄이 등급 아래(맨 왼쪽)부터 시작한다
+                  <div key={sev} className="flex items-start gap-1.5">
+                    <span className={`inline-flex w-14 flex-none items-center gap-1.5 py-1 text-12 font-extrabold ${SEV_STYLE[sev].text}`}>
+                      <StatusMark sev={sev} />
+                      {SEV_STYLE[sev].label}
+                    </span>
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
+                      {hit.map((reason) => (
+                        <span
+                          key={reason.text}
+                          className={`rounded-lg px-2.5 py-1 text-12 font-bold ${SEV_STYLE[sev].bg} ${SEV_STYLE[sev].text}`}
+                        >
+                          {reason.text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {status && status.reasons.length === 0 && (
+                <div className="flex items-center gap-1.5 text-12 font-bold text-primary-dark">
+                  <StatusMark sev="ok" />
+                  정상 · 정지·통신·센서 모두 이상 없음
+                </div>
+              )}
+              {!status && (
+                <div className="flex items-center gap-1.5 text-12 font-bold text-muted">
+                  <span aria-hidden="true" className="inline-flex h-3 w-3 flex-none items-center justify-center">
+                    <span className="h-2 w-2 rounded-full bg-gray-300" />
+                  </span>
+                  확인 중 · 농장 상태를 아직 받지 못했습니다
+                </div>
+              )}
             </div>
           )}
           <p className="mt-3 text-11.5 font-semibold text-muted">
@@ -283,12 +304,18 @@ export default function StatusTab() {
                       const station = type === "station"
                         ? snap?.stations.find((s) => s.station_id === d.device_id)
                         : undefined;
+                      const tank = type === "tank"
+                        ? snap?.tanks.find((t) => t.device_id === d.device_id)
+                        : undefined;
                       const live = deviceLiveness(
                         d.device_id, d.device_type, conns, sensors,
                         d.detail?.parent_device_id,
                       );
                       const badge = station
                         ? STATION_STATE[station.state] ?? STATION_STATE.idle
+                        // 탱크는 발행 주체가 아니라 통신 축이 아니다 — 잔량을 보여준다
+                        : type === "tank"
+                          ? tankBadge(tank?.level_pct, live.state === "unmonitored" ? "offline" : live.state)
                         // 등록은 됐는데 한 번도 값이 오지 않은 장치
                         : live.state === "unmonitored"
                           ? { label: "데이터 없음", sev: "warning" }
@@ -372,7 +399,7 @@ export default function StatusTab() {
                     <span className="text-12 font-bold text-muted">%</span>
                   </span>
                 </div>
-                <Gauge value={t.level_pct} compact />
+                <Gauge value={t.level_pct} okMin={TANK_LOW_PCT} okMax={100} compact />
                 <div className="mt-1.5 text-11.5 font-semibold text-muted">
                   {t.remain_l != null ? `약 ${t.remain_l}L` : "—"}
                   {t.days_left != null && ` · ${t.days_left}일분`}

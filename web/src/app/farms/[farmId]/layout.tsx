@@ -40,7 +40,11 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
           <span className="inline-flex items-center gap-1.5 text-12.5 font-bold">
             <StatusMark sev={status.sev} label={status.label} />
             <span className={SEV_STYLE[status.sev].text}>{status.label}</span>
-            <span className="font-semibold text-muted">{status.reasons.join(" · ")}</span>
+            {/* 헤더는 한 줄이라 첫 사유만 — 전체는 상태 탭의 요약 카드가 보여준다 */}
+            <span className="font-semibold text-muted">
+              {status.reasons[0]?.text}
+              {status.reasons.length > 1 && ` 외 ${status.reasons.length - 1}건`}
+            </span>
           </span>
         )}
       </div>

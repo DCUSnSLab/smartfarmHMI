@@ -21,6 +21,12 @@ STREAMS = (
     "environment", "robot", "connection", "layout", "alert", "command", "stop",
 )
 
+# 서버 자신의 생존을 나르는 자리 — farm_id 칸에 들어가지만 농장이 아니다.
+# 밑줄로 시작해 실제 farm_id 와 겹치지 않고, 농장을 접을 때 함께 지워지지도
+# 않아야 하므로 STREAMS 와 목록을 나눈다.
+SYSTEM_SCOPE = "_system"
+SYSTEM_STREAMS = ("health",)
+
 
 class ParsedTopic(NamedTuple):
     farm_id: str
@@ -41,12 +47,10 @@ def parse_topic(value: str) -> ParsedTopic | None:
 
 
 def internal_topic(farm_id: str, stream: str) -> str:
-    if stream not in STREAMS:
+    allowed = SYSTEM_STREAMS if farm_id == SYSTEM_SCOPE else STREAMS
+    if stream not in allowed:
         raise ValueError(f"등록되지 않은 내부 스트림: {stream!r} — topics.STREAMS 에 추가할 것")
     return f"{INTERNAL_PREFIX}/{farm_id}/{stream}"
 
 
-# 서버 자신의 생존을 나르는 자리 — farm_id 자리에 들어가지만 농장이 아니다.
-# 밑줄로 시작해 실제 farm_id 와 겹치지 않는다.
-SYSTEM_SCOPE = "_system"
-HEALTH_TOPIC = f"{INTERNAL_PREFIX}/{SYSTEM_SCOPE}/health"
+HEALTH_TOPIC = internal_topic(SYSTEM_SCOPE, "health")

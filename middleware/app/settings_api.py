@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func as sa_func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
@@ -120,11 +120,17 @@ async def _create_device(conn, farm_id: str, d: DeviceUpsert) -> int:
             farm_id=farm_id, device_id=d.device_id, device_type=d.device_type,
             name=d.name, model=d.model, location=d.location, registered_by=d.registered_by,
         )
-        .on_conflict_do_nothing(constraint="uq_device_meta_farm_device")
+        # 내렸던 장치를 다시 등록하면 되살린다. do_nothing 이면 deleted_at 이 남아
+        # 등록은 성공했는데 화면에는 안 나오는 상태가 된다 — 되돌릴 길이 없어진다.
+        .on_conflict_do_update(
+            constraint="uq_device_meta_farm_device",
+            set_={"device_type": d.device_type, "name": d.name, "model": d.model,
+                  "location": d.location, "deleted_at": None},
+        )
         .returning(m.device_meta.c.id)
     )
     row = res.first()
-    if row is None:  # 이미 존재 (멱등) — id 재조회
+    if row is None:  # 방어적 — 위 upsert 는 항상 행을 돌려준다
         row = (
             await conn.execute(
                 select(m.device_meta.c.id).where(
@@ -235,11 +241,72 @@ async def deactivate_farm(farm_id: str):
 
 # ── 장치(device_meta) + 상세 CRUD ─────────────────────────────
 
+async def _unregistered_devices(conn, farm_id: str) -> list[dict]:
+    """데이터는 들어오는데 device_meta 행이 없는 장치 — 화면의 유령 목록.
+
+    이 목록이 필요한 이유: 로봇·통신 목록은 이력 표에서 나오므로 등록 절차를
+    거치지 않은 장치도 화면에 뜬다. 그런데 설정 화면은 device_meta 만 보여 줘서,
+    정작 지우고 싶은 쪽에는 누를 버튼이 없었다.
+
+    대장에서 내린 장치도 여기로 돌아온다 — 계속 발행한다면 그 장치는 여전히
+    거기 있다. 잘못 내렸다면 다시 등록하면 된다.
+    """
+    known = {
+        r.device_id
+        for r in (
+            await conn.execute(
+                select(m.device_meta.c.device_id).where(
+                    m.device_meta.c.farm_id == farm_id,
+                    m.device_meta.c.deleted_at.is_(None),
+                )
+            )
+        ).all()
+    }
+    # 마지막으로 소식이 있던 때를 함께 싣는다. 이 칸에는 지금 돌고 있는 장치와
+    # 오래전에 사라진 장치가 같이 모이는데, 그 둘은 할 일이 다르다.
+    seen: dict[str, tuple[str | None, object]] = {}
+    for r in (
+        await conn.execute(
+            select(m.device_connection_state.c.device_id, m.device_connection_state.c.device_type,
+                   m.device_connection_state.c.last_received_at)
+            .where(m.device_connection_state.c.farm_id == farm_id)
+        )
+    ).all():
+        seen[r.device_id] = (r.device_type, r.last_received_at)
+    for r in (
+        await conn.execute(
+            select(m.robot_status.c.device_id, sa_func.max(m.robot_status.c.ts).label("last_ts"))
+            .where(m.robot_status.c.farm_id == farm_id)
+            .group_by(m.robot_status.c.device_id)
+        )
+    ).all():
+        dtype, last = seen.get(r.device_id, ("robot", None))
+        if last is None or (r.last_ts and r.last_ts > last):
+            last = r.last_ts
+        seen[r.device_id] = (dtype or "robot", last)
+    rows = [
+        {"device_id": did, "device_type": dtype if dtype in DEVICE_TYPES else "edge",
+         "name": did, "model": None, "location": None, "detail": None, "registered": False,
+         "last_seen": last.isoformat() if last else None}
+        for did, (dtype, last) in seen.items()
+        if did not in known
+    ]
+    # 최근 것이 위로 — 지금 발행 중인 장치가 옛 흔적에 묻히면 안 된다.
+    rows.sort(key=lambda r: (r["last_seen"] or ""), reverse=True)
+    return rows
+
+
 @router.get("/farms/{farm_id}/devices")
-async def list_devices(farm_id: str):
-    """미삭제 장치 + 상세(sensor/tank/actuator/station) 목록."""
+async def list_devices(farm_id: str, include_unregistered: bool = False):
+    """미삭제 장치 + 상세(sensor/tank/actuator/station) 목록.
+
+    include_unregistered 는 설정 화면 전용이다. 미등록 장치를 기본으로 끼워 넣으면
+    이 목록을 설비 대장으로 쓰는 화면(상태 페이지의 종류별 집계)에 정체 불명의
+    장치가 섞여 든다 — 지우는 화면에서만 보이면 된다.
+    """
     async with _engine().connect() as conn:
         await _require_farm(conn, farm_id)
+        unregistered = await _unregistered_devices(conn, farm_id) if include_unregistered else []
         devices = (
             await conn.execute(
                 select(m.device_meta)
@@ -294,8 +361,9 @@ async def list_devices(farm_id: str):
         out.append({
             "device_id": d["device_id"], "device_type": d["device_type"], "name": d["name"],
             "model": d["model"], "location": d["location"], "detail": detail,
+            "registered": True,
         })
-    return out
+    return out + unregistered
 
 
 @router.post("/farms/{farm_id}/devices")
@@ -360,7 +428,15 @@ async def patch_device(farm_id: str, device_id: str, req: DevicePatch):
 
 @router.delete("/farms/{farm_id}/devices/{device_id}")
 async def delete_device(farm_id: str, device_id: str):
-    """장치 소프트 삭제 — device_meta.deleted_at (상세 행은 유지)."""
+    """장치를 대장에서 내린다 — device_meta.deleted_at (상세 행은 유지).
+
+    지우는 것이 아니라 「이 농장의 장비가 아니다」로 되돌리는 것이다. 계속
+    발행하는 장치라면 설정 화면의 「미등록」 칸에 다시 나타나고, 거기서 다시
+    등록할 수 있다. 등록되지 않은 장치는 애초에 목록에 없으므로 지울 것도 없다.
+
+    이력은 지우지 않는다. 실제로 들어온 값이고, 지나간 기간의 통계가 조용히
+    바뀌면 안 된다.
+    """
     async with _engine().begin() as conn:
         res = await conn.execute(
             update(m.device_meta)

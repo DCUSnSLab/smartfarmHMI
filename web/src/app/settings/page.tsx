@@ -12,7 +12,7 @@ import { AlertRules } from "@/components/AlertRules";
 import { PlannedChip } from "@/components/Planned";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { FarmSummary } from "@/lib/monitor";
+import { FarmSummary, timeAgo } from "@/lib/monitor";
 import {
   ACTUATOR_COMMANDS, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow, DiscoveredFarm,
   FARM_TYPES, SENSOR_TYPES, STATION_TYPES, TANK_TYPES,
@@ -390,17 +390,20 @@ function FarmModal({
 
 // ── 장치 추가/수정 모달 (유형별 상세 필드) ──
 function DeviceModal({
-  farmId, edit, onClose, onDone,
+  farmId, edit, candidates = [], preset, onClose, onDone,
 }: {
   farmId: string;
   edit?: DeviceRow;
+  /** 데이터는 들어오는데 등록되지 않은 장치 — 손으로 적는 대신 여기서 고른다. */
+  candidates?: DeviceRow[];
+  preset?: DeviceRow;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [f, setF] = useState<Record<string, string>>(() => ({
-    device_id: edit?.device_id ?? "",
-    device_type: edit?.device_type ?? "growbed",
-    name: edit?.name ?? "",
+    device_id: edit?.device_id ?? preset?.device_id ?? "",
+    device_type: edit?.device_type ?? preset?.device_type ?? "growbed",
+    name: edit?.name ?? preset?.device_id ?? "",
     location: edit?.location ?? "",
     sensor_type: edit?.detail?.sensor_type ?? "temperature",
     unit: edit?.detail?.unit ?? "",
@@ -449,13 +452,44 @@ function DeviceModal({
       <form onSubmit={submit}>
         {!edit && (
           <>
+            {/* 보이는 것을 고른다. 식별자를 손으로 적으면 한 글자만 틀려도 등록부와
+                화면이 갈라져, 유령은 그대로 남고 쓰이지 않는 행이 하나 생긴다. */}
+            {candidates.length > 0 ? (
+              <Field label="등록할 장치">
+                <select
+                  className={inputCls}
+                  value={f.device_id}
+                  onChange={(e) => {
+                    const pick = candidates.find((c) => c.device_id === e.target.value);
+                    setF((prev) => ({
+                      ...prev,
+                      device_id: e.target.value,
+                      device_type: pick?.device_type ?? prev.device_type,
+                      name: prev.name === "" || prev.name === prev.device_id ? e.target.value : prev.name,
+                    }));
+                  }}
+                  required
+                >
+                  <option value="">데이터가 들어오는 미등록 장치 {candidates.length}개</option>
+                  {candidates.map((c) => (
+                    <option key={c.device_id} value={c.device_id}>
+                      {c.device_id} · {DEVICE_TYPE_LABEL[c.device_type] ?? c.device_type}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field label={t === "sensor" ? "sensor_id (MQTT 식별자)" : "device_id (MQTT 식별자)"}>
+                <input className={inputCls} value={f.device_id} onChange={(e) => set("device_id", e.target.value)} placeholder="예: temp-b / growbed-02" required />
+                <p className="mt-1 text-11.5 font-semibold text-muted">
+                  아직 데이터가 들어오지 않은 장치입니다. 식별자는 엣지가 발행하는 값과 정확히 같아야 합니다.
+                </p>
+              </Field>
+            )}
             <Field label="장치 유형">
               <select className={inputCls} value={t} onChange={(e) => set("device_type", e.target.value)}>
                 {DEVICE_TYPES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select>
-            </Field>
-            <Field label={t === "sensor" ? "sensor_id (MQTT 식별자)" : "device_id (MQTT 식별자)"}>
-              <input className={inputCls} value={f.device_id} onChange={(e) => set("device_id", e.target.value)} placeholder="예: temp-b / growbed-02" required />
             </Field>
           </>
         )}
@@ -546,20 +580,27 @@ function ConfirmModal({ message, onCancel, onConfirm }: { message: string; onCan
 function FarmDevices({ farmId }: { farmId: string }) {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [adding, setAdding] = useState(false);
+  const [registering, setRegistering] = useState<DeviceRow | null>(null);
   const [editing, setEditing] = useState<DeviceRow | null>(null);
   const [deleting, setDeleting] = useState<DeviceRow | null>(null);
 
-  const reload = useCallback(() => { void listDevices(farmId).then(setDevices); }, [farmId]);
+  const reload = useCallback(() => {
+    void listDevices(farmId, { includeUnregistered: true }).then(setDevices);
+  }, [farmId]);
   useEffect(reload, [reload]);
 
+  const registered = devices.filter((d) => d.registered);
+  // 미등록은 종류별로 섞지 않고 따로 모은다 — 설비 대장이 아니라 「화면에 떠
+  // 있는데 등록되지 않은 것」이라는 사실 자체가 봐야 할 정보다.
+  const unregistered = devices.filter((d) => !d.registered);
   const grouped = DEVICE_TYPES.map((dt) => ({
-    type: dt, rows: devices.filter((d) => d.device_type === dt.value),
+    type: dt, rows: registered.filter((d) => d.device_type === dt.value),
   })).filter((g) => g.rows.length > 0);
 
   return (
     <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-13 font-bold text-gray-600">장치 {devices.length}대</span>
+        <span className="text-13 font-bold text-gray-600">장치 {registered.length}대</span>
         <button onClick={() => setAdding(true)} className="rounded-lg bg-primary-bg px-3 py-1 text-12.5 font-extrabold text-primary-dark">+ 장치 추가</button>
       </div>
       {grouped.length === 0 && <p className="py-2 text-12.5 font-semibold text-muted">등록된 장치가 없습니다.</p>}
@@ -578,7 +619,40 @@ function FarmDevices({ farmId }: { farmId: string }) {
           ))}
         </div>
       ))}
-      {adding && <DeviceModal farmId={farmId} onClose={() => setAdding(false)} onDone={() => { setAdding(false); reload(); }} />}
+      {unregistered.length > 0 && (
+        <div className="mb-2">
+          <div className="mb-1 text-11.5 font-extrabold uppercase tracking-wide text-status-warningDark">
+            미등록 · 데이터만 들어옴
+          </div>
+          <p className="mb-1 text-11.5 font-semibold text-muted">
+            데이터는 들어오는데 대장에 없는 장치입니다. 등록하기 전에는 운영 화면에
+            나오지 않습니다. 이 농장의 장비가 아니라면 그대로 두세요.
+          </p>
+          {unregistered.map((d) => (
+            <div key={d.device_id} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-gray-100 py-1.5 last:border-0">
+              <span className="min-w-0 flex-1 basis-full text-13 font-bold sm:basis-auto">
+                {d.device_id}
+                <span className="font-semibold text-muted"> · {DEVICE_TYPE_LABEL[d.device_type] ?? d.device_type}</span>
+                {/* 지금 발행 중인 장치와 오래전에 사라진 흔적이 같이 모인다 */}
+                <span className="font-semibold text-muted"> · {timeAgo(d.last_seen ?? null)}</span>
+              </span>
+              <button onClick={() => setRegistering(d)} className="rounded-md px-2 py-1 text-12 font-bold text-primary-dark hover:bg-gray-100">등록</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {adding && (
+        <DeviceModal
+          farmId={farmId} candidates={unregistered}
+          onClose={() => setAdding(false)} onDone={() => { setAdding(false); reload(); }}
+        />
+      )}
+      {registering && (
+        <DeviceModal
+          farmId={farmId} candidates={unregistered} preset={registering}
+          onClose={() => setRegistering(null)} onDone={() => { setRegistering(null); reload(); }}
+        />
+      )}
       {editing && <DeviceModal farmId={farmId} edit={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); reload(); }} />}
       {deleting && (
         <ConfirmModal

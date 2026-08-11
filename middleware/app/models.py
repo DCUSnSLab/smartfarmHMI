@@ -66,20 +66,23 @@ device_meta = sa.Table(
 )
 
 
-def not_soft_deleted(farm_col, device_col):
-    """소프트 삭제된 장치를 제외하는 조건 — (farm_id, device_id) 를 가진 표에 건다.
+def registered(farm_col, device_col):
+    """대장에 오른 장치인가 — (farm_id, device_id) 를 가진 이력·상태 표에 건다.
 
-    이력·상태 표는 device_meta 를 참조하지 않으므로, 장치를 떼어내도 행이 남아
-    화면에 유령으로 계속 뜬다. 그 표들이 공통으로 쓰는 조건을 여기 한 번만 둔다 —
-    같은 규칙을 각자 적어 두면 한쪽만 고쳐져 목록마다 결과가 갈린다 (실제로
-    로봇 목록만 고쳐져 통신 상태에는 삭제한 장치가 남아 있었다).
+    운영 화면의 장치 목록은 이 조건으로만 만든다. 이력에서 device_id 를 뽑아
+    목록을 만들면 「한 번이라도 발행했음」이 곧 「이 농장의 장비임」이 되어,
+    잠깐 켰다 끈 장치가 영원히 남는다. 무엇이 이 농장의 장비인지는 사람이
+    정한다 — 그 자리가 device_meta 다.
 
-    미등록 장치(device_meta 행 없음)는 남긴다: 발견 전 팜의 장치가 사라지면 안 된다.
+    등록되지 않은 장치는 사라지는 게 아니라 설정 화면의 「미등록」 칸에 모인다
+    (settings_api._unregistered_devices). 거기서 등록하거나 그대로 둔다.
+
+    조건을 여기 한 번만 둔다 — 목록마다 따로 적으면 한쪽만 고쳐져 결과가 갈린다.
     """
-    return ~sa.exists().where(
+    return sa.exists().where(
         device_meta.c.farm_id == farm_col,
         device_meta.c.device_id == device_col,
-        device_meta.c.deleted_at.isnot(None),
+        device_meta.c.deleted_at.is_(None),
     )
 
 

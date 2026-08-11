@@ -84,6 +84,7 @@ def downgrade() -> None:
         "UPDATE mw.robot_status SET mission_state = 'error' "
         "WHERE jsonb_typeof(error) = 'object'"
     )
+    op.execute("ALTER TABLE mw.robot_status DROP CONSTRAINT IF EXISTS robot_mission_state_check")
     op.execute(
         f"ALTER TABLE mw.robot_status ADD CONSTRAINT robot_mission_state_check "
         f"CHECK (mission_state IN ({_MISSION_STATE}))"

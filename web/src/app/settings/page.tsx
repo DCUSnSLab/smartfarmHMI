@@ -393,13 +393,29 @@ function FarmModal({
               >
                 {locating ? "위치 확인 중…" : currentPosition ? "위치 다시 확인" : "위치 확인"}
               </button>
-              {currentPosition && currentRegion && (
-                <p className="mt-2 text-12 font-bold text-primary-dark" role="status">
-                  위치 지정 완료 · {regionLabel(currentRegion)} · 코드 {currentRegion.code}
-                  {" · "}{currentPosition.latitude.toFixed(6)}, {currentPosition.longitude.toFixed(6)}
-                  {" · "}정확도 약 {Math.round(currentPosition.accuracy).toLocaleString()}m
-                </p>
-              )}
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3" role="status">
+                <input
+                  className={`${inputCls} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-700 disabled:opacity-100`}
+                  value={currentRegion?.level1 ?? ""}
+                  placeholder="시·도"
+                  aria-label="현재 위치 시·도"
+                  disabled
+                />
+                <input
+                  className={`${inputCls} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-700 disabled:opacity-100`}
+                  value={currentRegion?.level2 ?? ""}
+                  placeholder="시·군·구"
+                  aria-label="현재 위치 시·군·구"
+                  disabled
+                />
+                <input
+                  className={`${inputCls} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-700 disabled:opacity-100`}
+                  value={currentRegion?.level3 ?? ""}
+                  placeholder="읍·면·동"
+                  aria-label="현재 위치 읍·면·동"
+                  disabled
+                />
+              </div>
             </div>
           )}
           {locationMessage && <p className="mt-1.5 text-12 font-bold text-status-warningDark" role="alert">{locationMessage}</p>}

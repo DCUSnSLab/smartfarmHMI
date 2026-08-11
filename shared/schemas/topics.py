@@ -15,18 +15,10 @@ MESSAGE_TYPES = (
     "stop_state",  # §4.6.1 미들웨어 → 엣지 원격 정지 상태 (retained)
 )
 
-# 내부 재발행 스트림. 전부 retained 라, 농장을 접을 때 지울 목록이기도 하다
-# (settings_api._clear_retained). 이름이 발행 지점마다 문자열로 흩어져 있으면
-# 그 목록이 조용히 낡는다 — 새 스트림이 생겨도 아무도 모르고 안 지워진다.
-# internal_topic 이 여기 없는 이름을 거부해서, 등록을 빠뜨리면 즉시 터진다.
+# 내부 재발행 스트림. 전부 retained 라 settings_api._clear_retained 의 삭제
+# 목록이기도 하다 — 새 스트림은 반드시 여기에 등록할 것.
 STREAMS = (
-    "environment",  # 센서 측정값
-    "robot",        # 로봇 상태
-    "connection",   # 장치 연결 상태 전이
-    "layout",       # 농장 배치도 갱신
-    "alert",        # 알림 발생·확인
-    "command",      # 명령 수명주기
-    "stop",         # 원격/물리 정지 (§2.4)
+    "environment", "robot", "connection", "layout", "alert", "command", "stop",
 )
 
 
@@ -49,7 +41,6 @@ def parse_topic(value: str) -> ParsedTopic | None:
 
 
 def internal_topic(farm_id: str, stream: str) -> str:
-    # 이름은 코드 안의 상수다 — 외부 입력이 아니라서 조용히 넘기지 않고 세운다.
     if stream not in STREAMS:
         raise ValueError(f"등록되지 않은 내부 스트림: {stream!r} — topics.STREAMS 에 추가할 것")
     return f"{INTERNAL_PREFIX}/{farm_id}/{stream}"

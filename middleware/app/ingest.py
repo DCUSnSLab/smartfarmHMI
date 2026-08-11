@@ -203,22 +203,14 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime, retained: bool 
         await _check_duplicate_publisher(conn, msg, received_at)
 
 
-# 같은 (farm, device) 로 발행자가 둘이면 토픽이 통째로 겹친다. 두 현장의 데이터가
-# 한 농장으로 섞이고, 한쪽이 끊기면 LWT 가 다른 쪽까지 오프라인으로 만든다.
-# 브로커는 client id 가 같을 때만 끊어 주는데 그것도 조용해서, 데이터가 번갈아
-# 들어오는 동안에는 정상으로 보인다. 엣지가 birth 에 싣는 instance_id(프로세스마다
-# 다른 값)로 가려낸다.
+# 같은 (farm, device) 로 발행자가 둘이면 토픽이 겹쳐 두 현장의 데이터가 한 농장으로
+# 섞이고, 한쪽이 끊기면 LWT 가 다른 쪽까지 오프라인으로 만든다. 브로커는 client id
+# 가 같을 때만, 그것도 조용히 끊어 준다. birth 의 instance_id 로 가려낸다.
 #
-# 판정 기준은 death 다. 재시작은 death → birth 순서라 앞의 것이 지워지고 새 값이
-# 그냥 등록된다. death 없이 값만 바뀌면 먼저 있던 발행자가 아직 살아 있다는 뜻이다.
-#
-# 보관본(retained) birth 는 이 판정에 넣지 않는다 — 경고도, 기록도. 그건 "그 토픽에
-# 마지막으로 실린 값"일 뿐 발행자가 지금 살아 있다는 증거가 아니다. 미들웨어가
-# 재시작하면 죽은 엣지가 남긴 birth 까지 다시 읽는데, 그걸 기록해 두면 진짜 엣지가
-# 붙을 때 instance 가 달라 중복으로 오탐한다. 기록만 하고 경고를 미뤄도 같은 결과다.
-# 실황과 보관본은 브로커가 구분해 준다 — 재생본에만 RETAIN 플래그가 서고, 살아 있는
-# 발행자의 메시지는 retain=true 로 보냈어도 플래그 0 으로 배달된다. 그래서 진짜
-# 중복(둘 다 실황)은 이 제외로 놓치지 않는다.
+# 판정 기준은 death 다 — death 없이 instance 만 바뀌면 앞의 발행자가 아직 살아 있다.
+# 보관본(retained) birth 는 발행자 생존의 증거가 아니라 마지막으로 실린 값일 뿐이라
+# 판정에서 뺀다 (경고도 기록도). 브로커가 재생본에만 RETAIN 플래그를 세우므로,
+# 발행자가 retain=true 로 보낸 실황은 플래그 0 으로 와서 그대로 걸린다.
 _seen_instances: dict[tuple[str, str], str] = {}
 
 

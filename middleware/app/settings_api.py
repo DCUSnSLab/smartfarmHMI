@@ -241,15 +241,10 @@ async def deactivate_farm(farm_id: str):
     return {"ok": True, "farm_id": farm_id, "retained_cleared": cleared}
 
 
-# retained 는 아무도 걷어가지 않는다. 농장을 접어도 브로커에 남아, 구독자가
-# 새로 붙을 때마다 없는 농장이 되살아난다 — 미들웨어는 birth 를 다시 읽어 DB 에,
-# api-bridge 는 내부 스트림을 다시 읽어 화면에. 소유자를 잃은 시점이 여기라
-# 여기서 지운다. 빈 payload + retain 이 삭제 신호다.
-#
-# 지울 곳은 두 군데다. 한쪽만 지우면 되살아나는 자리가 옮겨갈 뿐이다.
-# 내부 스트림은 topics.STREAMS 를 그대로 쓴다 — 새 스트림이 등록되면 지울 목록도
-# 같이 따라온다. 엣지 쪽 종류는 여기서 고른다: MESSAGE_TYPES 전체가 아니라
-# retained 로 발행되는 것만이다 (command·ack·heartbeat 은 retain 하지 않는다).
+# retained 는 아무도 걷어가지 않는다 — 농장을 접어도 브로커에 남아 구독자가 붙을
+# 때마다 없는 농장이 되살아난다. 빈 payload + retain 이 삭제 신호다.
+# MESSAGE_TYPES 전체가 아니라 retained 로 발행되는 것만이다 (command·ack·
+# heartbeat 은 retain 하지 않는다).
 _RETAINED_TYPES = ("birth", "death", "telemetry", "status", "layout", "stop_state")
 
 
@@ -263,8 +258,6 @@ def _clear_retained(farm_id: str, devices) -> int:
                 topic(farm_id, device_type, device_id, message_type), "", retain=True
             )
             count += 1
-    # 내부 스트림은 장치가 아니라 농장 단위다 (farmon-internal/v1/{farm}/{stream}).
-    # 장치가 하나도 없어도 지울 것이 남는다.
     for stream in STREAMS:
         publisher.publish_raw(internal_topic(farm_id, stream), "", retain=True)
         count += 1

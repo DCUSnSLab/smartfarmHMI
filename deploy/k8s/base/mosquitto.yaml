@@ -44,6 +44,5 @@ spec:
   selector: { app: mosquitto }
   ports:
     - { name: mqtt, port: 1883, targetPort: 1883 }
-    # nginx 가 /mqtt 를 여기로 넘긴다 (GEN-1296). 서비스는 ClusterIP 그대로 —
-    # 외부 노출은 nginx 하나로 유지한다.
+    # nginx 의 /mqtt 가 넘겨준다. ClusterIP 유지 — 외부 노출은 nginx 하나로.
     - { name: websockets, port: 9001, targetPort: 9001 }

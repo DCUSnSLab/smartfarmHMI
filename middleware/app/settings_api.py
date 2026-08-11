@@ -9,6 +9,7 @@ HMI 설정 화면이 사용하는 CRUD:
 device_meta 와 상세 테이블은 seed.py 의 2단계(device_meta.id 확보 → 상세 FK)를 한 트랜잭션으로 수행.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -19,6 +20,8 @@ from sqlalchemy.dialects.postgresql import insert
 from middleware.app import models as m
 from middleware.app.weather import collect_farm_weather, validate_coordinates
 from shared.schemas.topics import STREAMS, internal_topic, topic
+
+log = logging.getLogger("mw.settings")
 
 router = APIRouter(prefix="/internal")
 
@@ -231,14 +234,29 @@ async def deactivate_farm(farm_id: str):
         await conn.execute(
             update(m.farm).where(m.farm.c.farm_id == farm_id).values(is_active=False, updated_at=_now())
         )
-        devices = (
-            await conn.execute(
-                select(m.device_connection_state.c.device_id, m.device_connection_state.c.device_type)
-                .where(m.device_connection_state.c.farm_id == farm_id)
+        devices = await _farm_devices(conn, farm_id)
+    return {"ok": True, "farm_id": farm_id,
+            "retained_clear_queued": _clear_retained(farm_id, devices)}
+
+
+async def _farm_devices(conn, farm_id: str) -> list[tuple[str, str]]:
+    """retained 를 남겼을 수 있는 장치 전부 — 두 표를 합쳐야 빠지지 않는다.
+
+    device_connection_state 는 birth·하트비트를 한 번이라도 보낸 장치만,
+    device_meta 는 사람이 등록한 장치만 담는다. 어느 한쪽에만 있는 장치가 있다.
+    소프트 삭제된 장치도 포함한다 — 지워진 장치일수록 retained 가 남으면 곤란하다.
+    """
+    dcs = m.device_connection_state
+    meta = m.device_meta
+    rows = (
+        await conn.execute(
+            select(dcs.c.device_id, dcs.c.device_type).where(dcs.c.farm_id == farm_id)
+            .union(
+                select(meta.c.device_id, meta.c.device_type).where(meta.c.farm_id == farm_id)
             )
-        ).all()
-    cleared = _clear_retained(farm_id, devices)
-    return {"ok": True, "farm_id": farm_id, "retained_cleared": cleared}
+        )
+    ).all()
+    return [(r[0], r[1]) for r in rows]
 
 
 # retained 는 아무도 걷어가지 않는다 — 농장을 접어도 브로커에 남아 구독자가 붙을
@@ -249,18 +267,33 @@ _RETAINED_TYPES = ("birth", "death", "telemetry", "status", "layout", "stop_stat
 
 
 def _clear_retained(farm_id: str, devices) -> int:
+    """삭제 신호를 발행 큐에 넣고 그 건수를 돌려준다 — 발행 완료가 아니다.
+
+    publish_raw 는 큐에 적재만 하고 실제 발행은 재발행기가 맡는다. 큐가 가득
+    차면 오래된 것부터 버려지므로 이 수만큼 실제로 지워졌다고 볼 수 없다.
+    농장을 접는 일은 실시간성이 필요 없고 실패해도 다시 부르면 되므로, 여기서는
+    「몇 건을 줄 세웠나」 까지만 책임진다 (응답 필드 이름도 그래서 queued).
+
+    엣지가 아직 살아 있으면 지운 자리를 곧바로 다시 채운다. 이 청소는 농장을
+    접는 것과 엣지를 내리는 것이 함께 이뤄질 때만 실효가 있다.
+    """
     from middleware.app.main import publisher
 
     count = 0
-    for device_id, device_type in devices:
-        for message_type in _RETAINED_TYPES:
-            publisher.publish_raw(
-                topic(farm_id, device_type, device_id, message_type), "", retain=True
-            )
+    try:
+        for device_id, device_type in devices:
+            for message_type in _RETAINED_TYPES:
+                publisher.publish_raw(
+                    topic(farm_id, device_type, device_id, message_type), "", retain=True
+                )
+                count += 1
+        for stream in STREAMS:
+            publisher.publish_raw(internal_topic(farm_id, stream), "", retain=True)
             count += 1
-    for stream in STREAMS:
-        publisher.publish_raw(internal_topic(farm_id, stream), "", retain=True)
-        count += 1
+    except Exception:
+        # 비활성화는 이미 커밋됐다 — 청소 실패로 요청 전체를 500 으로 접지 않는다.
+        # 다시 호출하면 남은 것부터 이어서 지운다 (빈 retained 발행은 멱등).
+        log.exception("retained 청소 실패: %s (%d 건 적재 후 중단)", farm_id, count)
     return count
 
 

@@ -74,7 +74,9 @@ async def farm_devices(request, farm_id: str):
     if request.method == "GET":
         if request_user(request) is None:
             return unauthorized()
-        return await _proxy_middleware(f"/internal/farms/{farm_id}/devices")
+        # 설정 화면만 미등록 장치까지 요청한다 (지울 수 있어야 하므로).
+        extra = "?include_unregistered=1" if request.GET.get("include_unregistered") else ""
+        return await _proxy_middleware(f"/internal/farms/{farm_id}/devices{extra}")
     if request.method == "POST":
         return await _proxy_write(
             request, "POST", f"/internal/farms/{farm_id}/devices", inject_field="registered_by"

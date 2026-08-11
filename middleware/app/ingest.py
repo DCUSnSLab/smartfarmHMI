@@ -392,15 +392,42 @@ async def _handle_heartbeat(conn, msg: Heartbeat, device_type: str, received_at:
     await conn.execute(stmt)
 
 
+async def _registered(conn, farm_id: str, device_id: str) -> bool:
+    """대장에 오른 장치인가 — device_meta 유니크 인덱스 조회 (models.registered)."""
+    return (
+        await conn.execute(
+            select(m.device_meta.c.id).where(
+                m.device_meta.c.farm_id == farm_id,
+                m.device_meta.c.device_id == device_id,
+                m.device_meta.c.deleted_at.is_(None),
+            )
+        )
+    ).first() is not None
+
+
 async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False) -> None:
     async with engine.begin() as conn:
+        # 대장에 없는 장치는 화면에도 알림에도 나오지 않는다. 목록에서만 거르면
+        # 새로고침하면 사라졌다가 다음 메시지에 스트림을 타고 되살아난다.
+        #
+        # 데이터는 그대로 받는다. 받지 않으면 그런 장치가 있다는 것조차 알 수 없어
+        # 「미등록」 칸에 띄울 수도, 등록할 수도 없다.
+        #
+        # ack·estop 은 막지 않는다. 명령 응답은 그 명령을 낸 화면이 기다리고 있고,
+        # 비상정지는 장치 등록 여부와 무관하게 사람이 즉시 알아야 한다.
+        hidden = bool(getattr(msg, "device_id", None)) and not await _registered(
+            conn, msg.farm_id, msg.device_id
+        )
+        live = None if hidden else publisher
+
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            from middleware.app.alerts import check_sensor_thresholds
-            await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
-            if publisher:
-                publisher.publish(msg.farm_id, "environment", {
+            if not hidden:
+                from middleware.app.alerts import check_sensor_thresholds
+                await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
+            if live:
+                live.publish(msg.farm_id, "environment", {
                     "device_id": msg.device_id, "sensor_id": msg.sensor_id,
                     "sensor_type": msg.sensor_type, "value": msg.value, "unit": msg.unit,
                     "sensor_state": msg.sensor_state, "ts": msg.timestamp.isoformat(),
@@ -408,12 +435,12 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
         elif isinstance(msg, RobotStatusMsg):
             await _handle_robot_status(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            if msg.error:
+            if msg.error and not hidden:
                 from middleware.app.alerts import alert_robot_error
                 await alert_robot_error(conn, publisher, msg.farm_id, msg.device_id,
                                         msg.error.model_dump(mode="json"))
-            if publisher:
-                publisher.publish(msg.farm_id, "robot", {
+            if live:
+                live.publish(msg.farm_id, "robot", {
                     "device_id": msg.device_id,
                     "pos_x": msg.position.x if msg.position else None,
                     "pos_y": msg.position.y if msg.position else None,
@@ -429,34 +456,35 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
         elif isinstance(msg, Layout):
             await _handle_layout(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "layout", {
+            if live:
+                live.publish(msg.farm_id, "layout", {
                     "device_id": msg.device_id, "frame": msg.frame,
                     "zones": len(msg.zones), "gates": len(msg.gates),
                     "points": len(msg.points),
                 })
         elif isinstance(msg, Birth):
             await _handle_birth(conn, msg, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "connection", {
+            if live:
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Death):
             await _handle_death(conn, msg, parsed.device_type, received_at)
-            from middleware.app.alerts import alert_connection_change
-            await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
-            if publisher:
+            if not hidden:
+                from middleware.app.alerts import alert_connection_change
+                await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
+            if live:
                 # 엣지 death 는 농장 전체 cascade — 화면은 farm 단위 오프라인 표시
-                publisher.publish(msg.farm_id, "connection", {
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "offline",
                     "cascade": parsed.device_type == "edge",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Heartbeat):
             await _handle_heartbeat(conn, msg, parsed.device_type, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "connection", {
+            if live:
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
@@ -505,12 +533,12 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
         now = _now()
         try:
             async with engine.begin() as conn:
-                # 소프트 삭제된 장치는 판정 대상이 아니다 — 떼어낸 장비는 당연히
-                # 소식이 없고, 그대로 두면 장비를 뗄 때마다 통신 단절 알림이
+                # 대장에 없는 장치는 판정 대상이 아니다 — 떼어낸 장비도, 등록 전
+                # 장비도 소식이 없는 게 정상이다. 그대로 두면 통신 단절 알림이
                 # 하나씩 영구히 쌓여 진짜 고장이 그 사이에 묻힌다.
                 rows = (await conn.execute(
                     select(m.device_connection_state).where(
-                        m.not_soft_deleted(
+                        m.registered(
                             m.device_connection_state.c.farm_id,
                             m.device_connection_state.c.device_id,
                         )

@@ -70,7 +70,6 @@ def downgrade() -> None:
     op.execute("ALTER TABLE mw.robot_status RENAME COLUMN phase TO mission_state")
     # 되돌릴 때는 오류가 있던 행을 다시 error 로 접는다 (진행 단계는 다시 소실).
     # 엣지가 보낸 "error": null 은 SQL NULL 이 아니라 jsonb null 로 적재된다.
-    # IS NOT NULL 로 보면 정상 행까지 전부 걸린다.
     op.execute(
         "UPDATE mw.robot_status SET mission_state = 'error' "
         "WHERE jsonb_typeof(error) = 'object'"

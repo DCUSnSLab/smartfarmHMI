@@ -199,6 +199,39 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
     )
     await conn.execute(stmt)
     log.info("birth: %s/%s (metrics=%d)", msg.farm_id, msg.device_id, len(metrics))
+    await _check_duplicate_publisher(conn, msg, received_at)
+
+
+# 같은 (farm, device) 로 발행자가 둘이면 토픽이 통째로 겹친다. 두 현장의 데이터가
+# 한 농장으로 섞이고, 한쪽이 끊기면 LWT 가 다른 쪽까지 오프라인으로 만든다.
+# 브로커는 client id 가 같을 때만 끊어 주는데 그것도 조용해서, 데이터가 번갈아
+# 들어오는 동안에는 정상으로 보인다. 엣지가 birth 에 싣는 instance_id(프로세스마다
+# 다른 값)로 가려낸다 — 값이 오갈 때만 발행자가 둘이다.
+_INSTANCE_FLAP_WINDOW_SEC = 300
+_INSTANCE_FLAP_THRESHOLD = 3
+_seen_instances: dict[tuple[str, str], tuple[str, datetime, int]] = {}
+
+
+async def _check_duplicate_publisher(conn, msg: Birth, received_at: datetime) -> None:
+    instance = (msg.model_extra or {}).get("instance_id")
+    if not instance:
+        return   # 확장 필드다. 안 싣는 엣지는 판정하지 않는다
+    key = (msg.farm_id, msg.device_id)
+    prev = _seen_instances.get(key)
+    if prev is None or prev[0] == instance:
+        _seen_instances[key] = (instance, received_at, prev[2] if prev else 0)
+        return
+    # 값이 바뀌었다. 재시작 한 번도 바뀌므로 짧은 창 안의 반복만 중복으로 본다.
+    within = (received_at - prev[1]).total_seconds() <= _INSTANCE_FLAP_WINDOW_SEC
+    flips = prev[2] + 1 if within else 1
+    _seen_instances[key] = (instance, received_at, flips)
+    if flips >= _INSTANCE_FLAP_THRESHOLD:
+        log.error(
+            "발행자 중복 의심: %s/%s — %d분 안에 instance 가 %d회 바뀜. "
+            "같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인",
+            msg.farm_id, msg.device_id, _INSTANCE_FLAP_WINDOW_SEC // 60, flips,
+        )
+        _seen_instances[key] = (instance, received_at, 0)
 
 
 async def _handle_death(conn, msg: Death, device_type: str, received_at: datetime) -> None:

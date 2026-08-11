@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
 from middleware.app.weather import collect_farm_weather, validate_coordinates
+from shared.schemas.topics import topic
 
 router = APIRouter(prefix="/internal")
 
@@ -230,7 +231,33 @@ async def deactivate_farm(farm_id: str):
         await conn.execute(
             update(m.farm).where(m.farm.c.farm_id == farm_id).values(is_active=False, updated_at=_now())
         )
-    return {"ok": True, "farm_id": farm_id}
+        devices = (
+            await conn.execute(
+                select(m.device_connection_state.c.device_id, m.device_connection_state.c.device_type)
+                .where(m.device_connection_state.c.farm_id == farm_id)
+            )
+        ).all()
+    cleared = _clear_retained(farm_id, devices)
+    return {"ok": True, "farm_id": farm_id, "retained_cleared": cleared}
+
+
+# 엣지가 남긴 retained 는 아무도 걷어가지 않는다. 농장을 접어도 브로커에 남아,
+# 미들웨어가 재시작할 때마다 그 birth 를 다시 읽어 없는 농장이 되살아난다.
+# 소유자를 잃은 시점이 여기라 여기서 지운다. 빈 payload + retain 이 삭제 신호다.
+_RETAINED_TYPES = ("birth", "death", "telemetry", "status", "layout", "stop_state")
+
+
+def _clear_retained(farm_id: str, devices) -> int:
+    from middleware.app.main import publisher
+
+    count = 0
+    for device_id, device_type in devices:
+        for message_type in _RETAINED_TYPES:
+            publisher.publish_raw(
+                topic(farm_id, device_type, device_id, message_type), "", retain=True
+            )
+            count += 1
+    return count
 
 
 # ── 장치(device_meta) + 상세 CRUD ─────────────────────────────

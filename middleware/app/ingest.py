@@ -179,7 +179,7 @@ async def _handle_layout(conn, msg: Layout, received_at: datetime) -> None:
     )
 
 
-async def _handle_birth(conn, msg: Birth, received_at: datetime, retained: bool = False) -> None:
+async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
     metrics = [mt.model_dump() for mt in msg.metrics]
     stmt = (
         insert(m.device_connection_state)
@@ -199,8 +199,6 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime, retained: bool 
     )
     await conn.execute(stmt)
     log.info("birth: %s/%s (metrics=%d)", msg.farm_id, msg.device_id, len(metrics))
-    if not retained:
-        await _check_duplicate_publisher(conn, msg, received_at)
 
 
 # 같은 (farm, device) 로 발행자가 둘이면 토픽이 겹쳐 두 현장의 데이터가 한 농장으로
@@ -211,10 +209,18 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime, retained: bool 
 # 보관본(retained) birth 는 발행자 생존의 증거가 아니라 마지막으로 실린 값일 뿐이라
 # 판정에서 뺀다 (경고도 기록도). 브로커가 재생본에만 RETAIN 플래그를 세우므로,
 # 발행자가 retain=true 로 보낸 실황은 플래그 0 으로 와서 그대로 걸린다.
+#
+# 오탐이 하나 남는다: 강제 종료(kill -9·컨테이너 재시작·회선 단절)는 엣지가 death
+# 를 못 보내고 브로커가 LWT 를 대신 내는데, 그 판정이 keepalive 의 최대 1.5 배
+# 뒤다. 그 사이 재접속하면 death 없이 instance 만 바뀐 것으로 보인다. 그래서
+# error 가 아니라 warning 이다 — 이 로그는 사람이 설정 실수를 알아채는 단서지
+# 자동 조치의 근거가 아니다. 없애려면 앞 instance 의 생존 증거(새 birth 이후에도
+# 계속 오는 발행)를 봐야 하는데, 아직 실제로 겪지 않은 문제에 상태 기계를 더하는
+# 값은 아니라고 봤다.
 _seen_instances: dict[tuple[str, str], str] = {}
 
 
-async def _check_duplicate_publisher(conn, msg: Birth, received_at: datetime) -> None:
+def _check_duplicate_publisher(msg: Birth) -> None:
     instance = (msg.model_extra or {}).get("instance_id")
     if not instance:
         return   # 확장 필드다. 안 싣는 엣지는 판정하지 않는다
@@ -222,11 +228,22 @@ async def _check_duplicate_publisher(conn, msg: Birth, received_at: datetime) ->
     prev = _seen_instances.get(key)
     _seen_instances[key] = instance
     if prev is not None and prev != instance:
-        log.error(
+        log.warning(
             "발행자 중복 의심: %s/%s — 앞의 발행자가 내려간 기록 없이 다른 instance 가 "
-            "birth 를 보냄. 같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인",
+            "birth 를 보냄. 같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인 "
+            "(강제 종료 직후 재접속이면 오탐일 수 있다)",
             msg.farm_id, msg.device_id,
         )
+
+
+def _forget_instance(farm_id: str, device_id: str, device_type: str) -> None:
+    """발행자가 내려갔다 — 다음 birth 는 재시작이지 중복이 아니다."""
+    if device_type == "edge":
+        # 엣지 death 는 농장 전체 cascade — 그 아래 장치도 같이 잊는다.
+        for key in [k for k in _seen_instances if k[0] == farm_id]:
+            _seen_instances.pop(key, None)
+    else:
+        _seen_instances.pop((farm_id, device_id), None)
 
 
 async def _handle_death(conn, msg: Death, device_type: str, received_at: datetime) -> None:
@@ -247,12 +264,6 @@ async def _handle_death(conn, msg: Death, device_type: str, received_at: datetim
         .where(cond)
         .values(state="offline", last_death_at=msg.timestamp, updated_at=received_at)
     )
-    # 발행자가 내려갔다 — 다음 birth 는 재시작이지 중복이 아니다.
-    if device_type == "edge":
-        for key in [k for k in _seen_instances if k[0] == msg.farm_id]:
-            _seen_instances.pop(key, None)
-    else:
-        _seen_instances.pop((msg.farm_id, msg.device_id), None)
 
 
 async def _record_pending(engine: AsyncEngine, parsed, msg) -> None:
@@ -425,7 +436,7 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
                     "points": len(msg.points),
                 })
         elif isinstance(msg, Birth):
-            await _handle_birth(conn, msg, received_at, retained)
+            await _handle_birth(conn, msg, received_at)
             if publisher:
                 publisher.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
@@ -455,6 +466,13 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
         elif isinstance(msg, EstopState):
             from middleware.app.stop import handle_estop_state
             await handle_estop_state(conn, msg, received_at, publisher)
+
+    # 발행자 추적은 커밋 이후에 갱신한다 — 롤백되는 birth(미등록 농장의 FK 위반 등)
+    # 로 상태가 오염되면 나중에 엉뚱한 중복 경고가 뜬다.
+    if isinstance(msg, Birth) and not retained:
+        _check_duplicate_publisher(msg)
+    elif isinstance(msg, Death):
+        _forget_instance(msg.farm_id, msg.device_id, parsed.device_type)
 
 
 async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:

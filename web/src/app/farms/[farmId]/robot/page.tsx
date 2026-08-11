@@ -5,7 +5,7 @@
  * 로봇 카드(위치·속도·전원·임무) + 수동 제어 모달 · 임무 스케줄(Planned) · 작업 로그(Planned)
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import {
@@ -13,7 +13,9 @@ import {
 } from "@/components/ui";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { RobotValue, controlBlocked, timeAgo } from "@/lib/monitor";
+import {
+  JOG_REPEAT_MS, JogDirection, RobotValue, controlBlocked, postJog, timeAgo,
+} from "@/lib/monitor";
 
 /** 완충 예상 — 충전 중일 때만 (디자인 "완충 예상 42분"). 단순 선형 추정 */
 function chargeEta(r: RobotValue): string | null {
@@ -22,10 +24,116 @@ function chargeEta(r: RobotValue): string | null {
   return remain <= 0 ? "완충" : `약 ${Math.max(1, Math.round(remain * 0.7))}분`;
 }
 
+const JOG_KEYS: { dir: JogDirection; glyph: string; cell: number }[] = [
+  { dir: "forward", glyph: "↑", cell: 1 },
+  { dir: "left", glyph: "←", cell: 3 },
+  { dir: "right", glyph: "→", cell: 5 },
+  { dir: "backward", glyph: "↓", cell: 7 },
+];
+
+/**
+ * 이동 조작 패드 (개정 0.3-robot-jog) — 누르고 있는 동안 반복 발행, 떼면 정지.
+ *
+ * 떼는 순간을 놓치는 경로가 여럿이다: 포인터가 패드 밖에서 떨어지거나, 탭이
+ * 가려지거나, 모달이 닫히거나. 놓쳐도 엣지의 데드맨이 세우지만, 그건 최후의
+ * 보루지 정상 경로가 아니다 (개정 §3.1).
+ */
+function JogPad({
+  farmId, deviceId, disabled,
+}: { farmId: string; deviceId: string; disabled: boolean }) {
+  const [active, setActive] = useState<JogDirection | null>(null);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeRef = useRef<JogDirection | null>(null);
+
+  const release = useCallback(() => {
+    if (timer.current) {
+      clearInterval(timer.current);
+      timer.current = null;
+    }
+    if (!activeRef.current) return;
+    activeRef.current = null;
+    setActive(null);
+    void postJog(farmId, deviceId, "stop");
+  }, [farmId, deviceId]);
+
+  const press = (dir: JogDirection) => {
+    if (disabled || activeRef.current) return;
+    activeRef.current = dir;
+    setActive(dir);
+    void postJog(farmId, deviceId, dir);
+    timer.current = setInterval(() => void postJog(farmId, deviceId, dir), JOG_REPEAT_MS);
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [active, release]);
+
+  useEffect(() => release, [release]);  // 언마운트(모달 닫힘) 시에도 세운다
+
+  const cellClass = (on: boolean) =>
+    `flex h-11 items-center justify-center rounded-xl text-15 font-extrabold transition ${
+      disabled
+        ? "bg-gray-100 text-gray-300"
+        : on
+          ? "bg-primary text-white"
+          : "bg-gray-100 text-gray-600 active:bg-primary active:text-white"
+    }`;
+
+  return (
+    <div className="mb-4 rounded-2xl border border-gray-200 p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-13 font-extrabold text-gray-500">이동 조작</span>
+        <span className="text-11.5 font-semibold text-gray-400">누르고 있는 동안 이동합니다</span>
+      </div>
+      <div className="mx-auto grid w-40 grid-cols-3 gap-1.5">
+        {Array.from({ length: 9 }, (_, i) => {
+          const key = JOG_KEYS.find((k) => k.cell === i);
+          if (i === 4) {
+            return (
+              <button
+                key={i} type="button" disabled={disabled} onClick={release}
+                title="즉시 정지"
+                className={`flex h-11 items-center justify-center rounded-xl text-15 font-extrabold ${
+                  disabled
+                    ? "bg-gray-100 text-gray-300"
+                    : "bg-status-warning/10 text-status-warningDark active:bg-status-warning/25"
+                }`}
+              >
+                ■
+              </button>
+            );
+          }
+          if (!key) return <span key={i} />;
+          return (
+            <button
+              key={i} type="button" disabled={disabled}
+              onPointerDown={() => press(key.dir)}
+              onPointerUp={release}
+              onContextMenu={(e) => e.preventDefault()}  // 길게 누르면 뜨는 메뉴가 pointerup 을 삼킨다
+              className={cellClass(active === key.dir)}
+            >
+              {key.glyph}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ManualControlModal({
-  robot, onClose, canOperate, blockReason,
+  farmId, robot, onClose, canOperate, blockReason,
 }: {
-  robot: RobotValue; onClose: () => void; canOperate: boolean; blockReason?: string;
+  farmId: string; robot: RobotValue; onClose: () => void;
+  canOperate: boolean; blockReason?: string;
 }) {
   return (
     <Modal
@@ -39,7 +147,7 @@ function ManualControlModal({
       }
     >
       <div className="mb-4 rounded-xl bg-status-caution/10 px-3 py-2 text-12.5 font-bold text-status-cautionDark">
-        수동 제어 중에는 자동 스케줄이 일시 중지됩니다 (인터록 명세 예정)
+        이동 조작을 시작하면 진행 중인 임무가 취소됩니다 (개정 0.3-robot-jog §3.3)
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -59,25 +167,7 @@ function ManualControlModal({
         </div>
       </div>
 
-      {/* 이동 조작 — 범위 경계 논의 필요 (00-overview: 로봇 원격조종기는 범위 밖) */}
-      <div className="mb-4 rounded-2xl border border-dashed border-gray-200 p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <span className="text-13 font-extrabold text-gray-500">이동 조작</span>
-          <PlannedChip basis="범위 경계 논의 · 원격조종기 제외 검토" />
-        </div>
-        <div className="mx-auto grid w-40 grid-cols-3 gap-1.5 opacity-40">
-          {["", "↑", "", "←", "■", "→", "", "↓", ""].map((s, i) => (
-            <span
-              key={i}
-              className={`flex h-11 items-center justify-center rounded-xl text-15 font-extrabold ${
-                s ? "bg-gray-100 text-gray-500" : ""
-              }`}
-            >
-              {s}
-            </span>
-          ))}
-        </div>
-      </div>
+      <JogPad farmId={farmId} deviceId={robot.device_id} disabled={!canOperate} />
 
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -201,7 +291,7 @@ export default function RobotTab() {
 
       {selected && (
         <ManualControlModal
-          robot={selected} onClose={() => setSelected(null)} canOperate={canOperate}
+          farmId={farmId} robot={selected} onClose={() => setSelected(null)} canOperate={canOperate}
           blockReason={
             stopped ? "정지 발동 중 — 원격 제어가 차단되었습니다"
             : !farmOnline ? "통신 단절 — 제어를 사용할 수 없습니다"

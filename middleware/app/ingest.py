@@ -206,10 +206,11 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
 # 한 농장으로 섞이고, 한쪽이 끊기면 LWT 가 다른 쪽까지 오프라인으로 만든다.
 # 브로커는 client id 가 같을 때만 끊어 주는데 그것도 조용해서, 데이터가 번갈아
 # 들어오는 동안에는 정상으로 보인다. 엣지가 birth 에 싣는 instance_id(프로세스마다
-# 다른 값)로 가려낸다 — 값이 오갈 때만 발행자가 둘이다.
-_INSTANCE_FLAP_WINDOW_SEC = 300
-_INSTANCE_FLAP_THRESHOLD = 3
-_seen_instances: dict[tuple[str, str], tuple[str, datetime, int]] = {}
+# 다른 값)로 가려낸다.
+#
+# 판정 기준은 death 다. 재시작은 death → birth 순서라 앞의 것이 지워지고 새 값이
+# 그냥 등록된다. death 없이 값만 바뀌면 먼저 있던 발행자가 아직 살아 있다는 뜻이다.
+_seen_instances: dict[tuple[str, str], str] = {}
 
 
 async def _check_duplicate_publisher(conn, msg: Birth, received_at: datetime) -> None:
@@ -218,20 +219,13 @@ async def _check_duplicate_publisher(conn, msg: Birth, received_at: datetime) ->
         return   # 확장 필드다. 안 싣는 엣지는 판정하지 않는다
     key = (msg.farm_id, msg.device_id)
     prev = _seen_instances.get(key)
-    if prev is None or prev[0] == instance:
-        _seen_instances[key] = (instance, received_at, prev[2] if prev else 0)
-        return
-    # 값이 바뀌었다. 재시작 한 번도 바뀌므로 짧은 창 안의 반복만 중복으로 본다.
-    within = (received_at - prev[1]).total_seconds() <= _INSTANCE_FLAP_WINDOW_SEC
-    flips = prev[2] + 1 if within else 1
-    _seen_instances[key] = (instance, received_at, flips)
-    if flips >= _INSTANCE_FLAP_THRESHOLD:
+    _seen_instances[key] = instance
+    if prev is not None and prev != instance:
         log.error(
-            "발행자 중복 의심: %s/%s — %d분 안에 instance 가 %d회 바뀜. "
-            "같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인",
-            msg.farm_id, msg.device_id, _INSTANCE_FLAP_WINDOW_SEC // 60, flips,
+            "발행자 중복 의심: %s/%s — 앞의 발행자가 내려간 기록 없이 다른 instance 가 "
+            "birth 를 보냄. 같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인",
+            msg.farm_id, msg.device_id,
         )
-        _seen_instances[key] = (instance, received_at, 0)
 
 
 async def _handle_death(conn, msg: Death, device_type: str, received_at: datetime) -> None:
@@ -252,6 +246,12 @@ async def _handle_death(conn, msg: Death, device_type: str, received_at: datetim
         .where(cond)
         .values(state="offline", last_death_at=msg.timestamp, updated_at=received_at)
     )
+    # 발행자가 내려갔다 — 다음 birth 는 재시작이지 중복이 아니다.
+    if device_type == "edge":
+        for key in [k for k in _seen_instances if k[0] == msg.farm_id]:
+            _seen_instances.pop(key, None)
+    else:
+        _seen_instances.pop((msg.farm_id, msg.device_id), None)
 
 
 async def _record_pending(engine: AsyncEngine, parsed, msg) -> None:

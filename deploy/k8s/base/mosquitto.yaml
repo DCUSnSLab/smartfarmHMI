@@ -15,7 +15,7 @@ spec:
       containers:
         - name: mosquitto
           image: eclipse-mosquitto:2
-          ports: [{ containerPort: 1883 }]
+          ports: [{ containerPort: 1883 }, { containerPort: 9001 }]
           volumeMounts:
             - name: conf
               mountPath: /mosquitto/config/mosquitto.conf
@@ -42,4 +42,8 @@ metadata:
   name: mosquitto
 spec:
   selector: { app: mosquitto }
-  ports: [{ port: 1883, targetPort: 1883 }]
+  ports:
+    - { name: mqtt, port: 1883, targetPort: 1883 }
+    # nginx 가 /mqtt 를 여기로 넘긴다 (GEN-1296). 서비스는 ClusterIP 그대로 —
+    # 외부 노출은 nginx 하나로 유지한다.
+    - { name: websockets, port: 9001, targetPort: 9001 }

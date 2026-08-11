@@ -3,15 +3,22 @@
 /**
  * 농업일지 (디자인 "전역: 농업일지") — FR-18 메모 실구현.
  * 달력(메모 도트) · 선택일 일지 · 메모 작성 · 전체 일지 목록
- * 자동 리포트(FR-17)·음성 작성(FR-28)·첨부는 개발 예정.
+ * 자동 리포트(FR-17)·음성 작성(FR-28)은 개발 예정.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import { Card, SectionTitle } from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData, useScope } from "@/lib/farmData";
+
+interface MemoAttachment {
+  id: number;
+  media_type: "image" | "video";
+  url: string;
+}
 
 interface Memo {
   id: number;
@@ -21,12 +28,135 @@ interface Memo {
   via_voice: boolean;
   author: string;
   author_email: string;
+  attachment_count: number;
+  attachments: MemoAttachment[];
   created_at: string;
 }
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_IMAGE_COUNT = 10;
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function SelectedImagePreview({ image, onRemove }: { image: File; onRemove: () => void }) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(image);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  return (
+    <span className="relative block h-12 w-12 flex-none">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`${image.name} 크게 보기`}
+        className="block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+      >
+        {previewUrl && (
+          <img src={previewUrl} alt={`${image.name} 미리보기`} className="h-full w-full object-cover" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`${image.name} 선택 취소`}
+        className="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-gray-700 text-12 font-bold text-white shadow-sm"
+      >
+        ×
+      </button>
+      {open && previewUrl && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={previewUrl}
+              alt={image.name}
+              className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+            />
+
+          </div>
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
+function MemoAttachmentPreview({
+  attachment,
+  index,
+  onRemove,
+}: {
+  attachment: MemoAttachment;
+  index: number;
+  onRemove?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = `첨부 사진 ${index + 1}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  return (
+    <span className="relative block h-12 w-12 flex-none">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`${label} 크게 보기`}
+        className="block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"
+      >
+        <img src={attachment.url} alt={label} className="h-full w-full object-cover" />
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`${label} 삭제`}
+          className="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-gray-700 text-12 font-bold text-white shadow-sm"
+        >
+          ×
+        </button>
+      )}
+      {open && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setOpen(false)}
+        >
+          <img
+            src={attachment.url}
+            alt={label}
+            className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
 
 export default function JournalPage() {
   useScope("all");
@@ -45,9 +175,31 @@ export default function JournalPage() {
   const [editingMemoId, setEditingMemoId] = useState<number | null>(null);
   const [editBody, setEditBody] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  const [editImages, setEditImages] = useState<File[]>([]);
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([]);
+  const [editImageError, setEditImageError] = useState("");
   const [memoFarmFilter, setMemoFarmFilter] = useState("all");
+  const [viewingMemo, setViewingMemo] = useState<Memo | null>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imageError, setImageError] = useState("");
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
 
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+
+  const clearEditImages = useCallback(() => {
+    setEditImages([]);
+    setRemovedAttachmentIds([]);
+    setEditImageError("");
+    if (editImageInputRef.current) editImageInputRef.current.value = "";
+  }, []);
+
+  const closeMemoDetail = useCallback(() => {
+    setViewingMemo(null);
+    setEditingMemoId(null);
+    setEditBody("");
+    clearEditImages();
+  }, [clearEditImages]);
 
   const load = useCallback(async () => {
     const r = await apiFetch(`/api/memos?month=${monthKey}`);
@@ -67,18 +219,58 @@ export default function JournalPage() {
       setMemoFarmFilter("all");
     }
   }, [farms, memoFarmFilter]);
+  useEffect(() => {
+    if (!viewingMemo) return;
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMemoDetail();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [viewingMemo, closeMemoDetail]);
+
+  const clearSelectedImages = () => {
+    setSelectedImages([]);
+    setImageError("");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!body.trim() || !farmId) return;
     setBusy(true);
-    const r = await apiFetch("/api/memos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ farm_id: farmId, memo_date: selected, body }),
-    });
-    setBusy(false);
-    if (r.ok) { setBody(""); void load(); }
+    setImageError("");
+    try {
+      let r: Response;
+      if (selectedImages.length > 0) {
+        const formData = new FormData();
+        formData.append("farm_id", farmId);
+        formData.append("memo_date", selected);
+        formData.append("body", body);
+        selectedImages.forEach((image) => formData.append("files", image));
+        r = await apiFetch("/api/memos/with-attachments", {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        r = await apiFetch("/api/memos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ farm_id: farmId, memo_date: selected, body }),
+        });
+      }
+      if (!r.ok) {
+        const result = await r.json().catch(() => null) as { error?: string } | null;
+        setImageError(result?.error ?? "메모 저장에 실패했습니다. 다시 시도해 주세요.");
+        return;
+      }
+      setBody("");
+      clearSelectedImages();
+      void load();
+    } catch {
+      setImageError("메모 저장에 실패했습니다. 네트워크 연결을 확인해 주세요.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const remove = async () => {
@@ -95,22 +287,131 @@ export default function JournalPage() {
   const startEdit = (memo: Memo) => {
     setEditingMemoId(memo.id);
     setEditBody(memo.body);
+    clearEditImages();
+  };
+
+  const cancelEdit = () => {
+    setEditingMemoId(null);
+    setEditBody("");
+    clearEditImages();
   };
 
   const saveEdit = async () => {
     if (editingMemoId === null || !editBody.trim()) return;
     setEditBusy(true);
-    const r = await apiFetch(`/api/memos/${editingMemoId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: editBody }),
-    });
-    setEditBusy(false);
-    if (r.ok) {
-      setEditingMemoId(null);
-      setEditBody("");
+    setEditImageError("");
+    try {
+      let r: Response;
+      if (editImages.length > 0 || removedAttachmentIds.length > 0) {
+        const formData = new FormData();
+        formData.append("body", editBody);
+        formData.append("remove_attachment_ids", JSON.stringify(removedAttachmentIds));
+        editImages.forEach((image) => formData.append("files", image));
+        r = await apiFetch(`/api/memos/${editingMemoId}/attachments`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        r = await apiFetch(`/api/memos/${editingMemoId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: editBody }),
+        });
+      }
+      if (!r.ok) {
+        const result = await r.json().catch(() => null) as { error?: string } | null;
+        setEditImageError(result?.error ?? "메모 수정에 실패했습니다. 다시 시도해 주세요.");
+        return;
+      }
+      closeMemoDetail();
       void load();
+    } catch {
+      setEditImageError("메모 수정에 실패했습니다. 네트워크 연결을 확인해 주세요.");
+    } finally {
+      setEditBusy(false);
     }
+  };
+
+  const selectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+
+    const invalidType = files.some((file) => !IMAGE_TYPES.includes(file.type));
+    const oversized = files.some((file) => file.size > MAX_IMAGE_SIZE);
+    const currentKeys = new Set(
+      selectedImages.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const validFiles = files.filter(
+      (file) => IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE,
+    );
+    const uniqueFiles = validFiles.filter(
+      (file) => !currentKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const countExceeded = selectedImages.length + uniqueFiles.length > MAX_IMAGE_COUNT;
+
+    setSelectedImages([...selectedImages, ...uniqueFiles].slice(0, MAX_IMAGE_COUNT));
+
+    if (countExceeded) {
+      setImageError(`사진은 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있어요.`);
+    } else if (invalidType) {
+      setImageError("JPEG, PNG, WebP 사진만 선택할 수 있어요.");
+    } else if (oversized) {
+      setImageError("사진은 한 장당 10MB 이하만 선택할 수 있어요.");
+    } else {
+      setImageError("");
+    }
+  };
+
+  const removeSelectedImage = (target: File) => {
+    setSelectedImages((current) => current.filter((file) => file !== target));
+    setImageError("");
+  };
+
+  const selectEditImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+
+    const existingCount = Math.max(
+      (viewingMemo?.attachments?.length ?? 0) - removedAttachmentIds.length,
+      0,
+    );
+    const availableCount = Math.max(MAX_IMAGE_COUNT - existingCount, 0);
+    const invalidType = files.some((file) => !IMAGE_TYPES.includes(file.type));
+    const oversized = files.some((file) => file.size > MAX_IMAGE_SIZE);
+    const currentKeys = new Set(
+      editImages.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const validFiles = files.filter(
+      (file) => IMAGE_TYPES.includes(file.type) && file.size <= MAX_IMAGE_SIZE,
+    );
+    const uniqueFiles = validFiles.filter(
+      (file) => !currentKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const countExceeded = existingCount + editImages.length + uniqueFiles.length > MAX_IMAGE_COUNT;
+
+    setEditImages([...editImages, ...uniqueFiles].slice(0, availableCount));
+
+    if (countExceeded) {
+      setEditImageError(`사진은 기존 첨부를 포함해 최대 ${MAX_IMAGE_COUNT}장까지 선택할 수 있어요.`);
+    } else if (invalidType) {
+      setEditImageError("JPEG, PNG, WebP 사진만 선택할 수 있어요.");
+    } else if (oversized) {
+      setEditImageError("사진은 한 장당 10MB 이하만 선택할 수 있어요.");
+    } else {
+      setEditImageError("");
+    }
+  };
+
+  const removeEditImage = (target: File) => {
+    setEditImages((current) => current.filter((file) => file !== target));
+    setEditImageError("");
+  };
+
+  const removeExistingAttachment = (attachmentId: number) => {
+    setRemovedAttachmentIds((current) => [...current, attachmentId]);
+    setEditImageError("");
   };
 
   const moveMonth = (offset: number) => {
@@ -213,7 +514,7 @@ export default function JournalPage() {
         {/* 선택일 일지 */}
         <Card className="flex h-full min-h-0 flex-col">
           <SectionTitle title={`${selected} 일지`} sub={`메모 ${dayMemos.length}건`} />
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {dayMemos.map((m) => (
               <div key={m.id} className="rounded-xl bg-surface p-3.5">
                 <div className="mb-1 flex items-center gap-2">
@@ -221,56 +522,20 @@ export default function JournalPage() {
                     {farmName(m.farm_id)}
                   </span>
                   <span className="text-11.5 font-semibold text-muted">{m.author}</span>
-                  {(user?.role === "admin" || user?.email === m.author_email) && editingMemoId !== m.id && (
-                    <span className="ml-auto flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(m)}
-                        className="text-11.5 font-bold text-gray-400"
-                      >
-                        수정
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingMemoId(m.id)}
-                        className="text-11.5 font-bold text-gray-400"
-                      >
-                        삭제
-                      </button>
-                    </span>
-                  )}
+                  <span className="text-11.5 font-semibold text-muted">
+                    첨부 {m.attachment_count ?? 0}건
+                  </span>
                 </div>
-                {editingMemoId === m.id ? (
-                  <div>
-                    <textarea
-                      autoFocus
-                      value={editBody}
-                      onChange={(e) => setEditBody(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-13.5 font-semibold text-gray-700 outline-none focus:border-primary"
-                    />
-                    <div className="mt-2 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        disabled={editBusy}
-                        onClick={() => { setEditingMemoId(null); setEditBody(""); }}
-                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-12 font-bold text-gray-500 disabled:opacity-50"
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="button"
-                        disabled={editBusy || !editBody.trim()}
-                        onClick={() => void saveEdit()}
-                        className="rounded-lg bg-primary px-3 py-1.5 text-12 font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
-                      >
-                        {editBusy ? "저장 중…" : "저장"}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-13.5 font-semibold leading-relaxed text-gray-700">{m.body}</p>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingMemo(m)}
+                  aria-label="메모 전체 내용 보기"
+                  className="block w-full text-left"
+                >
+                  <p className="line-clamp-2 whitespace-pre-wrap break-words text-13.5 font-semibold leading-relaxed text-gray-700">
+                    {m.body}
+                  </p>
+                </button>
               </div>
             ))}
             {dayMemos.length === 0 && (
@@ -317,20 +582,43 @@ export default function JournalPage() {
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap items-end gap-2">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  onChange={selectImage}
+                  className="hidden"
+                />
                 <button
-                  type="button" disabled title="사진·동영상 첨부는 개발 예정입니다 (FR-18)"
-                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400"
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  aria-label="사진 선택"
+                  title="사진 선택"
+                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary-dark"
                 >
                   <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                 </button>
+                {selectedImages.map((image) => (
+                  <SelectedImagePreview
+                    key={`${image.name}:${image.size}:${image.lastModified}`}
+                    image={image}
+                    onRemove={() => removeSelectedImage(image)}
+                  />
+                ))}
                 <span className="relative bottom-1">
-                  <PlannedChip basis="FR-28 음성 · FR-18 첨부" />
+                  <PlannedChip basis="FR-28 음성" />
                 </span>
+                {imageError && (
+                  <span className="w-full text-11.5 font-bold text-status-warningDark">{imageError}</span>
+                )}
                 <div className="ml-auto flex gap-2">
                   <button
-                    type="button" onClick={() => setBody("")} disabled={!body}
+                    type="button"
+                    onClick={() => { setBody(""); clearSelectedImages(); }}
+                    disabled={!body && selectedImages.length === 0}
                     className="rounded-xl bg-gray-100 px-5 py-2 text-13.5 font-extrabold text-gray-600 disabled:text-gray-400"
                   >
                     초기화
@@ -387,19 +675,22 @@ export default function JournalPage() {
           <div className="space-y-2">
             {filteredMemos.map((m) => (
               <button
-                key={m.id} onClick={() => setSelected(m.memo_date)}
+                key={m.id}
+                onClick={() => { setSelected(m.memo_date); setViewingMemo(m); }}
                 className="flex w-full items-center gap-3 rounded-xl bg-surface px-3.5 py-3 text-left hover:bg-gray-100"
               >
                 <span className="flex-none rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-12 font-extrabold text-gray-600">
                   {m.memo_date.slice(5)}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="mr-1.5 rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span className="flex-none rounded-md bg-primary-bg px-1.5 py-0.5 text-11 font-extrabold text-primary-dark">
                     {farmName(m.farm_id)}
                   </span>
-                  <span className="text-13.5 font-semibold text-gray-700">{m.body}</span>
+                  <span className="min-w-0 truncate text-13.5 font-semibold text-gray-700">{m.body}</span>
                 </span>
-                <span className="flex-none text-11.5 font-semibold text-muted">{m.author}</span>
+                <span className="flex-none text-11.5 font-semibold text-muted">
+                  첨부 {m.attachment_count ?? 0}건 · {m.author}
+                </span>
               </button>
             ))}
             {filteredMemos.length === 0 && (
@@ -410,6 +701,151 @@ export default function JournalPage() {
           </div>
         </Card>
       </section>
+
+      {viewingMemo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={closeMemoDetail}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="memo-detail-title"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="memo-detail-title" className="text-16 font-extrabold">메모 전체 내용</h3>
+                <p className="mt-1 text-12.5 font-semibold text-muted">{viewingMemo.memo_date}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeMemoDetail}
+                aria-label="메모 상세 닫기"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-20 font-bold text-gray-400 hover:bg-surface"
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-primary-bg px-2 py-1 text-11.5 font-extrabold text-primary-dark">
+                {farmName(viewingMemo.farm_id)}
+              </span>
+              <span className="text-12 font-semibold text-muted">{viewingMemo.author}</span>
+              <span className="text-12 font-semibold text-muted">
+                첨부 {Math.max((viewingMemo.attachment_count ?? 0) - removedAttachmentIds.length + (editingMemoId === viewingMemo.id ? editImages.length : 0), 0)}건
+              </span>
+            </div>
+            {editingMemoId === viewingMemo.id ? (
+              <div className="mt-4">
+                <textarea
+                  autoFocus
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-13.5 font-semibold text-gray-700 outline-none focus:border-primary"
+                />
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 pr-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <input
+                      ref={editImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      onChange={selectEditImage}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editImageInputRef.current?.click()}
+                      disabled={(viewingMemo.attachments?.length ?? 0) - removedAttachmentIds.length + editImages.length >= MAX_IMAGE_COUNT}
+                      aria-label="사진 추가"
+                      title="사진 추가"
+                      className="flex h-12 w-12 flex-none items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                    {viewingMemo.attachments
+                      .filter((attachment) => !removedAttachmentIds.includes(attachment.id))
+                      .map((attachment, index) => (
+                        <MemoAttachmentPreview
+                          key={attachment.id}
+                          attachment={attachment}
+                          index={index}
+                          onRemove={() => removeExistingAttachment(attachment.id)}
+                        />
+                      ))}
+                    {editImages.map((image) => (
+                      <SelectedImagePreview
+                        key={`edit-${image.name}:${image.size}:${image.lastModified}`}
+                        image={image}
+                        onRemove={() => removeEditImage(image)}
+                      />
+                    ))}
+                  </div>
+                  <div className="ml-auto flex flex-none gap-2">
+                    <button
+                      type="button"
+                      disabled={editBusy}
+                      onClick={cancelEdit}
+                      className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500 disabled:opacity-50"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      disabled={editBusy || !editBody.trim()}
+                      onClick={() => void saveEdit()}
+                      className="rounded-lg bg-primary px-4 py-2 text-13 font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
+                    >
+                      {editBusy ? "저장 중…" : "저장"}
+                    </button>
+                  </div>
+                </div>
+                {editImageError && (
+                  <p className="mt-2 text-11.5 font-bold text-status-warningDark">{editImageError}</p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-4 max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-surface p-4 text-13.5 font-semibold leading-relaxed text-gray-700">
+                {viewingMemo.body}
+              </p>
+            )}
+            {editingMemoId !== viewingMemo.id && (viewingMemo.attachments ?? []).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {viewingMemo.attachments.map((attachment, index) => (
+                  <MemoAttachmentPreview
+                    key={attachment.id}
+                    attachment={attachment}
+                    index={index}
+                  />
+                ))}
+              </div>
+            )}
+            {(user?.role === "admin" || user?.email === viewingMemo.author_email) && editingMemoId !== viewingMemo.id && (
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => startEdit(viewingMemo)}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const memoId = viewingMemo.id; closeMemoDetail(); setDeletingMemoId(memoId); }}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-13 font-bold text-gray-500"
+                >
+                  삭제
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {deletingMemoId !== null && (
         <div

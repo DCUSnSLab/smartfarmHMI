@@ -162,9 +162,6 @@ function FarmModal({
       .map((row) => row.level3),
   );
 
-  const regionLabel = (row: RegionRow) =>
-    [row.level1, row.level2, row.level3].filter(Boolean).join(" ");
-
   const selectLevel1 = (value: string) => {
     setLevel1(value);
     setLevel2("");
@@ -373,15 +370,6 @@ function FarmModal({
                   {level3Options.map((value) => <option key={value} value={value}>{value}</option>)}
                 </select>
               </div>
-              <p className="mt-1 text-11.5 font-semibold text-muted">
-                선택한 행정구역의 코드와 대표 위도·경도를 저장합니다.
-              </p>
-              {selectedRegion && (
-                <p className="mt-2 text-12 font-bold text-primary-dark" role="status">
-                  위치 지정 완료 · {regionLabel(selectedRegion)} · 코드 {selectedRegion.code}
-                  {" · "}{selectedRegion.latitude.toFixed(3)}-{selectedRegion.longitude.toFixed(3)}
-                </p>
-              )}
             </>
           ) : (
             <div className="mt-2">

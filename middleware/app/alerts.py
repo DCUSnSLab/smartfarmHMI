@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
@@ -186,46 +186,130 @@ def _deps():
     return engine, publisher
 
 
+# ── 목록 조회 — 기준선 고정 + 페이지 번호 ─────────────────────
+#
+# 화면이 「1 2 3 … » 」로 페이지를 직접 고르므로 offset 이 필요하다. 그런데 이
+# 목록은 WebSocket push 로 새 알림이 위에 끼어드는 실시간 목록이어서, 그냥
+# offset 을 쓰면 3페이지를 보는 사이 새 알림 한 건에 전체가 한 칸씩 밀려 방금 본
+# 항목이 다시 나오거나 하나가 건너뛰어진다.
+#
+# 그래서 목록을 여는 순간의 최신 항목을 **기준선(anchor)** 으로 잡고, 그 이하만
+# 센다. 페이지 집합이 브라우징 중에 변하지 않는다. 기준선보다 새로 도착한 알림은
+# 목록에 끼어들지 않고, 화면이 「새 알림 N건」으로 따로 알린다 (새로고침 시 편입).
+#
+# 응답이 배열이 아니라 객체인 이유: 「미확인 N건」·전체 페이지 수는 받아온 목록을
+# 세서 만들 수 없다 (창 밖의 건수를 모른다). 서버가 함께 준다.
+
+ALERT_PAGE_MAX = 300  # 한 번에 내려주는 최대 건수
+SEVERITIES = ("warning", "caution", "info")
+
+
+def _alert_json(r) -> dict:
+    return {
+        "id": r["id"], "farm_id": r["farm_id"], "severity": r["severity"],
+        "alert_kind": r["alert_kind"], "device_id": r["device_id"], "title": r["title"],
+        "body": r["body"], "deeplink": r["deeplink"],
+        "occurred_at": r["occurred_at"].isoformat(),
+        "acked_at": r["acked_at"].isoformat() if r["acked_at"] else None,
+    }
+
+
+def _parse_anchor(anchor: str | None) -> tuple[datetime, int] | None:
+    """기준선은 "<occurred_at ISO>|<id>" — 화면은 내용을 해석하지 않고 되돌려 보낸다.
+
+    id 를 함께 넣는 이유: occurred_at 은 유일하지 않다. 같은 시각에 발생한 알림이
+    여럿이면 시각만으로는 경계를 못 그어 항목이 누락되거나 반복된다.
+    """
+    if anchor is None:
+        return None
+    ts, _, alert_id = anchor.rpartition("|")
+    try:
+        return datetime.fromisoformat(ts), int(alert_id)
+    except ValueError:
+        raise HTTPException(400, f"잘못된 anchor: {anchor}") from None
+
+
+async def _alert_page(engine, farm_id: str | None, *, unacked: bool, severity: str | None,
+                      limit: int, page: int, anchor: str | None) -> dict:
+    """farm_id=None 이면 전 농장."""
+    if severity is not None and severity not in SEVERITIES:
+        raise HTTPException(400, f"허용되지 않는 severity: {severity}")
+    limit = max(1, min(limit, ALERT_PAGE_MAX))
+    page = max(1, page)
+    key = _parse_anchor(anchor)
+
+    scope = [m.alert.c.farm_id == farm_id] if farm_id is not None else []
+    ordering = (m.alert.c.occurred_at.desc(), m.alert.c.id.desc())
+
+    async with engine.connect() as conn:
+        if key is None:
+            # 기준선을 심각도 필터와 무관하게(스코프 기준으로) 잡는다 — 필터를 바꿔도
+            # "이 목록을 연 시점"이 유지되어 페이지 수만 다시 계산된다.
+            newest = (
+                await conn.execute(
+                    select(m.alert.c.occurred_at, m.alert.c.id)
+                    .where(*scope).order_by(*ordering).limit(1)
+                )
+            ).first()
+            key = (newest.occurred_at, newest.id) if newest is not None else None
+
+        window = list(scope)
+        if key is not None:
+            window.append(tuple_(m.alert.c.occurred_at, m.alert.c.id) <= tuple_(*key))
+        filtered = list(window)
+        if unacked:
+            filtered.append(m.alert.c.acked_at.is_(None))
+        if severity:
+            filtered.append(m.alert.c.severity == severity)
+
+        # 페이지 번호 UI 는 전체 페이지 수를 알아야 하므로 COUNT 가 불가피하다.
+        total = (
+            await conn.execute(select(func.count()).select_from(m.alert).where(*filtered))
+        ).scalar_one()
+        pages = max(1, (total + limit - 1) // limit)
+        page = min(page, pages)  # 마지막 페이지 뒤를 요청하면 마지막으로 접는다
+
+        rows = (
+            await conn.execute(
+                select(m.alert).where(*filtered)
+                .order_by(*ordering).limit(limit).offset((page - 1) * limit)
+            )
+        ).mappings().all()
+
+        # 미확인 총계는 심각도 필터를 무시하고 센다 — 상단 「미확인 N건」은 목록
+        # 필터를 바꿔도 흔들리지 않아야 한다 (필터는 목록에만 걸린다).
+        unacked_total = (
+            await conn.execute(
+                select(func.count()).select_from(m.alert)
+                .where(*window, m.alert.c.acked_at.is_(None))
+            )
+        ).scalar_one()
+
+    return {
+        "items": [_alert_json(r) for r in rows],
+        "page": page,
+        "pages": pages,
+        "total": total,
+        "unacked_total": unacked_total,
+        "anchor": f"{key[0].isoformat()}|{key[1]}" if key is not None else None,
+    }
+
+
 @router.get("/alerts")
-async def list_all_alerts(unacked: bool = False, limit: int = 100):
+async def list_all_alerts(unacked: bool = False, severity: str | None = None,
+                          limit: int = 100, page: int = 1, anchor: str | None = None):
     """전 농장 알림 — 통합 대시보드 KPI·전역 알림 화면 (FR-33·38)."""
     engine, _ = _deps()
-    stmt = select(m.alert)
-    if unacked:
-        stmt = stmt.where(m.alert.c.acked_at.is_(None))
-    stmt = stmt.order_by(m.alert.c.occurred_at.desc()).limit(min(limit, 300))
-    async with engine.connect() as conn:
-        rows = (await conn.execute(stmt)).mappings().all()
-    return [
-        {"id": r["id"], "farm_id": r["farm_id"], "severity": r["severity"],
-         "alert_kind": r["alert_kind"], "device_id": r["device_id"], "title": r["title"],
-         "body": r["body"], "deeplink": r["deeplink"],
-         "occurred_at": r["occurred_at"].isoformat(),
-         "acked_at": r["acked_at"].isoformat() if r["acked_at"] else None}
-        for r in rows
-    ]
+    return await _alert_page(engine, None, unacked=unacked, severity=severity,
+                             limit=limit, page=page, anchor=anchor)
 
 
 @router.get("/farms/{farm_id}/alerts")
 async def list_alerts(farm_id: str, unacked: bool = False, severity: str | None = None,
-                      limit: int = 50):
+                      limit: int = 50, page: int = 1, anchor: str | None = None):
     engine, _ = _deps()
-    stmt = select(m.alert).where(m.alert.c.farm_id == farm_id)
-    if unacked:
-        stmt = stmt.where(m.alert.c.acked_at.is_(None))
-    if severity:
-        stmt = stmt.where(m.alert.c.severity == severity)
-    stmt = stmt.order_by(m.alert.c.occurred_at.desc()).limit(min(limit, 200))
-    async with engine.connect() as conn:
-        rows = (await conn.execute(stmt)).mappings().all()
-    return [
-        {"id": r["id"], "farm_id": r["farm_id"], "severity": r["severity"],
-         "alert_kind": r["alert_kind"],
-         "device_id": r["device_id"], "title": r["title"], "body": r["body"],
-         "deeplink": r["deeplink"], "occurred_at": r["occurred_at"].isoformat(),
-         "acked_at": r["acked_at"].isoformat() if r["acked_at"] else None}
-        for r in rows
-    ]
+    return await _alert_page(engine, farm_id, unacked=unacked, severity=severity,
+                             limit=limit, page=page, anchor=anchor)
 
 
 class AckRequest(BaseModel):

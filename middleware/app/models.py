@@ -575,6 +575,10 @@ alert = sa.Table(
     sa.Index("ix_alert_farm_occurred", "farm_id", "occurred_at"),
     # 미확인 카운트용 부분 인덱스
     sa.Index("ix_alert_unacked", "farm_id", postgresql_where=sa.text("acked_at IS NULL")),
+    # 전 농장 목록의 키셋 페이지네이션용 — (occurred_at, id) 순서가 정렬 키이자 커서다.
+    # DESC 로 만들지 않는 이유: btree 는 역방향 스캔이 가능해 ORDER BY ... DESC 에도
+    # 같은 인덱스가 쓰인다 (혼합 정렬이 아니라면 방향을 박을 이유가 없다).
+    sa.Index("ix_alert_occurred_id", "occurred_at", "id"),
 )
 
 # ── 3.6 안전 ─────────────────────────────────────────────────

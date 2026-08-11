@@ -179,7 +179,7 @@ async def _handle_layout(conn, msg: Layout, received_at: datetime) -> None:
     )
 
 
-async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
+async def _handle_birth(conn, msg: Birth, received_at: datetime, retained: bool = False) -> None:
     metrics = [mt.model_dump() for mt in msg.metrics]
     stmt = (
         insert(m.device_connection_state)
@@ -199,7 +199,8 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
     )
     await conn.execute(stmt)
     log.info("birth: %s/%s (metrics=%d)", msg.farm_id, msg.device_id, len(metrics))
-    await _check_duplicate_publisher(conn, msg, received_at)
+    if not retained:
+        await _check_duplicate_publisher(conn, msg, received_at)
 
 
 # 같은 (farm, device) 로 발행자가 둘이면 토픽이 통째로 겹친다. 두 현장의 데이터가
@@ -210,6 +211,14 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
 #
 # 판정 기준은 death 다. 재시작은 death → birth 순서라 앞의 것이 지워지고 새 값이
 # 그냥 등록된다. death 없이 값만 바뀌면 먼저 있던 발행자가 아직 살아 있다는 뜻이다.
+#
+# 보관본(retained) birth 는 이 판정에 넣지 않는다 — 경고도, 기록도. 그건 "그 토픽에
+# 마지막으로 실린 값"일 뿐 발행자가 지금 살아 있다는 증거가 아니다. 미들웨어가
+# 재시작하면 죽은 엣지가 남긴 birth 까지 다시 읽는데, 그걸 기록해 두면 진짜 엣지가
+# 붙을 때 instance 가 달라 중복으로 오탐한다. 기록만 하고 경고를 미뤄도 같은 결과다.
+# 실황과 보관본은 브로커가 구분해 준다 — 재생본에만 RETAIN 플래그가 서고, 살아 있는
+# 발행자의 메시지는 retain=true 로 보냈어도 플래그 0 으로 배달된다. 그래서 진짜
+# 중복(둘 다 실황)은 이 제외로 놓치지 않는다.
 _seen_instances: dict[tuple[str, str], str] = {}
 
 
@@ -319,7 +328,8 @@ async def _record_pending(engine: AsyncEngine, parsed, msg) -> None:
 
 
 async def handle_message(
-    engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None
+    engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None,
+    retained: bool = False,
 ) -> None:
     parsed = topics.parse_topic(topic_str)
     if parsed is None:
@@ -343,7 +353,7 @@ async def handle_message(
         await _record_pending(engine, parsed, msg)
         return
     try:
-        await _dispatch(engine, parsed, msg, received_at, publisher)
+        await _dispatch(engine, parsed, msg, received_at, publisher, retained)
     except IntegrityError as e:
         # 대표 사례: 미등록 농장의 birth/텔레메트리 (FK 위반) — README 발견 사항.
         # birth 는 접속 시 1회 발행이라, 농장 등록 후 장치가 재접속해야 복구된다.
@@ -379,7 +389,7 @@ async def _handle_heartbeat(conn, msg: Heartbeat, device_type: str, received_at:
     await conn.execute(stmt)
 
 
-async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
+async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False) -> None:
     async with engine.begin() as conn:
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)
@@ -423,7 +433,7 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
                     "points": len(msg.points),
                 })
         elif isinstance(msg, Birth):
-            await _handle_birth(conn, msg, received_at)
+            await _handle_birth(conn, msg, received_at, retained)
             if publisher:
                 publisher.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
@@ -467,7 +477,10 @@ async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:
                 log.info("ingest: subscribed %s/# @ %s", topics.PREFIX, settings.mqtt_host)
                 async for message in client.messages:
                     try:
-                        await handle_message(engine, str(message.topic), message.payload, publisher)
+                        await handle_message(
+                            engine, str(message.topic), message.payload, publisher,
+                            retained=bool(message.retain),
+                        )
                     except Exception:  # 메시지 1건 실패가 루프를 죽이지 않게
                         log.exception("ingest: handler error on %s", message.topic)
         except aiomqtt.MqttError as e:

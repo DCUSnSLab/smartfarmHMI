@@ -309,3 +309,28 @@ async def device_control(request, farm_id: str, device_id: str):
             f"/internal/farms/{farm_id}/devices/{device_id}/control", json=body
         )
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
+@csrf_exempt  # device_control 과 같은 근거 — JWT 쿠키(SameSite=Lax) 인증
+async def robot_jog(request, farm_id: str, device_id: str):
+    """로봇 이동 조작 (개정 0.3-robot-jog) — admin/manager 만.
+
+    버튼을 누르고 있는 동안 반복 호출된다. timeout 을 짧게 잡는다 — 조작이
+    밀려 쌓이는 것보다 그 한 번을 버리는 편이 낫고, 데드맨이 있어 놓쳐도
+    로봇은 선다 (개정 §3.1).
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    user = request_user(request)
+    if user is None:
+        return unauthorized()
+    if user.role not in CONTROL_ROLES:
+        return forbidden("제어")
+    try:
+        body = json.loads(request.body)
+    except ValueError:
+        return JsonResponse({"error": "invalid json"}, status=400)
+    body["issued_by"] = user.email
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=2) as client:
+        resp = await client.post(f"/internal/farms/{farm_id}/robots/{device_id}/jog", json=body)
+    return JsonResponse(resp.json(), safe=False, status=resp.status_code)

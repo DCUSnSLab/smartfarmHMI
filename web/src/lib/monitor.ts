@@ -416,6 +416,22 @@ export async function postControl(
   return (await res.json()).command_id;
 }
 
+/** 이동 조작 (개정 0.3-robot-jog). 반복 주기 < 데드맨 — 그래야 끊김 없이 이어진다 (§3.1). */
+export const JOG_REPEAT_MS = 400;
+export const JOG_DURATION_MS = 800;
+export type JogDirection = "forward" | "backward" | "left" | "right" | "stop";
+
+export async function postJog(
+  farmId: string, deviceId: string, direction: JogDirection, speed = 0.5,
+): Promise<boolean> {
+  const res = await apiFetch(`/api/farms/${farmId}/robots/${deviceId}/jog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ direction, speed, duration_ms: JOG_DURATION_MS }),
+  });
+  return res.ok;
+}
+
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";
   const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

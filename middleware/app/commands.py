@@ -14,7 +14,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
-from shared.schemas import Ack, ControlCommand
+from shared.schemas import Ack, ControlCommand, RobotJog
 from shared.schemas.topics import topic
 
 log = logging.getLogger("mw.commands")
@@ -25,6 +25,12 @@ router = APIRouter(prefix="/internal")
 ALLOWED_COMMANDS = {"set_temperature", "set_humidity", "set_ec", "set_led", "set_auto_mode"}
 
 TERMINAL_STATUSES = ("completed", "failed", "rejected", "timeout")
+
+JOG_DIRECTIONS = {"forward", "backward", "left", "right", "stop"}
+JOG_SPEED_MAX = 1.0
+# 데드맨 하한·상한 — 반복 주기보다 길고 사람의 반응 시간보다 짧아야 한다 (개정 §3.1).
+JOG_DURATION_MS_MIN = 100
+JOG_DURATION_MS_MAX = 2000
 
 
 def _deps():
@@ -107,6 +113,56 @@ async def issue_control(farm_id: str, device_id: str, req: ControlRequest):
         "params": req.params, "status": "issued",
     })
     log.info("control issued: %s %s %s %s", command_id, device_id, req.command, req.params)
+    return {"command_id": command_id, "status": "issued"}
+
+
+class JogRequest(BaseModel):
+    direction: str
+    speed: float = 0.5
+    duration_ms: int = 800
+    issued_by: str | None = None
+
+
+@router.post("/farms/{farm_id}/robots/{device_id}/jog")
+async def issue_jog(farm_id: str, device_id: str, req: JogRequest):
+    """로봇 이동 조작 (개정 0.3-robot-jog §2).
+
+    `command_log` 에 남기지 않는다 — 누르고 있는 동안 초당 수 건이 나가는 연속
+    조작이라 명령 1건의 생명주기를 담는 자리에 1:1 로 넣으면 이력이 뒤덮이고
+    timeout_watcher 가 매 건을 감시하게 된다 (개정 §6).
+    """
+    if req.direction not in JOG_DIRECTIONS:
+        raise HTTPException(400, f"허용되지 않는 방향: {req.direction}")
+    engine, publisher = _deps()
+
+    # 정지 명령은 막지 않는다 — 정지 방향은 언제나 안전측이다.
+    if req.direction != "stop":
+        from middleware.app.stop import is_estopped, is_remote_stopped
+        async with engine.connect() as conn:
+            if await is_remote_stopped(conn, farm_id):
+                raise HTTPException(423, "원격 전체 정지 발동 중 — 조작이 차단되었습니다 (FR-35)")
+            if await is_estopped(conn, farm_id):
+                raise HTTPException(423, "물리 비상정지 작동 중 — 현장에서 해제해야 합니다 (FR-36)")
+
+    command_id = f"cmd-{uuid.uuid4().hex[:12]}"
+    msg = RobotJog(
+        command_id=command_id, farm_id=farm_id, device_id=device_id,
+        direction=req.direction,
+        # 서버가 아는 범위 안에서만 자른다. 물리 상한(m/s)은 엣지 소유 (개정 §3.2).
+        speed=min(max(req.speed, 0.0), JOG_SPEED_MAX),
+        duration_ms=min(max(req.duration_ms, JOG_DURATION_MS_MIN), JOG_DURATION_MS_MAX),
+        issued_by=req.issued_by, timestamp=datetime.now(timezone.utc),
+    )
+    publisher.publish_raw(
+        topic(farm_id, "robot", device_id, "command"), msg.model_dump_json(), retain=False
+    )
+    publisher.publish(farm_id, "command", {
+        "command_id": command_id, "device_id": device_id, "command": "robot_jog",
+        "params": {"direction": msg.direction, "speed": msg.speed,
+                   "duration_ms": msg.duration_ms},
+        "status": "issued",
+    })
+    log.info("jog issued: %s %s %s", command_id, device_id, msg.direction)
     return {"command_id": command_id, "status": "issued"}
 
 

@@ -15,6 +15,12 @@ MESSAGE_TYPES = (
     "stop_state",  # §4.6.1 미들웨어 → 엣지 원격 정지 상태 (retained)
 )
 
+# 내부 재발행 스트림. 전부 retained 라 settings_api._clear_retained 의 삭제
+# 목록이기도 하다 — 새 스트림은 반드시 여기에 등록할 것.
+STREAMS = (
+    "environment", "robot", "connection", "layout", "alert", "command", "stop",
+)
+
 
 class ParsedTopic(NamedTuple):
     farm_id: str
@@ -35,6 +41,8 @@ def parse_topic(value: str) -> ParsedTopic | None:
 
 
 def internal_topic(farm_id: str, stream: str) -> str:
+    if stream not in STREAMS:
+        raise ValueError(f"등록되지 않은 내부 스트림: {stream!r} — topics.STREAMS 에 추가할 것")
     return f"{INTERNAL_PREFIX}/{farm_id}/{stream}"
 
 

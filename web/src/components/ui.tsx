@@ -105,6 +105,8 @@ export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
   online: { label: "정상", sev: "ok" },
   degraded: { label: "응답 지연", sev: "caution" },
   offline: { label: "오프라인", sev: "warning" },
+  // 통신 상태 행이 없는 장치 — 배지를 지우면 정상처럼 보인다.
+  unknown: { label: "통신 상태 미확인", sev: "caution" },
 };
 
 /**

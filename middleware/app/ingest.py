@@ -462,17 +462,21 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
                 )).mappings().all()
                 for row in rows:
                     interval = row["publish_interval_sec"]
-                    if interval is None:
-                        # 주기 발행이 없는 장치(엣지 컨트롤러 등)는 LWT 로만 판정
-                        continue
                     last = row["last_received_at"]
                     if last is None or row["state"] == "offline":
                         continue
                     gap = (now - last).total_seconds()
+                    # 주기를 모르면(birth·heartbeat 를 못 받은 장치) 하한만으로 판정한다.
+                    # 건너뛰면 수신 때마다 켜둔 online 을 내릴 사람이 없어, 소식이
+                    # 끊긴 장치가 화면에 영원히 「정상」으로 뜬다.
+                    offline_after = max(interval * OFFLINE_FACTOR, MIN_OFFLINE_SEC) if interval \
+                        else MIN_OFFLINE_SEC
+                    degraded_after = max(interval * DEGRADED_FACTOR, MIN_DEGRADED_SEC) if interval \
+                        else MIN_DEGRADED_SEC
                     new_state = None
-                    if gap > max(interval * OFFLINE_FACTOR, MIN_OFFLINE_SEC):
+                    if gap > offline_after:
                         new_state = "offline"
-                    elif gap > max(interval * DEGRADED_FACTOR, MIN_DEGRADED_SEC):
+                    elif gap > degraded_after:
                         new_state = "degraded"
                     if new_state and new_state != row["state"]:
                         await conn.execute(

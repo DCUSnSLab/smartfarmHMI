@@ -11,6 +11,8 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.accounts.auth import ACCESS_COOKIE, user_from_token
 
+SYSTEM_GROUP = "system"
+
 
 def _cookie(scope, name: str) -> str | None:
     for key, value in scope.get("headers", []):
@@ -34,6 +36,8 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             return
         # 농장별 접근 권한 분리는 OPN-07 확정 시 여기서 검사
         await self.accept()
+        # 서버 생존 신호는 스코프와 무관하다 — 전환해도 유지되도록 따로 가입한다.
+        await self.channel_layer.group_add(SYSTEM_GROUP, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         """{"action":"subscribe","scope":"all"|"<farm_id>"} — 스코프 전환 (FR-38)."""
@@ -61,3 +65,5 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, code):
         if getattr(self, "_group", None):
             await self.channel_layer.group_discard(self._group, self.channel_name)
+        if getattr(self, "user", None) is not None:
+            await self.channel_layer.group_discard(SYSTEM_GROUP, self.channel_name)

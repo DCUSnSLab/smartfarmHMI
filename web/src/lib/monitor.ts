@@ -205,6 +205,9 @@ export function useMonitor(scope: string) {
   const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
   const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
+  // 소켓이 붙어 있어도 미들웨어·브리지가 멈추면 데이터만 조용히 끊긴다.
+  // 서버 맥박(_system/health)의 나이로 그 상태를 본다.
+  const [serverBeat, setServerBeat] = useState<{ at: number; up: boolean } | null>(null);
 
   // 이 스코프의 스냅샷이 도착했는가 — 「아직 안 받음」과 「데이터 없음」을 구분한다
   const [snapshotReady, setSnapshotReady] = useState(false);
@@ -273,6 +276,10 @@ export function useMonitor(scope: string) {
       const msg = JSON.parse(ev.data);
       if (msg.type !== "update") return;
       const d = msg.data;
+      if (msg.stream === "health") {
+        setServerBeat({ at: Date.now(), up: d.state === "up" });
+        return;
+      }
       if (msg.stream === "environment") {
         setSensors((prev) => ({
           ...prev,
@@ -367,7 +374,7 @@ export function useMonitor(scope: string) {
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
-    snapshotReady,
+    snapshotReady, serverBeat,
   };
 }
 
@@ -414,6 +421,31 @@ export async function postControl(
   });
   if (!res.ok) return null;
   return (await res.json()).command_id;
+}
+
+/**
+ * 서버까지의 데이터 길이 살아 있는가.
+ *
+ * 소켓이 붙어 있다고 데이터가 오는 것은 아니다 — 미들웨어나 브리지가 멈추면
+ * 소켓은 그대로인 채 값만 조용히 낡는다. 서버 맥박의 나이로 그것을 가른다.
+ */
+export const SERVER_BEAT_SEC = 10;
+export const SERVER_SILENT_SEC = SERVER_BEAT_SEC * 3;
+
+export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
+
+export function useServerLink(
+  wsOpen: boolean, beat: { at: number; up: boolean } | null,
+): LinkState {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 2000);
+    return () => clearInterval(t);
+  }, []);
+  if (!wsOpen) return "socket-down";
+  if (beat === null) return "unknown";      // 아직 첫 맥박 전 (retained 라 곧 온다)
+  if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
+  return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }
 
 export function timeAgo(iso: string | null): string {

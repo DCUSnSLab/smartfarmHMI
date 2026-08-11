@@ -36,3 +36,9 @@ def parse_topic(value: str) -> ParsedTopic | None:
 
 def internal_topic(farm_id: str, stream: str) -> str:
     return f"{INTERNAL_PREFIX}/{farm_id}/{stream}"
+
+
+# 서버 자신의 생존을 나르는 자리 — farm_id 자리에 들어가지만 농장이 아니다.
+# 밑줄로 시작해 실제 farm_id 와 겹치지 않는다.
+SYSTEM_SCOPE = "_system"
+HEALTH_TOPIC = f"{INTERNAL_PREFIX}/{SYSTEM_SCOPE}/health"

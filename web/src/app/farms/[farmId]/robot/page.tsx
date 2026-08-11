@@ -136,7 +136,12 @@ export default function RobotTab() {
                       이상 · {r.error.code}
                     </span>
                   )}
-                  {c && <StatusDot sev={CONN_STYLE[c.state]?.sev ?? "info"} label={CONN_STYLE[c.state]?.label} />}
+                  {/* 통신 행이 없으면 배지를 지우던 자리 — 소식이 끊긴 로봇이
+                      멀쩡해 보였다. 모른다는 사실도 상태다. */}
+                  {(() => {
+                    const s = CONN_STYLE[c?.state ?? ""] ?? CONN_STYLE.unknown;
+                    return <StatusDot sev={s.sev} label={s.label} />;
+                  })()}
                   <span className="ml-auto text-11.5 font-semibold text-muted">{timeAgo(r.ts)}</span>
                 </div>
 

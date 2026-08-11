@@ -46,6 +46,7 @@ publisher = InternalPublisher()
 async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(publisher.run(), name="republish"),
+        asyncio.create_task(publisher.heartbeat(), name="health-beat"),
         asyncio.create_task(ingest_loop(engine, publisher), name="ingest"),
         asyncio.create_task(connection_monitor(engine, publisher), name="conn-monitor"),
         asyncio.create_task(timeout_watcher(engine, publisher), name="cmd-timeout"),

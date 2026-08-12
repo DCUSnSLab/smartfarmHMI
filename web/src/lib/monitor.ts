@@ -180,9 +180,11 @@ export interface AlertItem {
 export interface AlertPageResponse {
   items: AlertItem[];
   page: number;
-  pages: number;
-  total: number;
-  unacked_total: number;
+  /** counts=false 로 조회하면 집계가 빠진다 — 총계를 쓰지 않는 폴링(헤더 벨·KPI)이
+   *  15초마다 COUNT 를 두 번 돌리지 않게 하기 위한 것 */
+  pages: number | null;
+  total: number | null;
+  unacked_total: number | null;
   anchor: string | null;
 }
 
@@ -198,7 +200,7 @@ export function useGlobalAlerts(intervalMs = 15_000) {
     let active = true;
 
     const load = async () => {
-      const res = await apiFetch("/api/alerts?limit=100");
+      const res = await apiFetch("/api/alerts?limit=100&counts=false");
       if (!res.ok || !active) return;
       const page: AlertPageResponse = await res.json();
       setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
@@ -245,6 +247,8 @@ export function useMonitor(scope: string) {
   // conns 를 쓰면 안 된다: 전체 스코프에서는 농장별 스냅샷을 받지 않아 늘 비어 있고,
   // 그러면 「이전 값 없음 = 바뀜」이 되어 하트비트마다 틱이 올라간다.
   const lastConnState = useRef<Record<string, string>>({});
+  /** 마지막 맥박 도착 시각 — 아래 감시 타이머가 읽는다 (effect 클로저에 갇히지 않게 ref) */
+  const beatAt = useRef(0);
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -284,7 +288,7 @@ export function useMonitor(scope: string) {
     void loadStops();
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      apiFetch("/api/alerts?limit=100").then(async (r) => {
+      apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
         setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
@@ -298,7 +302,7 @@ export function useMonitor(scope: string) {
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
       });
-      apiFetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
+      apiFetch(`/api/farms/${scope}/alerts?limit=50&counts=false`).then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
         setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
@@ -318,7 +322,13 @@ export function useMonitor(scope: string) {
       if (msg.type !== "update") return;
       const d = msg.data;
       if (msg.stream === "health") {
-        setServerBeat({ at: Date.now(), up: d.state === "up" });
+        const at = Date.now();
+        beatAt.current = at;   // 감시 타이머가 읽는다 (state 는 effect 클로저에 갇힌다)
+        // 맥박이 왔다 = 붙었고 서버도 살아 있다. 이때가 「안정」이므로 백오프를 되돌린다.
+        // 시간으로 재지 않는 이유: 맥박 없이 열려만 있는 소켓(미들웨어 정지 등)을
+        // 안정으로 세면 재연결이 영원히 1초 간격으로 반복된다.
+        retry = 0;
+        setServerBeat({ at, up: d.state === "up" });
         return;
       }
       if (msg.stream === "environment") {
@@ -395,21 +405,36 @@ export function useMonitor(scope: string) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
+      let watchdog: ReturnType<typeof setInterval> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
-        retry = 0;
         setWsOpen(true);
         sock.send(JSON.stringify({ action: "subscribe", scope }));
+        // 죽은 소켓 감시 — 서버 프로세스가 즉사하면 close 프레임이 오지 않아 소켓이
+        // 열린 채로 남고, onclose 가 불리지 않아 재연결이 시작되지 않는다. 화면은
+        // 옛 값에 멈춘 채 사용자가 새로고침할 때까지 방치된다.
+        // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
+        // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
+        beatAt.current = Date.now();
+        watchdog = setInterval(() => {
+          if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지
+          if ((Date.now() - beatAt.current) / 1000 > SERVER_SILENT_SEC) sock.close();
+        }, WS_WATCH_MS);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
         if (reconnected) void loadStops();
       };
-      // 핸드셰이크 인증은 쿠키 — 만료로 거부되면 갱신 후 재연결 (지수 백오프)
       sock.onclose = async (ev) => {
+        clearInterval(watchdog);
         setWsOpen(false);
         if (closed) return;
-        if (ev.code !== 1000) await refreshToken();
-        timer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** retry++));
+        // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.
+        // 네트워크 끊김·서버 종료에는 갱신이 무의미하고, await 만큼 재연결만 늦어진다.
+        if (ev.code === WS_UNAUTHORIZED) await refreshToken();
+        // 지수 백오프 + 지터. 지터가 없으면 배포 후 모든 브라우저가 같은 박자로 몰려
+        // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
+        const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++);
+        timer = setTimeout(connect, wait * (0.75 + Math.random() * 0.5));
       };
       sock.onmessage = onMessage;
     };
@@ -497,6 +522,15 @@ export async function postJog(
  */
 export const SERVER_BEAT_SEC = 10;
 export const SERVER_SILENT_SEC = SERVER_BEAT_SEC * 3;
+
+/** 재연결 간격 상한 — 사람이 보고 있는 화면이라 짧게 둔다 (Phoenix·reconnecting-websocket
+ *  기본값과 같다). 배포 시 파드가 뜨는 동안 배너가 보이는 시간이 이 값 안으로 묶인다. */
+const WS_RETRY_MAX_MS = 10_000;
+/** 미인증 종료 — 서버가 핸드셰이크를 거부할 때 쓰는 코드 (api/apps/core/consumers.py) */
+const WS_UNAUTHORIZED = 4401;
+/** 죽은 소켓 감시 주기 — 맥박 주기의 절반. 판정 자체는 SERVER_SILENT_SEC 이 하므로
+ *  이 값은 "얼마나 촘촘히 들여다볼지"만 정한다. */
+const WS_WATCH_MS = (SERVER_BEAT_SEC / 2) * 1000;
 
 export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
 

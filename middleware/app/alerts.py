@@ -230,7 +230,7 @@ def _parse_anchor(anchor: str | None) -> tuple[datetime, int] | None:
 
 
 async def _alert_page(engine, farm_id: str | None, *, unacked: bool, severity: str | None,
-                      limit: int, page: int, anchor: str | None) -> dict:
+                      limit: int, page: int, anchor: str | None, counts: bool) -> dict:
     """farm_id=None 이면 전 농장."""
     if severity is not None and severity not in SEVERITIES:
         raise HTTPException(400, f"허용되지 않는 severity: {severity}")
@@ -262,12 +262,16 @@ async def _alert_page(engine, farm_id: str | None, *, unacked: bool, severity: s
         if severity:
             filtered.append(m.alert.c.severity == severity)
 
-        # 페이지 번호 UI 는 전체 페이지 수를 알아야 하므로 COUNT 가 불가피하다.
-        total = (
-            await conn.execute(select(func.count()).select_from(m.alert).where(*filtered))
-        ).scalar_one()
-        pages = max(1, (total + limit - 1) // limit)
-        page = min(page, pages)  # 마지막 페이지 뒤를 요청하면 마지막으로 접는다
+        # 페이지 번호 UI 는 전체 페이지 수를 알아야 하므로 COUNT 가 불가피하다. 다만
+        # 총계를 쓰지 않는 호출(헤더 벨·KPI 의 최신 N건 폴링)은 counts=false 로 건너뛴다
+        # — 15초마다 전체 COUNT 를 두 번 돌릴 이유가 없다.
+        total = pages = unacked_total = None
+        if counts:
+            total = (
+                await conn.execute(select(func.count()).select_from(m.alert).where(*filtered))
+            ).scalar_one()
+            pages = max(1, (total + limit - 1) // limit)
+            page = min(page, pages)  # 마지막 페이지 뒤를 요청하면 마지막으로 접는다
 
         rows = (
             await conn.execute(
@@ -276,14 +280,15 @@ async def _alert_page(engine, farm_id: str | None, *, unacked: bool, severity: s
             )
         ).mappings().all()
 
-        # 미확인 총계는 심각도 필터를 무시하고 센다 — 상단 「미확인 N건」은 목록
-        # 필터를 바꿔도 흔들리지 않아야 한다 (필터는 목록에만 걸린다).
-        unacked_total = (
-            await conn.execute(
-                select(func.count()).select_from(m.alert)
-                .where(*window, m.alert.c.acked_at.is_(None))
-            )
-        ).scalar_one()
+        if counts:
+            # 미확인 총계는 심각도 필터를 무시하고 센다 — 상단 「미확인 N건」은 목록
+            # 필터를 바꿔도 흔들리지 않아야 한다 (필터는 목록에만 걸린다).
+            unacked_total = (
+                await conn.execute(
+                    select(func.count()).select_from(m.alert)
+                    .where(*window, m.alert.c.acked_at.is_(None))
+                )
+            ).scalar_one()
 
     return {
         "items": [_alert_json(r) for r in rows],
@@ -297,19 +302,21 @@ async def _alert_page(engine, farm_id: str | None, *, unacked: bool, severity: s
 
 @router.get("/alerts")
 async def list_all_alerts(unacked: bool = False, severity: str | None = None,
-                          limit: int = 100, page: int = 1, anchor: str | None = None):
+                          limit: int = 100, page: int = 1, anchor: str | None = None,
+                          counts: bool = True):
     """전 농장 알림 — 통합 대시보드 KPI·전역 알림 화면 (FR-33·38)."""
     engine, _ = _deps()
     return await _alert_page(engine, None, unacked=unacked, severity=severity,
-                             limit=limit, page=page, anchor=anchor)
+                             limit=limit, page=page, anchor=anchor, counts=counts)
 
 
 @router.get("/farms/{farm_id}/alerts")
 async def list_alerts(farm_id: str, unacked: bool = False, severity: str | None = None,
-                      limit: int = 50, page: int = 1, anchor: str | None = None):
+                      limit: int = 50, page: int = 1, anchor: str | None = None,
+                      counts: bool = True):
     engine, _ = _deps()
     return await _alert_page(engine, farm_id, unacked=unacked, severity=severity,
-                             limit=limit, page=page, anchor=anchor)
+                             limit=limit, page=page, anchor=anchor, counts=counts)
 
 
 class AckRequest(BaseModel):

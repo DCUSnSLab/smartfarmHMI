@@ -320,8 +320,13 @@ export function useMonitor(scope: string) {
       if (msg.type !== "update") return;
       const d = msg.data;
       if (msg.stream === "health") {
-        beatAt.current = Date.now();   // 아래 감시 타이머가 읽는다 (state 는 클로저에 갇힌다)
-        setServerBeat({ at: Date.now(), up: d.state === "up" });
+        const at = Date.now();
+        beatAt.current = at;   // 감시 타이머가 읽는다 (state 는 effect 클로저에 갇힌다)
+        // 맥박이 왔다 = 붙었고 서버도 살아 있다. 이때가 「안정」이므로 백오프를 되돌린다.
+        // 시간으로 재지 않는 이유: 맥박 없이 열려만 있는 소켓(미들웨어 정지 등)을
+        // 안정으로 세면 재연결이 영원히 1초 간격으로 반복된다.
+        retry = 0;
+        setServerBeat({ at, up: d.state === "up" });
         return;
       }
       if (msg.stream === "environment") {
@@ -398,18 +403,11 @@ export function useMonitor(scope: string) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
-      let stable: ReturnType<typeof setTimeout> | undefined;
       let watchdog: ReturnType<typeof setInterval> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
         setWsOpen(true);
         sock.send(JSON.stringify({ action: "subscribe", scope }));
-        // 백오프는 연결이 **유지된 뒤에만** 초기화한다. 열린 즉시 되돌리면 붙었다
-        // 끊기는 서버를 상대로 간격이 영원히 1초에 묶여, 서버가 힘들 때 클라이언트가
-        // 부하를 더한다 (배포 중 파드 교체 구간). 판정 시간은 맥박의 무응답 기준을
-        // 재사용한다 — "이 시간 살아 있으면 안정"으로 기준을 한 곳에 모은다.
-        stable = setTimeout(() => { retry = 0; }, SERVER_SILENT_SEC * 1000);
-
         // 죽은 소켓 감시 — 서버 프로세스가 즉사하면 close 프레임이 오지 않아 소켓이
         // 열린 채로 남고, onclose 가 불리지 않아 재연결이 시작되지 않는다. 화면은
         // 옛 값에 멈춘 채 사용자가 새로고침할 때까지 방치된다.
@@ -417,14 +415,14 @@ export function useMonitor(scope: string) {
         // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
         beatAt.current = Date.now();
         watchdog = setInterval(() => {
+          if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지
           if ((Date.now() - beatAt.current) / 1000 > SERVER_SILENT_SEC) sock.close();
-        }, 5000);
+        }, WS_WATCH_MS);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
         if (reconnected) void loadStops();
       };
       sock.onclose = async (ev) => {
-        clearTimeout(stable);
         clearInterval(watchdog);
         setWsOpen(false);
         if (closed) return;
@@ -528,6 +526,9 @@ export const SERVER_SILENT_SEC = SERVER_BEAT_SEC * 3;
 const WS_RETRY_MAX_MS = 10_000;
 /** 미인증 종료 — 서버가 핸드셰이크를 거부할 때 쓰는 코드 (api/apps/core/consumers.py) */
 const WS_UNAUTHORIZED = 4401;
+/** 죽은 소켓 감시 주기 — 맥박 주기의 절반. 판정 자체는 SERVER_SILENT_SEC 이 하므로
+ *  이 값은 "얼마나 촘촘히 들여다볼지"만 정한다. */
+const WS_WATCH_MS = (SERVER_BEAT_SEC / 2) * 1000;
 
 export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
 

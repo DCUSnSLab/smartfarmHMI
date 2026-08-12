@@ -395,21 +395,31 @@ export function useMonitor(scope: string) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
+      let stable: ReturnType<typeof setTimeout> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
-        retry = 0;
         setWsOpen(true);
         sock.send(JSON.stringify({ action: "subscribe", scope }));
+        // 백오프는 연결이 **유지된 뒤에만** 초기화한다. 열린 즉시 되돌리면 붙었다
+        // 끊기는 서버를 상대로 간격이 영원히 1초에 묶여, 서버가 힘들 때 클라이언트가
+        // 부하를 더한다 (배포 중 파드 교체 구간). 판정 시간은 맥박의 무응답 기준을
+        // 재사용한다 — "이 시간 살아 있으면 안정"으로 기준을 한 곳에 모은다.
+        stable = setTimeout(() => { retry = 0; }, SERVER_SILENT_SEC * 1000);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
         if (reconnected) void loadStops();
       };
-      // 핸드셰이크 인증은 쿠키 — 만료로 거부되면 갱신 후 재연결 (지수 백오프)
       sock.onclose = async (ev) => {
+        clearTimeout(stable);
         setWsOpen(false);
         if (closed) return;
-        if (ev.code !== 1000) await refreshToken();
-        timer = setTimeout(connect, Math.min(30_000, 1000 * 2 ** retry++));
+        // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.
+        // 네트워크 끊김·서버 종료에는 갱신이 무의미하고, await 만큼 재연결만 늦어진다.
+        if (ev.code === WS_UNAUTHORIZED) await refreshToken();
+        // 지수 백오프 + 지터. 지터가 없으면 배포 후 모든 브라우저가 같은 박자로 몰려
+        // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
+        const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++);
+        timer = setTimeout(connect, wait * (0.75 + Math.random() * 0.5));
       };
       sock.onmessage = onMessage;
     };
@@ -497,6 +507,12 @@ export async function postJog(
  */
 export const SERVER_BEAT_SEC = 10;
 export const SERVER_SILENT_SEC = SERVER_BEAT_SEC * 3;
+
+/** 재연결 간격 상한 — 사람이 보고 있는 화면이라 짧게 둔다 (Phoenix·reconnecting-websocket
+ *  기본값과 같다). 배포 시 파드가 뜨는 동안 배너가 보이는 시간이 이 값 안으로 묶인다. */
+const WS_RETRY_MAX_MS = 10_000;
+/** 미인증 종료 — 서버가 핸드셰이크를 거부할 때 쓰는 코드 (api/apps/core/consumers.py) */
+const WS_UNAUTHORIZED = 4401;
 
 export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
 

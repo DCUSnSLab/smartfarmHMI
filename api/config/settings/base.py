@@ -66,6 +66,13 @@ MIDDLEWARE_URL = env("MIDDLEWARE_URL", default="http://middleware:8001")
 MQTT_HOST = env("MQTT_HOST", default="mosquitto")
 MQTT_PORT = env.int("MQTT_PORT", default=1883)
 
+# ── MinIO — 농업일지 첨부 ──
+MINIO_ENDPOINT = env("MINIO_ENDPOINT", default="minio:9000").removeprefix("http://").removeprefix("https://")
+MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY", default="minioadmin")
+MINIO_SECRET_KEY = env("MINIO_SECRET_KEY", default="minioadmin")
+MINIO_BUCKET_ATTACHMENTS = env("MINIO_BUCKET_ATTACHMENTS", default="smartfarm-attachments")
+MINIO_SECURE = env.bool("MINIO_SECURE", default=False)
+
 # ── Channels — Redis 채널 레이어 ──
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 CHANNEL_LAYERS = {

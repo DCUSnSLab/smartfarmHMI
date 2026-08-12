@@ -10,6 +10,7 @@ import { Assistant } from "@/components/shell/Assistant";
 import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
 import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
 import { Header } from "@/components/shell/Header";
+import { LinkBanner } from "@/components/shell/LinkBanner";
 import { StopBanners } from "@/components/StopControls";
 import { UserProvider } from "@/lib/auth";
 import { FarmDataProvider, useFarmData } from "@/lib/farmData";
@@ -28,6 +29,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
           (고정 영역에 가려짐). 배너 유무·글자 크기로 높이가 변해 상수로 둘 수 없다 */}
       <div data-app-chrome className="sticky top-0 z-50">
         <StopBanners stops={stops} farms={farms} />
+        <LinkBanner />
         <Header />
       </div>
 

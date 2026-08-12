@@ -20,6 +20,8 @@ from django.core.management.base import BaseCommand
 log = logging.getLogger("api.bridge")
 
 INTERNAL_PREFIX = "farmon-internal/v1"
+SYSTEM_SCOPE = "_system"   # farm_id 자리에 오지만 농장이 아니다 (topics.SYSTEM_SCOPE)
+SYSTEM_GROUP = "system"    # 스코프와 무관하게 모든 소켓이 가입
 
 
 async def bridge_loop() -> None:
@@ -42,6 +44,11 @@ async def bridge_loop() -> None:
                         continue
                     event = {"type": "stream.update", "stream": stream,
                              "farm_id": farm_id, "payload": body}
+                    if farm_id == SYSTEM_SCOPE:
+                        # 서버 생존은 어느 화면을 보고 있든 와야 한다 — 농장 그룹에
+                        # 넣으면 그 농장 화면만 받는다.
+                        await channel_layer.group_send(SYSTEM_GROUP, event)
+                        continue
                     await channel_layer.group_send(f"farm_{farm_id}", event)
                     await channel_layer.group_send("fleet", event)
         except aiomqtt.MqttError as e:

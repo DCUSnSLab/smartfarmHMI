@@ -88,6 +88,24 @@ class ControlCommand(_Msg):
     timeout_sec: int = 30
 
 
+class RobotJog(_Msg):
+    """미들웨어 → 엣지: 로봇 이동 조작 (개정 0.3-robot-jog §2).
+
+    `duration_ms` 는 데드맨이다. 엣지는 이 시간이 지나면 스스로 0 속도를 낸다 —
+    정지 메시지가 유실돼도 멈춘다. `speed` 는 m/s 가 아니라 0.0~1.0 정규화
+    비율로, 물리 상한은 엣지가 소유한다 (개정 §3.1·§3.2).
+    """
+
+    type: Literal["robot_jog"] = "robot_jog"
+    command_id: str
+    device_id: str
+    direction: Literal["forward", "backward", "left", "right", "stop"]
+    speed: float = 0.5
+    duration_ms: int = 800
+    issued_by: str | None = None
+    timeout_sec: int = 2
+
+
 class Calibrate(_Msg):
     """미들웨어 → 엣지: 센서 영점 보정 (§4.5, FR-39)."""
 

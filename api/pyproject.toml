@@ -33,6 +33,9 @@ dependencies = [
   # 미들웨어 내부 REST 클라이언트
   "httpx>=0.27,<0.29",
 
+  # 농업일지 사진 첨부 저장소
+  "minio>=7.2,<8",
+
   "django-redis>=5.4,<5.5",
 ]
 

@@ -15,9 +15,14 @@ from datetime import datetime, timezone
 import aiomqtt
 
 from middleware.app.config import settings
+from shared.schemas import topics
 from shared.schemas.topics import internal_topic
 
 log = logging.getLogger("mw.republish")
+
+# 화면이 「서버 침묵」을 판정하는 기준선. 장치가 한 대도 안 보내는 농장에서도
+# 이 맥박은 뛴다 — 조용한 농장과 멈춘 서버를 구분하는 유일한 신호다.
+HEALTH_INTERVAL_SEC = 10
 
 
 class InternalPublisher:
@@ -51,11 +56,19 @@ class InternalPublisher:
             log.warning("republish queue full — oldest dropped")
 
     async def run(self) -> None:
+        # LWT — 미들웨어가 죽으면 브로커가 대신 알린다. 이것이 없으면 서버가
+        # 멈춰도 화면은 마지막 값을 정상처럼 계속 보여준다 (엣지와 같은 규약).
+        will = aiomqtt.Will(
+            topics.HEALTH_TOPIC,
+            json.dumps({"channel": f"{topics.SYSTEM_SCOPE}/health",
+                        "data": {"service": "middleware", "state": "down"}}),
+            qos=1, retain=True,
+        )
         while True:
             try:
                 async with aiomqtt.Client(
                     settings.mqtt_host, settings.mqtt_port, keepalive=30,
-                    identifier="mw-republish",
+                    identifier="mw-republish", will=will,
                 ) as client:
                     log.info("republish: connected")
                     while True:
@@ -66,3 +79,12 @@ class InternalPublisher:
             except aiomqtt.MqttError as e:
                 log.warning("republish: mqtt disconnected (%s) — 5s 후 재접속", e)
                 await asyncio.sleep(5)
+
+    async def heartbeat(self) -> None:
+        """서버 생존 맥박 — retained 라 새로 붙은 화면도 즉시 받는다."""
+        while True:
+            self.publish(
+                topics.SYSTEM_SCOPE, "health",
+                {"service": "middleware", "state": "up", "interval_sec": HEALTH_INTERVAL_SEC},
+            )
+            await asyncio.sleep(HEALTH_INTERVAL_SEC)

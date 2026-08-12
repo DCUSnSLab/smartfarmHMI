@@ -44,6 +44,24 @@ async def is_remote_stopped(conn, farm_id: str) -> bool:
     return row is not None
 
 
+async def is_estopped(conn, farm_id: str) -> bool:
+    """물리 비상정지 판정 (FR-36) — 해당 농장의 미해제 estop.
+
+    `unknown`(확인하지 못함)도 발동으로 적재되므로 여기서 따로 가르지 않는다 —
+    안전측 판정은 stop_event 적재 시점에 이미 끝나 있다 (§4.7).
+    """
+    row = (
+        await conn.execute(
+            select(m.stop_event.c.id).where(
+                m.stop_event.c.stop_kind == "physical_estop",
+                m.stop_event.c.released_at.is_(None),
+                m.stop_event.c.farm_id == farm_id,
+            ).limit(1)
+        )
+    ).first()
+    return row is not None
+
+
 async def _edge_devices(conn, farm_id: str | None) -> list[tuple[str, str]]:
     """정지 명령 전달 대상 엣지 — **birth 로 알려진 장치**(연결 상태)에서 찾는다.
 

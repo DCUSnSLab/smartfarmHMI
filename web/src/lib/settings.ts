@@ -52,6 +52,9 @@ export interface DeviceRow {
   model: string | null;
   location: string | null;
   detail: DeviceDetail | null;
+  // false = 데이터는 들어오는데 대장에 없는 장치. 운영 화면에는 나오지 않는다.
+  registered: boolean;
+  last_seen?: string | null;
 }
 
 export interface FarmInput {
@@ -125,8 +128,12 @@ export async function deleteFarm(farmId: string): Promise<boolean> {
 }
 
 // ── 장치(device_meta) + 상세 CRUD ──
-export async function listDevices(farmId: string): Promise<DeviceRow[]> {
-  const r = await apiFetch(`/api/farms/${farmId}/devices`);
+export async function listDevices(
+  farmId: string,
+  { includeUnregistered = false } = {},
+): Promise<DeviceRow[]> {
+  const q = includeUnregistered ? "?include_unregistered=1" : "";
+  const r = await apiFetch(`/api/farms/${farmId}/devices${q}`);
   return r.ok ? r.json() : [];
 }
 

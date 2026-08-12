@@ -7,10 +7,15 @@
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
 
 VERSION = "0.3"  # §4 스키마 버전
 PREFIX = "farmon/v1"  # §2.1 토픽 네임스페이스
+
+# §4.9 birth.instance_id — 발행자 프로세스 식별자. 프로세스가 뜰 때 한 번 만들고
+# 사는 동안 바꾸지 않는다. 재접속마다 새로 내면 미들웨어가 매번 중복 발행자로 본다.
+INSTANCE_ID = uuid.uuid4().hex[:8]
 
 
 def now_iso() -> str:
@@ -91,11 +96,15 @@ def birth(farm_id: str, device_id: str, device_type: str, *,
     관찰 포인트: 규격의 publish_interval_sec 는 장치 단위 단일 값인데
     본 구현은 센서별 주기가 다르다 → 최소 주기를 선언하고, 확장 필드로
     metrics[].interval_sec 를 함께 실어 보낸다 (§4 서두: payload 확장 허용).
+
+    한 프로세스가 엣지·생육기·로봇의 birth 를 함께 내므로 instance_id 도 같다.
+    중복 판정은 (farm, device) 단위지만 실제로 겹치는 단위는 프로세스다.
     """
     return {
         "type": "birth", "version": VERSION,
         "farm_id": farm_id, "device_id": device_id, "device_type": device_type,
         "metrics": metrics, "publish_interval_sec": publish_interval_sec,
+        "instance_id": INSTANCE_ID,
         "timestamp": now_iso(),
     }
 

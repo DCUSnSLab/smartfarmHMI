@@ -201,6 +201,51 @@ async def _handle_birth(conn, msg: Birth, received_at: datetime) -> None:
     log.info("birth: %s/%s (metrics=%d)", msg.farm_id, msg.device_id, len(metrics))
 
 
+# 같은 (farm, device) 로 발행자가 둘이면 토픽이 겹쳐 두 현장의 데이터가 한 농장으로
+# 섞이고, 한쪽이 끊기면 LWT 가 다른 쪽까지 오프라인으로 만든다. 브로커는 client id
+# 가 같을 때만, 그것도 조용히 끊어 준다. birth 의 instance_id 로 가려낸다.
+#
+# 판정 기준은 death 다 — death 없이 instance 만 바뀌면 앞의 발행자가 아직 살아 있다.
+# 보관본(retained) birth 는 발행자 생존의 증거가 아니라 마지막으로 실린 값일 뿐이라
+# 판정에서 뺀다 (경고도 기록도). 브로커가 재생본에만 RETAIN 플래그를 세우므로,
+# 발행자가 retain=true 로 보낸 실황은 플래그 0 으로 와서 그대로 걸린다.
+#
+# 오탐이 하나 남는다: 강제 종료(kill -9·컨테이너 재시작·회선 단절)는 엣지가 death
+# 를 못 보내고 브로커가 LWT 를 대신 내는데, 그 판정이 keepalive 의 최대 1.5 배
+# 뒤다. 그 사이 재접속하면 death 없이 instance 만 바뀐 것으로 보인다. 그래서
+# error 가 아니라 warning 이다 — 이 로그는 사람이 설정 실수를 알아채는 단서지
+# 자동 조치의 근거가 아니다. 없애려면 앞 instance 의 생존 증거(새 birth 이후에도
+# 계속 오는 발행)를 봐야 하는데, 아직 실제로 겪지 않은 문제에 상태 기계를 더하는
+# 값은 아니라고 봤다.
+_seen_instances: dict[tuple[str, str], str] = {}
+
+
+def _check_duplicate_publisher(msg: Birth) -> None:
+    instance = (msg.model_extra or {}).get("instance_id")
+    if not instance:
+        return   # 확장 필드다. 안 싣는 엣지는 판정하지 않는다
+    key = (msg.farm_id, msg.device_id)
+    prev = _seen_instances.get(key)
+    _seen_instances[key] = instance
+    if prev is not None and prev != instance:
+        log.warning(
+            "발행자 중복 의심: %s/%s — 앞의 발행자가 내려간 기록 없이 다른 instance 가 "
+            "birth 를 보냄. 같은 farm_id 로 엣지가 둘 이상 붙어 있는지 확인 "
+            "(강제 종료 직후 재접속이면 오탐일 수 있다)",
+            msg.farm_id, msg.device_id,
+        )
+
+
+def _forget_instance(farm_id: str, device_id: str, device_type: str) -> None:
+    """발행자가 내려갔다 — 다음 birth 는 재시작이지 중복이 아니다."""
+    if device_type == "edge":
+        # 엣지 death 는 농장 전체 cascade — 그 아래 장치도 같이 잊는다.
+        for key in [k for k in _seen_instances if k[0] == farm_id]:
+            _seen_instances.pop(key, None)
+    else:
+        _seen_instances.pop((farm_id, device_id), None)
+
+
 async def _handle_death(conn, msg: Death, device_type: str, received_at: datetime) -> None:
     """death → 즉시 offline.
 
@@ -286,7 +331,8 @@ async def _record_pending(engine: AsyncEngine, parsed, msg) -> None:
 
 
 async def handle_message(
-    engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None
+    engine: AsyncEngine, topic_str: str, payload: bytes, publisher=None,
+    retained: bool = False,
 ) -> None:
     parsed = topics.parse_topic(topic_str)
     if parsed is None:
@@ -310,7 +356,7 @@ async def handle_message(
         await _record_pending(engine, parsed, msg)
         return
     try:
-        await _dispatch(engine, parsed, msg, received_at, publisher)
+        await _dispatch(engine, parsed, msg, received_at, publisher, retained)
     except IntegrityError as e:
         # 대표 사례: 미등록 농장의 birth/텔레메트리 (FK 위반) — README 발견 사항.
         # birth 는 접속 시 1회 발행이라, 농장 등록 후 장치가 재접속해야 복구된다.
@@ -346,15 +392,42 @@ async def _handle_heartbeat(conn, msg: Heartbeat, device_type: str, received_at:
     await conn.execute(stmt)
 
 
-async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
+async def _registered(conn, farm_id: str, device_id: str) -> bool:
+    """대장에 오른 장치인가 — device_meta 유니크 인덱스 조회 (models.registered)."""
+    return (
+        await conn.execute(
+            select(m.device_meta.c.id).where(
+                m.device_meta.c.farm_id == farm_id,
+                m.device_meta.c.device_id == device_id,
+                m.device_meta.c.deleted_at.is_(None),
+            )
+        )
+    ).first() is not None
+
+
+async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False) -> None:
     async with engine.begin() as conn:
+        # 대장에 없는 장치는 화면에도 알림에도 나오지 않는다. 목록에서만 거르면
+        # 새로고침하면 사라졌다가 다음 메시지에 스트림을 타고 되살아난다.
+        #
+        # 데이터는 그대로 받는다. 받지 않으면 그런 장치가 있다는 것조차 알 수 없어
+        # 「미등록」 칸에 띄울 수도, 등록할 수도 없다.
+        #
+        # ack·estop 은 막지 않는다. 명령 응답은 그 명령을 낸 화면이 기다리고 있고,
+        # 비상정지는 장치 등록 여부와 무관하게 사람이 즉시 알아야 한다.
+        hidden = bool(getattr(msg, "device_id", None)) and not await _registered(
+            conn, msg.farm_id, msg.device_id
+        )
+        live = None if hidden else publisher
+
         if isinstance(msg, SensorReading):
             await _handle_sensor_reading(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            from middleware.app.alerts import check_sensor_thresholds
-            await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
-            if publisher:
-                publisher.publish(msg.farm_id, "environment", {
+            if not hidden:
+                from middleware.app.alerts import check_sensor_thresholds
+                await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
+            if live:
+                live.publish(msg.farm_id, "environment", {
                     "device_id": msg.device_id, "sensor_id": msg.sensor_id,
                     "sensor_type": msg.sensor_type, "value": msg.value, "unit": msg.unit,
                     "sensor_state": msg.sensor_state, "ts": msg.timestamp.isoformat(),
@@ -362,12 +435,12 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
         elif isinstance(msg, RobotStatusMsg):
             await _handle_robot_status(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            if msg.error:
+            if msg.error and not hidden:
                 from middleware.app.alerts import alert_robot_error
                 await alert_robot_error(conn, publisher, msg.farm_id, msg.device_id,
                                         msg.error.model_dump(mode="json"))
-            if publisher:
-                publisher.publish(msg.farm_id, "robot", {
+            if live:
+                live.publish(msg.farm_id, "robot", {
                     "device_id": msg.device_id,
                     "pos_x": msg.position.x if msg.position else None,
                     "pos_y": msg.position.y if msg.position else None,
@@ -383,34 +456,35 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
         elif isinstance(msg, Layout):
             await _handle_layout(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "layout", {
+            if live:
+                live.publish(msg.farm_id, "layout", {
                     "device_id": msg.device_id, "frame": msg.frame,
                     "zones": len(msg.zones), "gates": len(msg.gates),
                     "points": len(msg.points),
                 })
         elif isinstance(msg, Birth):
             await _handle_birth(conn, msg, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "connection", {
+            if live:
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Death):
             await _handle_death(conn, msg, parsed.device_type, received_at)
-            from middleware.app.alerts import alert_connection_change
-            await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
-            if publisher:
+            if not hidden:
+                from middleware.app.alerts import alert_connection_change
+                await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
+            if live:
                 # 엣지 death 는 농장 전체 cascade — 화면은 farm 단위 오프라인 표시
-                publisher.publish(msg.farm_id, "connection", {
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "offline",
                     "cascade": parsed.device_type == "edge",
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Heartbeat):
             await _handle_heartbeat(conn, msg, parsed.device_type, received_at)
-            if publisher:
-                publisher.publish(msg.farm_id, "connection", {
+            if live:
+                live.publish(msg.farm_id, "connection", {
                     "device_id": msg.device_id, "state": "online",
                     "last_received_at": received_at.isoformat(),
                 })
@@ -420,6 +494,13 @@ async def _dispatch(engine, parsed, msg, received_at, publisher) -> None:
         elif isinstance(msg, EstopState):
             from middleware.app.stop import handle_estop_state
             await handle_estop_state(conn, msg, received_at, publisher)
+
+    # 발행자 추적은 커밋 이후에 갱신한다 — 롤백되는 birth(미등록 농장의 FK 위반 등)
+    # 로 상태가 오염되면 나중에 엉뚱한 중복 경고가 뜬다.
+    if isinstance(msg, Birth) and not retained:
+        _check_duplicate_publisher(msg)
+    elif isinstance(msg, Death):
+        _forget_instance(msg.farm_id, msg.device_id, parsed.device_type)
 
 
 async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:
@@ -434,7 +515,10 @@ async def ingest_loop(engine: AsyncEngine, publisher=None) -> None:
                 log.info("ingest: subscribed %s/# @ %s", topics.PREFIX, settings.mqtt_host)
                 async for message in client.messages:
                     try:
-                        await handle_message(engine, str(message.topic), message.payload, publisher)
+                        await handle_message(
+                            engine, str(message.topic), message.payload, publisher,
+                            retained=bool(message.retain),
+                        )
                     except Exception:  # 메시지 1건 실패가 루프를 죽이지 않게
                         log.exception("ingest: handler error on %s", message.topic)
         except aiomqtt.MqttError as e:
@@ -449,12 +533,12 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
         now = _now()
         try:
             async with engine.begin() as conn:
-                # 소프트 삭제된 장치는 판정 대상이 아니다 — 떼어낸 장비는 당연히
-                # 소식이 없고, 그대로 두면 장비를 뗄 때마다 통신 단절 알림이
+                # 대장에 없는 장치는 판정 대상이 아니다 — 떼어낸 장비도, 등록 전
+                # 장비도 소식이 없는 게 정상이다. 그대로 두면 통신 단절 알림이
                 # 하나씩 영구히 쌓여 진짜 고장이 그 사이에 묻힌다.
                 rows = (await conn.execute(
                     select(m.device_connection_state).where(
-                        m.not_soft_deleted(
+                        m.registered(
                             m.device_connection_state.c.farm_id,
                             m.device_connection_state.c.device_id,
                         )
@@ -462,17 +546,21 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
                 )).mappings().all()
                 for row in rows:
                     interval = row["publish_interval_sec"]
-                    if interval is None:
-                        # 주기 발행이 없는 장치(엣지 컨트롤러 등)는 LWT 로만 판정
-                        continue
                     last = row["last_received_at"]
                     if last is None or row["state"] == "offline":
                         continue
                     gap = (now - last).total_seconds()
+                    # 주기를 모르면(birth·heartbeat 를 못 받은 장치) 하한만으로 판정한다.
+                    # 건너뛰면 수신 때마다 켜둔 online 을 내릴 사람이 없어, 소식이
+                    # 끊긴 장치가 화면에 영원히 「정상」으로 뜬다.
+                    offline_after = max(interval * OFFLINE_FACTOR, MIN_OFFLINE_SEC) if interval \
+                        else MIN_OFFLINE_SEC
+                    degraded_after = max(interval * DEGRADED_FACTOR, MIN_DEGRADED_SEC) if interval \
+                        else MIN_DEGRADED_SEC
                     new_state = None
-                    if gap > max(interval * OFFLINE_FACTOR, MIN_OFFLINE_SEC):
+                    if gap > offline_after:
                         new_state = "offline"
-                    elif gap > max(interval * DEGRADED_FACTOR, MIN_DEGRADED_SEC):
+                    elif gap > degraded_after:
                         new_state = "degraded"
                     if new_state and new_state != row["state"]:
                         await conn.execute(

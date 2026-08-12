@@ -45,11 +45,11 @@ def upgrade() -> None:
     # 단계가 소실된 과거 행 — 오류였다는 사실만이라도 error 쪽에 남긴다.
     op.execute(
         "UPDATE mw.robot_status SET error = "
-        "  COALESCE(error, jsonb_build_object("
+        "  jsonb_build_object("
         "    'code', 'legacy_unknown',"
         "    'message', '0.2 mission_state=error — 진행 단계가 기록되지 않음',"
-        "    'severity', 'warning')) "
-        "WHERE phase = 'error'"
+        "    'severity', 'warning') "
+        "WHERE phase = 'error' AND jsonb_typeof(error) IS DISTINCT FROM 'object'"
     )
     op.execute("UPDATE mw.robot_status SET phase = 'idle' WHERE phase = 'error'")
     # 제약도 create_all 이 이미 만들어 뒀을 수 있다.
@@ -67,11 +67,24 @@ def downgrade() -> None:
     op.execute("ALTER TABLE mw.stop_event DROP COLUMN IF EXISTS detail")
 
     op.execute("ALTER TABLE mw.robot_status DROP CONSTRAINT IF EXISTS robot_phase_check")
-    op.execute("ALTER TABLE mw.robot_status RENAME COLUMN phase TO mission_state")
-    # 되돌릴 때는 오류가 있던 행을 다시 error 로 접는다 (진행 단계는 다시 소실).
+    # upgrade 의 개명과 대칭 — 이미 mission_state 인 DB 에서 멈추지 않게 한다.
     op.execute(
-        "UPDATE mw.robot_status SET mission_state = 'error' WHERE error IS NOT NULL"
+        "DO $$ BEGIN "
+        "  IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "             WHERE table_schema = 'mw' AND table_name = 'robot_status' "
+        "               AND column_name = 'phase') THEN "
+        "    ALTER TABLE mw.robot_status RENAME COLUMN phase TO mission_state; "
+        "  END IF; "
+        "END $$"
     )
+    # 되돌릴 때는 오류가 있던 행을 다시 error 로 접는다 (진행 단계는 다시 소실).
+    # error 는 SQL NULL 이 아니라 jsonb null 로 적재된다 — SQLAlchemy JSON 의
+    # none_as_null 기본값이 False 라 파이썬 None 이 'null'::jsonb 가 된다.
+    op.execute(
+        "UPDATE mw.robot_status SET mission_state = 'error' "
+        "WHERE jsonb_typeof(error) = 'object'"
+    )
+    op.execute("ALTER TABLE mw.robot_status DROP CONSTRAINT IF EXISTS robot_mission_state_check")
     op.execute(
         f"ALTER TABLE mw.robot_status ADD CONSTRAINT robot_mission_state_check "
         f"CHECK (mission_state IN ({_MISSION_STATE}))"

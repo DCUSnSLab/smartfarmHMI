@@ -360,7 +360,21 @@ UNIQUE(farm_id, report_type, period_start).
 | rule_id | BIGINT | NULL, FK→alert_rule |
 | extra | JSONB | NOT NULL DEFAULT '{}' |
 
-인덱스: `(farm_id, occurred_at DESC)`, 부분 인덱스 `WHERE acked_at IS NULL` (미확인 카운트).
+인덱스: `(farm_id, occurred_at DESC)`, 부분 인덱스 `WHERE acked_at IS NULL` (미확인 카운트),
+`(occurred_at, id)` — 전 농장 목록의 페이지네이션(GEN-1303, 마이그레이션 0007).
+
+목록은 `ORDER BY occurred_at DESC, id DESC` 로 읽는다. 화면이 페이지 번호를 직접 고르므로
+`OFFSET` 을 쓰지만, 실시간 목록이라 그대로 쓰면 새 알림 한 건에 전체가 밀려 방금 본 항목이
+다음 페이지에 다시 나온다. 그래서 목록을 여는 시점의 최신 항목을 **기준선**으로 잡고
+`(occurred_at, id) <= 기준선` 안에서만 세어 페이지 집합을 고정한다. 기준선보다 새로 도착한
+알림은 화면이 「새 알림 N건」으로 알리고, 새로고침 시 새 기준선으로 편입된다.
+
+기준선에 `id` 를 함께 넣는 이유는 `occurred_at` 이 유일하지 않아서다 — 같은 시각에 발생한
+알림들의 경계를 시각만으로는 그을 수 없다. btree 는 역방향 스캔이 가능하므로 인덱스에
+DESC 를 박지 않는다.
+
+보존 기간은 정해져 있지 않다 — OPN-06 은 하이퍼테이블(§5)만 다루고 있어 이 테이블은
+현재 무한 누적이다. 장기 운영·알림 통계를 하려면 OPN-06 범위에 알림을 포함해야 한다.
 
 **alert_rule** (FR-34)
 

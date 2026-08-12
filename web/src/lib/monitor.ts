@@ -168,6 +168,25 @@ export interface AlertItem {
 }
 
 /**
+ * 알림 목록 응답 — 기준선 고정 페이지네이션 (서버: middleware/app/alerts.py).
+ *
+ * anchor 는 "목록을 연 시점의 최신 항목"이고, 서버는 그 이하만 센다. 페이지를
+ * 넘기는 동안 새 알림이 도착해도 집합이 변하지 않게 하는 장치로, 화면은 받은
+ * anchor 를 다음 요청에 되돌려 보낸다 (내용은 해석하지 않는다).
+ *
+ * 여기서 이 타입을 선언하는 이유는 계층 순서다 — lib/alerts.ts 가 이 파일을
+ * 참조하고, 그 반대는 순환이 된다.
+ */
+export interface AlertPageResponse {
+  items: AlertItem[];
+  page: number;
+  pages: number;
+  total: number;
+  unacked_total: number;
+  anchor: string | null;
+}
+
+/**
  * 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다.
  * 소유자는 FarmDataProvider 하나뿐이다 (globalAlerts) — 소비 측에서 직접 부르면
  * 15 초마다 같은 요청이 겹친다.
@@ -181,8 +200,8 @@ export function useGlobalAlerts(intervalMs = 15_000) {
     const load = async () => {
       const res = await apiFetch("/api/alerts?limit=100");
       if (!res.ok || !active) return;
-      const list: AlertItem[] = await res.json();
-      setAlerts(Object.fromEntries(list.map((alert) => [alert.id, alert])));
+      const page: AlertPageResponse = await res.json();
+      setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
     };
 
     void load();
@@ -267,8 +286,8 @@ export function useMonitor(scope: string) {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
       apiFetch("/api/alerts?limit=100").then(async (r) => {
         if (!r.ok) return;
-        const list: AlertItem[] = await r.json();
-        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
+        const page: AlertPageResponse = await r.json();
+        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
       });
     }
     setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
@@ -281,8 +300,8 @@ export function useMonitor(scope: string) {
       });
       apiFetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
         if (!r.ok) return;
-        const list: AlertItem[] = await r.json();
-        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
+        const page: AlertPageResponse = await r.json();
+        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
       });
     }
   }, [scope, loadSnapshot, loadStops, refreshFarms]);

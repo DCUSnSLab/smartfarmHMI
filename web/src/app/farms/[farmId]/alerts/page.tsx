@@ -8,11 +8,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertList } from "@/components/AlertPanel";
 import { GO_LINK, SectionTitle } from "@/components/ui";
+import { useAlertPage } from "@/lib/alerts";
 import { useFarmData } from "@/lib/farmData";
 
 export default function FarmAlertsTab() {
   const { farmId } = useParams<{ farmId: string }>();
-  const { alerts, farmName } = useFarmData();
+  const { farmName } = useFarmData();
+  const page = useAlertPage(farmId);
 
   return (
     <>
@@ -24,7 +26,7 @@ export default function FarmAlertsTab() {
           </Link>
         }
       />
-      <AlertList alerts={Object.values(alerts)} farmId={farmId} />
+      <AlertList page={page} farmId={farmId} />
     </>
   );
 }

@@ -7,8 +7,10 @@
 
 import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { StatusDot } from "@/components/ui";
+import { SEV_STYLE, StatusMark } from "@/components/ui";
 import { useFarmData, useScope } from "@/lib/farmData";
+import { useFarmSnapshot } from "@/lib/farmDetail";
+import { farmStatus } from "@/lib/fleet";
 
 export default function FarmLayout({ children }: { children: React.ReactNode }) {
   const { farmId } = useParams<{ farmId: string }>();
@@ -22,19 +24,29 @@ export default function FarmLayout({ children }: { children: React.ReactNode }) 
     if (!pathname.startsWith("/farms/")) return;
     window.scrollTo({ top: 0 });
   }, [pathname]);
-  const { farmName, conns } = useFarmData();
+  const { farmName, stops } = useFarmData();
 
-  const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
+  // 스코프 스위처·대시보드 카드와 **같은 함수·같은 스냅샷**을 쓴다. 예전에는 여기만
+  // 엣지 연결 상태로 따로 판정해, 같은 농장인데 화면마다 점 색이 달랐다.
+  const snap = useFarmSnapshot(farmId);
+  const status = snap ? farmStatus(snap, stops) : null;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-5">
       {/* 농장 헤더 */}
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
         <h1 className="text-20 font-extrabold">{farmName || farmId}</h1>
-        <StatusDot
-          sev={edge?.state === "online" ? "ok" : edge?.state === "degraded" ? "caution" : "warning"}
-          label={edge?.state === "online" ? "정상 가동" : edge?.state === "degraded" ? "응답 지연" : "통신 단절"}
-        />
+        {status && (
+          <span className="inline-flex items-center gap-1.5 text-12.5 font-bold">
+            <StatusMark sev={status.sev} label={status.label} />
+            <span className={SEV_STYLE[status.sev].text}>{status.label}</span>
+            {/* 헤더는 한 줄이라 첫 사유만 — 전체는 상태 탭의 요약 카드가 보여준다 */}
+            <span className="font-semibold text-muted">
+              {status.reasons[0]?.text}
+              {status.reasons.length > 1 && ` 외 ${status.reasons.length - 1}건`}
+            </span>
+          </span>
+        )}
       </div>
 
       {children}

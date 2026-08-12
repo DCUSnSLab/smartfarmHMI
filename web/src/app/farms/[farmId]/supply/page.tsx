@@ -7,7 +7,7 @@
 
 import { useParams } from "next/navigation";
 import { PlannedBox } from "@/components/Planned";
-import { Card, Gauge, SectionTitle, StatusDot, STATION_STATE, TANK_LABEL } from "@/components/ui";
+import { Card, Gauge, SectionTitle, StatusDot, STATION_STATE, TANK_LABEL, TANK_LOW_PCT } from "@/components/ui";
 import { useFarmSnapshot } from "@/lib/farmDetail";
 
 export default function SupplyTab() {
@@ -25,7 +25,7 @@ export default function SupplyTab() {
         <SectionTitle title="탱크 수위" sub="농장 공용 · 잔량은 용량·소비율 기준 환산" />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {tanks.map((t) => {
-            const low = (t.level_pct ?? 100) < 20;
+            const low = (t.level_pct ?? 100) < TANK_LOW_PCT;
             return (
               <Card key={t.device_id}>
                 <div className="mb-2 flex items-baseline justify-between">
@@ -37,7 +37,7 @@ export default function SupplyTab() {
                     <span className="text-12 font-bold text-muted">%</span>
                   </span>
                 </div>
-                <Gauge value={t.level_pct} okMin={20} okMax={100} unit="%" />
+                <Gauge value={t.level_pct} okMin={TANK_LOW_PCT} okMax={100} unit="%" />
                 <div className="mt-2 text-12.5 font-semibold text-muted">
                   {t.remain_l != null ? `약 ${t.remain_l}L` : "—"}
                   {t.days_left != null && ` · ${t.days_left}일분`}

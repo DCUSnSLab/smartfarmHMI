@@ -29,6 +29,7 @@ from shared.schemas.messages import (
     RemoteStopRelease,
     RemoteStopState,
     RobotError,
+    RobotJog,
     RobotStatusMsg,
 )
 from shared.schemas.sensor import SensorReading
@@ -39,6 +40,7 @@ AnyMessage = Annotated[
         RobotStatusMsg,
         PalletTaskMsg,
         ControlCommand,
+        RobotJog,
         Calibrate,
         RemoteStop,
         RemoteStopRelease,
@@ -65,6 +67,6 @@ __all__ = [
     "CONTRACT_VERSION",
     "Ack", "AnyMessage", "Birth", "BirthMetric", "Calibrate", "ControlCommand",
     "Death", "EstopState", "Heartbeat", "Layout", "LayoutGate", "LayoutPoint", "LayoutZone",
-    "PalletTaskMsg", "Position", "RemoteStop",
+    "PalletTaskMsg", "Position", "RemoteStop", "RobotJog",
     "RemoteStopRelease", "RemoteStopState", "RobotError", "RobotStatusMsg", "SensorReading", "parse_message",
 ]

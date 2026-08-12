@@ -284,11 +284,20 @@ retained 이므로 엣지가 재부팅해 구독하는 순간 브로커가 현�
     { "sensor_id": "hum-a",   "sensor_type": "humidity",    "unit": "percent", "initial": 58 }
   ],
   "publish_interval_sec": 10,
+  "instance_id": "a3f9c1d2",
   "timestamp": "2026-07-21T09:59:50+09:00"
 }
 ```
 
 **장치가 자신의 데이터 항목을 스스로 선언한다.** 미들웨어 서버는 birth의 `metrics`를 근거로 수집 대상을 구성하므로, 항목이 늘어도 서버 코드나 설정 파일을 고치지 않는다. "데이터 타입·크기·주기가 확정되지 않았다"는 전제를 이 방식으로 흡수한다 (`../01-requirements/non-functional.md` §1).
+
+**`instance_id`** — 발행자 프로세스를 식별한다. **프로세스가 뜰 때마다 새로 만들고**, 같은 프로세스가 사는 동안에는 재접속·재발행에도 바꾸지 않는다. 형식은 정하지 않는다(문자열이면 된다).
+
+같은 `farm_id`로 엣지가 둘 이상 붙으면 토픽이 겹쳐 두 현장의 데이터가 한 농장으로 섞이고, 한쪽이 끊길 때 LWT 가 다른 쪽까지 offline 으로 만든다. 브로커는 client id 가 같을 때만, 그것도 조용히 끊어 주므로 이 사고는 밖에서 보이지 않는다. 미들웨어는 **death 없이 `instance_id` 만 바뀐 birth**를 중복 발행자로 의심하고 경고를 남긴다.
+
+- 선택 필드다. 싣지 않는 장치는 판정 대상에서 제외될 뿐 다른 동작은 같다.
+- 보관본(retained) birth 는 판정에서 제외한다 — 마지막으로 실린 값일 뿐 발행자 생존의 증거가 아니다.
+- 판정은 경고까지다. 강제 종료 직후 재접속은 브로커의 LWT 판정(keep-alive 의 최대 1.5배)이 늦어 오탐이 될 수 있으므로, 자동 차단의 근거로 쓰지 않는다.
 
 `death`는 LWT로 등록해 두고, 브로커가 keep-alive 만료를 감지하면 대신 발행한다.
 
@@ -425,6 +434,7 @@ birth(§4.9)가 "내가 어떤 데이터를 내는지"를 자기기술하듯, �
 - Eclipse Sparkplug 규격 — 토픽 네임스페이스 계층과 birth/death certificate 방식을 참고했다. 본 규격은 Sparkplug를 그대로 채택하지 않고(페이로드는 protobuf가 아닌 JSON) 구조만 차용한다.
 
 ## 변경 이력
+- 2026-08-11 · birth 에 `instance_id` 선택 필드 신설(GEN-1296) — 같은 farm_id 로 붙은 중복 발행자 탐지. §4.9 반영. 외부 엣지가 MQTT over WebSocket 으로 붙으면서 farm_id 오설정이 실제 위험이 됐다
 - 2026-08-10 · 스키마 0.2→0.3 (GEN-1280) — §4.2·§4.7·§5 개정. 본문은 `contract-amendments/0.3-state-axis-split.md`
 - 2026-07-07 · 최초 작성
 - 2026-07-31 · `heartbeat` 메시지 신설(GEN-1225) — 주기 발행이 없는 엣지 컨트롤러의 생존 신호. §2 message_type·§3 정책·§4.9·§5 판정 반영. birth 유실 시 online 자가 복구, LWT 와 이중 방어

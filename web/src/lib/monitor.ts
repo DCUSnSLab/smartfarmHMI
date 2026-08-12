@@ -245,6 +245,8 @@ export function useMonitor(scope: string) {
   // conns 를 쓰면 안 된다: 전체 스코프에서는 농장별 스냅샷을 받지 않아 늘 비어 있고,
   // 그러면 「이전 값 없음 = 바뀜」이 되어 하트비트마다 틱이 올라간다.
   const lastConnState = useRef<Record<string, string>>({});
+  /** 마지막 맥박 도착 시각 — 아래 감시 타이머가 읽는다 (effect 클로저에 갇히지 않게 ref) */
+  const beatAt = useRef(0);
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -318,6 +320,7 @@ export function useMonitor(scope: string) {
       if (msg.type !== "update") return;
       const d = msg.data;
       if (msg.stream === "health") {
+        beatAt.current = Date.now();   // 아래 감시 타이머가 읽는다 (state 는 클로저에 갇힌다)
         setServerBeat({ at: Date.now(), up: d.state === "up" });
         return;
       }
@@ -396,6 +399,7 @@ export function useMonitor(scope: string) {
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
       let stable: ReturnType<typeof setTimeout> | undefined;
+      let watchdog: ReturnType<typeof setInterval> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
         setWsOpen(true);
@@ -405,12 +409,23 @@ export function useMonitor(scope: string) {
         // 부하를 더한다 (배포 중 파드 교체 구간). 판정 시간은 맥박의 무응답 기준을
         // 재사용한다 — "이 시간 살아 있으면 안정"으로 기준을 한 곳에 모은다.
         stable = setTimeout(() => { retry = 0; }, SERVER_SILENT_SEC * 1000);
+
+        // 죽은 소켓 감시 — 서버 프로세스가 즉사하면 close 프레임이 오지 않아 소켓이
+        // 열린 채로 남고, onclose 가 불리지 않아 재연결이 시작되지 않는다. 화면은
+        // 옛 값에 멈춘 채 사용자가 새로고침할 때까지 방치된다.
+        // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
+        // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
+        beatAt.current = Date.now();
+        watchdog = setInterval(() => {
+          if ((Date.now() - beatAt.current) / 1000 > SERVER_SILENT_SEC) sock.close();
+        }, 5000);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
         if (reconnected) void loadStops();
       };
       sock.onclose = async (ev) => {
         clearTimeout(stable);
+        clearInterval(watchdog);
         setWsOpen(false);
         if (closed) return;
         // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.

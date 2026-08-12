@@ -10,6 +10,10 @@ spec:
     metadata:
       labels: { app: smartfarmhmi-api }
     spec:
+      # WebSocket 을 들고 있어 종료 시 정리할 것이 있다 — 유예 안에 SIGTERM 처리가
+      # 끝나지 않으면 SIGKILL 이 되고, 그러면 Channels 그룹 등록이 남아 24시간(기본
+      # group_expiry) 동안 방송이 유령에게 나간다. 기본값(30초)을 명시해 의도를 남긴다.
+      terminationGracePeriodSeconds: 30
       containers:
         - name: api
           image: harbor.cu.ac.kr/smartfarmhmi-dev/api

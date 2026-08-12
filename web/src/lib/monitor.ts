@@ -180,9 +180,11 @@ export interface AlertItem {
 export interface AlertPageResponse {
   items: AlertItem[];
   page: number;
-  pages: number;
-  total: number;
-  unacked_total: number;
+  /** counts=false 로 조회하면 집계가 빠진다 — 총계를 쓰지 않는 폴링(헤더 벨·KPI)이
+   *  15초마다 COUNT 를 두 번 돌리지 않게 하기 위한 것 */
+  pages: number | null;
+  total: number | null;
+  unacked_total: number | null;
   anchor: string | null;
 }
 
@@ -198,7 +200,7 @@ export function useGlobalAlerts(intervalMs = 15_000) {
     let active = true;
 
     const load = async () => {
-      const res = await apiFetch("/api/alerts?limit=100");
+      const res = await apiFetch("/api/alerts?limit=100&counts=false");
       if (!res.ok || !active) return;
       const page: AlertPageResponse = await res.json();
       setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
@@ -286,7 +288,7 @@ export function useMonitor(scope: string) {
     void loadStops();
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      apiFetch("/api/alerts?limit=100").then(async (r) => {
+      apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
         setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
@@ -300,7 +302,7 @@ export function useMonitor(scope: string) {
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
       });
-      apiFetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
+      apiFetch(`/api/farms/${scope}/alerts?limit=50&counts=false`).then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
         setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));

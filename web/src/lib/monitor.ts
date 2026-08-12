@@ -6,11 +6,13 @@
  * 통신 상태·마지막 수신 시각을 함께 유지한다 (FR-37, 페일세이프 ③).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
 
 export interface SensorValue {
   sensor_id: string;
+  /** 장비 등록의 표시 이름 (미등록이면 없음) */
+  name?: string | null;
   sensor_type: string;
   unit: string;
   location?: string | null;
@@ -116,6 +118,18 @@ const SENSOR_OFFLINE_SEC = 600;
 
 export type LiveState = "online" | "degraded" | "offline" | "unmonitored";
 
+/**
+ * 센서 값의 신선도 — 마지막 수신 시각만으로 보는 판정.
+ * 장치 목록(deviceLiveness)과 농장 상태(farmStatus)가 같은 임계를 쓰도록 여기 둔다.
+ */
+export function sensorLiveness(ts: string | null): "online" | "degraded" | "offline" {
+  if (!ts) return "offline";
+  const age = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (age > SENSOR_OFFLINE_SEC) return "offline";
+  if (age > SENSOR_DEGRADED_SEC) return "degraded";
+  return "online";
+}
+
 export function deviceLiveness(
   deviceId: string,
   deviceType: string,
@@ -137,11 +151,7 @@ export function deviceLiveness(
     : Object.values(conns).find((c) => c.device_id.startsWith("growbed"));
   if (parent && parent.state !== "online") return { state: parent.state, ts: sensor.ts };
 
-  if (!sensor.ts) return { state: "offline", ts: null };
-  const age = (Date.now() - new Date(sensor.ts).getTime()) / 1000;
-  if (age > SENSOR_OFFLINE_SEC) return { state: "offline", ts: sensor.ts };
-  if (age > SENSOR_DEGRADED_SEC) return { state: "degraded", ts: sensor.ts };
-  return { state: "online", ts: sensor.ts };
+  return { state: sensorLiveness(sensor.ts), ts: sensor.ts };
 }
 
 export interface AlertItem {
@@ -203,14 +213,27 @@ export function useMonitor(scope: string) {
   const [commands, setCommands] = useState<Record<string, CommandState>>({});
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
   const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
-  const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
   // 소켓이 붙어 있어도 미들웨어·브리지가 멈추면 데이터만 조용히 끊긴다.
   // 서버 맥박(_system/health)의 나이로 그 상태를 본다.
   const [serverBeat, setServerBeat] = useState<{ at: number; up: boolean } | null>(null);
 
+  // 통신·정지 변화가 실시간으로 오면 값이 증가한다. 전 농장 스냅샷(15초 폴링)을 쓰는
+  // 화면들이 이 값을 보고 즉시 다시 읽는다 — 안 그러면 상세 화면의 하드웨어 목록은
+  // 바로 바뀌는데 농장 점·헤더만 최대 15초 늦게 따라온다.
+  const [liveTick, setLiveTick] = useState(0);
+  // 직전에 받은 통신 상태 — 전 농장분을 스코프와 무관하게 기억한다.
+  // conns 를 쓰면 안 된다: 전체 스코프에서는 농장별 스냅샷을 받지 않아 늘 비어 있고,
+  // 그러면 「이전 값 없음 = 바뀜」이 되어 하트비트마다 틱이 올라간다.
+  const lastConnState = useRef<Record<string, string>>({});
+
+  // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
+  // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
+  const farmName = farms.find((f) => f.farm_id === scope)?.name ?? "";
+
   // 이 스코프의 스냅샷이 도착했는가 — 「아직 안 받음」과 「데이터 없음」을 구분한다
   const [snapshotReady, setSnapshotReady] = useState(false);
+
 
   // ── 초기 로드 (REST) ──
   const refreshFarms = useCallback(async () => {
@@ -223,7 +246,6 @@ export function useMonitor(scope: string) {
     if (!res.ok) return;
     const snap = await res.json();
     setSnapshotReady(true);
-    setFarmName(snap.farm.name);
     setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
     setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
     setConns(Object.fromEntries(snap.connections.map((c: ConnState) => [c.device_id, c])));
@@ -297,6 +319,7 @@ export function useMonitor(scope: string) {
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
         }));
       } else if (msg.stream === "stop") {
+          setLiveTick((n) => n + 1);
         // 원격/물리 정지는 독립 표시 — 동시 성립 가능 (non-functional §2.4)
         if (d.stop_kind === "physical_estop") {
           // 농장별로 독립 성립하므로 단일 값으로 덮어쓸 수 없다 — 한 농장이 해제되면
@@ -329,6 +352,14 @@ export function useMonitor(scope: string) {
           [d.command_id]: { issued_at: msg.timestamp, ...prev[d.command_id], ...d },
         }));
       } else if (msg.stream === "connection") {
+        // 하트비트는 상태가 그대로여도 매 주기 온다. 그때마다 틱을 올리면 전 농장
+        // 스냅샷을 10초마다 다시 읽어, 줄이려던 폴링보다 되레 늘어난다.
+        // 값이 바뀐 순간과, 처음 본 장치가 정상이 아닌 경우에만 올린다.
+        const before = lastConnState.current[d.device_id];
+        lastConnState.current[d.device_id] = d.state;
+        if (d.cascade || (before === undefined ? d.state !== "online" : before !== d.state)) {
+          setLiveTick((n) => n + 1);
+        }
         setConns((prev) => {
           if (d.cascade) {
             // 엣지 단절 — 농장 전체 오프라인 (페일세이프 ②의 화면 반영)
@@ -374,7 +405,7 @@ export function useMonitor(scope: string) {
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
-    snapshotReady, serverBeat,
+    liveTick, snapshotReady, serverBeat,
   };
 }
 
@@ -458,7 +489,22 @@ export function useServerLink(
     const t = setInterval(() => tick((n) => n + 1), 2000);
     return () => clearInterval(t);
   }, []);
-  if (!wsOpen) return "socket-down";
+
+  // 소켓 끊김에도 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
+  // 스코프가 바뀌면 WS effect 가 소켓을 닫고 다시 열기 때문에, 유예가 없으면 화면을
+  // 옮길 때마다 배너가 깜빡인다 — 재연결은 1초 안에 끝나므로 장애가 아니다.
+  // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
+  const downSince = useRef<number | null>(null);
+  useEffect(() => {
+    downSince.current = wsOpen ? null : Date.now();
+  }, [wsOpen]);
+
+  if (!wsOpen) {
+    const since = downSince.current;
+    // 유예 안이면 아직 알리지 않는다 (unknown = 배너 없음)
+    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
+    return "socket-down";
+  }
   if (beat === null) return "unknown";      // 아직 첫 맥박 전 (retained 라 곧 온다)
   if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";

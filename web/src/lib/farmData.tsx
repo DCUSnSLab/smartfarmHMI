@@ -46,6 +46,7 @@ export function FarmDataProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const snaps = useFleetSnapshots(
     showsFleetNav(pathname) ? data.farms.map((f) => f.farm_id) : [],
+    data.liveTick,
   );
 
   const { rows: weather, loading: weatherLoading, reload: reloadWeather } = useWeather();

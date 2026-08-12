@@ -110,6 +110,31 @@ export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
 };
 
 /**
+ * 탱크 표시 — 통신 상태(CONN_STYLE)와 **다른 축**이다.
+ *
+ * 탱크는 발행 주체가 아니다. 값의 출처는 수위계 센서(`{탱크}-lv`)이고, 탱크 자체는
+ * birth·하트비트·LWT 가 없다. 그래서 「탱크 오프라인」은 실제로 수위계 이야기이고,
+ * 같은 고장이 목록에 두 줄로 나온다 (워크스테이션을 통신 축에서 뺀 것과 같은 이유).
+ * 대신 탱크가 실제로 말해 줄 수 있는 것 — 잔량 — 을 보여준다.
+ *
+ * 20% 기준과 「잔량 부족」 문구는 작업·공급 화면과 같은 값을 쓴다.
+ */
+export const TANK_LOW_PCT = 20;
+
+export function tankBadge(
+  levelPct: number | null | undefined,
+  sensorState: "online" | "degraded" | "offline",
+): { label: string; sev: string } {
+  if (sensorState === "offline" || levelPct == null) {
+    return { label: "수위 확인 불가", sev: "warning" };
+  }
+  if (sensorState === "degraded") return { label: "수위 갱신 지연", sev: "caution" };
+  return levelPct < TANK_LOW_PCT
+    ? { label: "잔량 부족", sev: "caution" }
+    : { label: "적정", sev: "ok" };
+}
+
+/**
  * 워크스테이션 작업 상태 — 통신 상태(CONN_STYLE)와 **다른 축**이다.
  * 워크스테이션은 자기 통신 경로가 없어(FR-37 대상은 엣지·센서·로봇) 이 상태로 표시한다.
  * 상태·작업공급 두 화면이 같은 문구를 쓰도록 여기 둔다 — 각자 적으면 갈라진다.
@@ -150,11 +175,41 @@ export function SectionTitle({
   );
 }
 
+/**
+ * 상태 표식 — 색과 **도형**을 함께 쓴다 (비기능 §5: 색으로만 구분하지 않는다).
+ *
+ *   원 초록 = 정상 · 사각형 파랑 = 정보·대기 · 마름모 주황 = 주의 · 삼각형 빨강 = 경고
+ *
+ * 화면 전체가 같은 도형 규칙을 쓴다 — 농장 점, 하드웨어 목록, 각 탭의 배지가
+ * 서로 다른 표식을 쓰면 같은 뜻인지 매번 다시 읽어야 한다.
+ */
+export function StatusMark({ sev, label }: { sev: string; label?: string }) {
+  const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
+  const shape =
+    sev === "warning" ? "h-2.5 w-2.5 [clip-path:polygon(50%_0%,100%_100%,0%_100%)]"
+    : sev === "caution" ? "h-2 w-2 rotate-45"
+    : sev === "info" ? "h-2 w-2 rounded-[2px]"
+    : "h-2 w-2 rounded-full";
+  // 도형마다 크기가 다르므로 같은 크기의 상자 안에 넣어 가운데에 둔다.
+  // 상자가 없으면 상태가 바뀔 때 옆 글자가 밀리고, 줄 높이에 따라 위아래로 어긋난다.
+  return (
+    <span
+      role="img"
+      aria-label={label ?? s.label}
+      title={label ?? s.label}
+      className="inline-flex h-3 w-3 flex-none items-center justify-center align-middle"
+    >
+      <span className={`${shape} ${s.dot}`} />
+    </span>
+  );
+}
+
+/** 표식 + 문구 한 쌍. 표식은 StatusMark 를 그대로 쓴다 (도형 규칙이 갈리지 않게) */
 export function StatusDot({ sev, label }: { sev: string; label?: string }) {
   const s = SEV_STYLE[sev] ?? SEV_STYLE.info;
   return (
     <span className={`inline-flex items-center gap-1.5 text-12.5 font-bold ${s.text}`}>
-      <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+      <StatusMark sev={sev} label={label} />
       {label ?? s.label}
     </span>
   );

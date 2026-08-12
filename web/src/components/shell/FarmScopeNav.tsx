@@ -6,28 +6,16 @@
  * 현재 선택된 전체 또는 농장 버튼을 활성화하고, 농장 변경 시 현재 상세 탭을 유지한다.
  */
 
-import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { useFarmData } from "@/lib/farmData";
-import { farmSeverity, showsFleetNav } from "@/lib/fleet";
-import { NavItemData, ScopeBar, SEV_STYLE } from "@/components/ui";
+import { farmStatus, showsFleetNav } from "@/lib/fleet";
+import { NavItemData, ScopeBar, StatusMark } from "@/components/ui";
 
 export function FarmScopeNav() {
   const pathname = usePathname();
 
-  // 대시보드 '농장별 현황' 카드와 동일한 상태색을 쓰기 위해 스냅샷(통신)과
-  // 미확인 경고 알림을 함께 반영한다. 스코프에 따라 좁혀지는 alerts 가 아니라
-  // globalAlerts 를 써야 농장을 클릭해도 다른 농장의 점이 살아 있다.
-  const { farms, globalAlerts, snaps } = useFarmData();
-
-  const warnByFarm = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const a of Object.values(globalAlerts)) {
-      if (a.acked_at || a.severity !== "warning" || !a.farm_id) continue;
-      counts[a.farm_id] = (counts[a.farm_id] ?? 0) + 1;
-    }
-    return counts;
-  }, [globalAlerts]);
+  // 대시보드 카드·농장 상세 헤더와 같은 판정을 쓴다 (fleet.farmStatus).
+  const { farms, snaps, stops } = useFarmData();
 
   const isDashboard = pathname === "/";
   const farmMatch = pathname.match(/^\/farms\/([^/]+)/);
@@ -50,13 +38,16 @@ export function FarmScopeNav() {
     { key: "all", href: "/", label: "전체", active: isDashboard },
     ...farms.map((farm) => {
       const snap = snaps[farm.farm_id];
-      const sev = snap ? farmSeverity(snap, warnByFarm[farm.farm_id] ?? 0) : "info";
+      // 스냅샷 전에는 상태를 단정하지 않는다 — 파란 점을 두면 「정보」라는 상태처럼 읽힌다
+      const status = snap ? farmStatus(snap, stops) : null;
       return {
         key: farm.farm_id,
         href: `/farms/${farm.farm_id}/${currentTab}`,
         label: farm.name,
         active: currentFarmId === farm.farm_id,
-        lead: <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full ${SEV_STYLE[sev]?.dot}`} />,
+        lead: status
+          ? <StatusMark sev={status.sev} label={[status.label, ...status.reasons.map((r) => r.text)].join(" · ")} />
+          : <span aria-hidden="true" className="h-2 w-2 flex-none rounded-full bg-gray-200" />,
         trail: farm.farm_type === "open_field" ? (
           <span className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-10.5 font-extrabold text-blue-600">
             실외

@@ -489,7 +489,22 @@ export function useServerLink(
     const t = setInterval(() => tick((n) => n + 1), 2000);
     return () => clearInterval(t);
   }, []);
-  if (!wsOpen) return "socket-down";
+
+  // 소켓 끊김에도 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
+  // 스코프가 바뀌면 WS effect 가 소켓을 닫고 다시 열기 때문에, 유예가 없으면 화면을
+  // 옮길 때마다 배너가 깜빡인다 — 재연결은 1초 안에 끝나므로 장애가 아니다.
+  // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
+  const downSince = useRef<number | null>(null);
+  useEffect(() => {
+    downSince.current = wsOpen ? null : Date.now();
+  }, [wsOpen]);
+
+  if (!wsOpen) {
+    const since = downSince.current;
+    // 유예 안이면 아직 알리지 않는다 (unknown = 배너 없음)
+    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
+    return "socket-down";
+  }
   if (beat === null) return "unknown";      // 아직 첫 맥박 전 (retained 라 곧 온다)
   if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";

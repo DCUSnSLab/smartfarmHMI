@@ -75,10 +75,23 @@ MINIO_SECURE = env.bool("MINIO_SECURE", default=False)
 
 # ── Channels — Redis 채널 레이어 ──
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
+# socket_timeout 은 반드시 명시한다 — 불변식은 `> brpop_timeout(5)` 하나다.
+# channels-redis 의 메시지 대기는 `BRPOP <채널 키> 5` 이고(core.py 의 brpop_timeout),
+# redis-py 8.x 의 socket_timeout 기본값도 5초다(redis/_defaults.py). 두 값이 같으면
+# BRPOP 이 빈 응답을 돌려주기 직전에 읽기 타임아웃이 터지고, 그 예외가 ASGI 앱 밖으로
+# 나가 컨슈머가 죽는다 (GEN-1323).
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]},
+        "CONFIG": {
+            "hosts": [
+                {
+                    "address": REDIS_URL,
+                    "socket_timeout": 15,
+                    "socket_connect_timeout": 5,   # 접속은 짧게 둬야 장애를 빨리 본다
+                }
+            ]
+        },
     }
 }
 

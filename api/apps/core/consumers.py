@@ -7,9 +7,13 @@
 ④ 푸시 포맷 — 통신 규격 §4.10 형태 유지
 """
 
+import logging
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.accounts.auth import ACCESS_COOKIE, user_from_token
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_GROUP = "system"
 
@@ -91,5 +95,14 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             # 정상 종료는 이미 disconnect() 를 지났다 (websocket_disconnect → StopConsumer).
             # 여기 오는 것은 그러지 못한 경우뿐이라 이중 호출이 되지 않는다.
             if getattr(self, "channel_name", None):
-                await self.disconnect(1011)   # 내부 오류
+                try:
+                    await self.disconnect(1011)   # 내부 오류
+                except Exception:
+                    # 정리 실패가 **원인을 가려서는 안 된다.** 정리도 redis 를 쓰므로
+                    # redis 가 흔들리면 여기서도 실패하는데, 그 예외를 그대로 흘리면
+                    # uvicorn 이 보고하는 최종 예외가 진짜 원인이 아니게 된다. 이 버그를
+                    # 찾을 때 「보고된 증상 ≠ 원인」으로 며칠을 잃었다 — 같은 함정을
+                    # 우리 손으로 다시 만들지 않는다.
+                    # 정리에 실패한 잔재는 group_expiry(24시간)가 걷어 간다.
+                    logger.exception("컨슈머 예외 종료 후 그룹 정리 실패")
             raise

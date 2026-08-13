@@ -115,6 +115,22 @@ async def _group_members(group: str) -> set[bytes]:
         await client.aclose()
 
 
+async def _purge(group: str, members: set[bytes]) -> None:
+    """테스트가 흘린 그룹 등록을 걷어낸다.
+
+    정리 실패를 일부러 만드는 테스트가 아래에 있어 잔재가 남는다. 그대로 두면
+    group_expiry(24시간) 동안 남아 **다음 측정을 오독시킨다** — 이 저장소가 실제로
+    그 함정에 빠져 「소켓이 10초에 23개 생긴다」로 읽은 적이 있다 (실제로는 누적 잔재).
+    """
+    if not members:
+        return
+    client = redis.asyncio.from_url(settings.REDIS_URL)
+    try:
+        await client.zrem(f"asgi:group:{group}", *members)
+    finally:
+        await client.aclose()
+
+
 def test_socket_timeout_must_exceed_brpop_timeout():
     """설정 불변식 — 이 하나만 지키면 위 사고는 재발하지 않는다.
 
@@ -259,5 +275,43 @@ def test_group_registration_cleared_when_consumer_raises(monkeypatch):
         # 안전망은 정리만 하고 다시 던진다는 것을 여기서 함께 고정한다.
         with pytest.raises(RuntimeError):
             await ws.wait()
+
+    async_to_sync(scenario)()
+
+
+def test_cleanup_failure_does_not_mask_original_error(monkeypatch):
+    """정리가 실패해도 **원래 예외**가 보고되어야 한다.
+
+    안전망의 정리도 redis 를 쓴다. redis 가 흔들리면 정리도 함께 실패하는데, 그 예외를
+    그대로 흘리면 uvicorn 이 보고하는 최종 예외가 진짜 원인이 아니게 된다.
+
+    이것을 계약으로 고정하는 이유는 이 저장소의 경험이다. GEN-1323 은 「보고된 증상이
+    원인을 가리킨다」는 가정 때문에 며칠을 잃었다 — 서버의 disconnect 로그가 0건이라
+    「소켓이 닫히지 않는다」로 읽었지만, 실제로는 예외 경로라 호출 자체가 없었다.
+    같은 함정을 우리 손으로 다시 만들지 않는다.
+    """
+
+    async def boom(self, content, **kwargs):
+        raise RuntimeError("원래 원인")
+
+    async def broken_disconnect(self, code):
+        raise ConnectionError("정리 중 redis 실패")
+
+    async def scenario():
+        before = await _group_members(SYSTEM_GROUP)
+
+        ws = _client()
+        assert await ws.connect()
+
+        monkeypatch.setattr(MonitorConsumer, "receive_json", boom)
+        monkeypatch.setattr(MonitorConsumer, "disconnect", broken_disconnect)
+        await ws.send_json({"action": "subscribe", "scope": "all"})
+
+        # 정리 실패(ConnectionError)가 아니라 원래 예외(RuntimeError)가 나와야 한다
+        with pytest.raises(RuntimeError, match="원래 원인"):
+            await ws.wait()
+
+        # 정리를 일부러 깨뜨렸으므로 잔재가 남는다 — 이 테스트가 치운다
+        await _purge(SYSTEM_GROUP, (await _group_members(SYSTEM_GROUP)) - before)
 
     async_to_sync(scenario)()

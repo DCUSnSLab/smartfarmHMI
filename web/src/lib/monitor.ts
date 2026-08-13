@@ -316,9 +316,14 @@ export function useMonitor(scope: string) {
     let retry = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let ws: WebSocket | null = null;
+    let pongAt = 0;   // ping 응답 도착 시각 — 감시 타이머가 소켓 생존을 판정한다
 
     const onMessage = (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data);
+      if (msg.type === "pong") {   // 감시 타이머의 생존 확인 응답
+        pongAt = Date.now();
+        return;
+      }
       if (msg.type !== "update") return;
       const d = msg.data;
       if (msg.stream === "health") {
@@ -416,9 +421,28 @@ export function useMonitor(scope: string) {
         // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
         // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
         beatAt.current = Date.now();
+        let pingAt = 0;
         watchdog = setInterval(() => {
           if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지
-          if ((Date.now() - beatAt.current) / 1000 > SERVER_SILENT_SEC) sock.close();
+          if ((Date.now() - beatAt.current) / 1000 <= SERVER_SILENT_SEC) {
+            pingAt = 0;   // 맥박이 오는 동안에는 확인할 것이 없다
+            return;
+          }
+          // 맥박이 끊겼다 — 원인이 둘이라 **닫기 전에 소켓을 실제로 시험한다.**
+          //   소켓이 죽음        → 닫아야 재연결된다
+          //   서버 쪽이 끊김     → 닫아도 그대로다. 닫으면 무한 재연결이 된다
+          // ping 에 pong 이 오면 소켓은 살아 있는 것이므로 닫지 않고 배너에 맡긴다.
+          if (pingAt === 0) {
+            sock.send(JSON.stringify({ action: "ping" }));
+            pingAt = Date.now();
+            return;
+          }
+          if (Date.now() - pingAt < WS_PONG_WAIT_MS) return;   // 응답 대기 중
+          if (pongAt > pingAt) {
+            pingAt = 0;   // 살아 있음 — 다음 주기에 다시 확인만 한다
+            return;
+          }
+          sock.close();   // 응답 없음 = 죽은 소켓 → onclose → 재연결
         }, WS_WATCH_MS);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
@@ -531,6 +555,9 @@ const WS_UNAUTHORIZED = 4401;
 /** 죽은 소켓 감시 주기 — 맥박 주기의 절반. 판정 자체는 SERVER_SILENT_SEC 이 하므로
  *  이 값은 "얼마나 촘촘히 들여다볼지"만 정한다. */
 const WS_WATCH_MS = (SERVER_BEAT_SEC / 2) * 1000;
+/** ping 응답 대기 — 이 안에 pong 이 없으면 소켓이 죽은 것으로 본다.
+ *  같은 소켓의 왕복이라 네트워크 지연만 감당하면 되므로 짧게 둔다. */
+const WS_PONG_WAIT_MS = 3_000;
 
 export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
 

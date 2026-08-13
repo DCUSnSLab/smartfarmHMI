@@ -7,7 +7,10 @@
 ④ 푸시 포맷 — 통신 규격 §4.10 형태 유지
 """
 
+import asyncio
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.conf import settings as dj_settings
 
 from apps.accounts.auth import ACCESS_COOKIE, user_from_token
 
@@ -25,6 +28,13 @@ def _cookie(scope, name: str) -> str | None:
 
 
 class MonitorConsumer(AsyncJsonWebsocketConsumer):
+    """실시간 모니터 소켓.
+
+    그룹 등록에 수명이 있으므로(settings.CHANNEL_GROUP_EXPIRY_SEC) 살아 있는 동안
+    주기적으로 다시 가입한다. 갱신을 멈추면 등록이 스스로 사라져, 프로세스가 즉사해
+    disconnect 가 실행되지 못한 경우의 잔재가 청소 없이 정리된다.
+    """
+
     async def connect(self):
         self._group: str | None = None  # 거부 경로에서도 disconnect 가 참조 — 먼저 초기화
         # 관문(①): 쿠키 JWT 검증 — 미인증 소켓은 데이터 수신 불가 (FR-31)
@@ -38,9 +48,26 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
         await self.accept()
         # 서버 생존 신호는 스코프와 무관하다 — 전환해도 유지되도록 따로 가입한다.
         await self.channel_layer.group_add(SYSTEM_GROUP, self.channel_name)
+        self._refresh = asyncio.create_task(self._keep_groups())
+
+    async def _keep_groups(self) -> None:
+        """그룹 등록 갱신 — 수명(group_expiry)의 1/3 주기로 다시 가입한다."""
+        try:
+            while True:
+                await asyncio.sleep(dj_settings.CHANNEL_GROUP_REFRESH_SEC)
+                await self.channel_layer.group_add(SYSTEM_GROUP, self.channel_name)
+                if self._group:
+                    await self.channel_layer.group_add(self._group, self.channel_name)
+        except asyncio.CancelledError:
+            pass
 
     async def receive_json(self, content, **kwargs):
-        """{"action":"subscribe","scope":"all"|"<farm_id>"} — 스코프 전환 (FR-38)."""
+        """{"action":"subscribe","scope":...} 스코프 전환 (FR-38), {"action":"ping"} 생존 확인."""
+        # 화면이 「맥박이 끊겼다」를 감지했을 때, 소켓 자체가 죽은 것인지 서버 쪽
+        # 파이프라인이 끊긴 것인지 구분하려고 보낸다. 소켓이 살아 있으면 pong 이 온다.
+        if content.get("action") == "ping":
+            await self.send_json({"type": "pong"})
+            return
         if content.get("action") != "subscribe":
             return
         scope = content.get("scope") or "all"
@@ -63,6 +90,9 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
         })
 
     async def disconnect(self, code):
+        task = getattr(self, "_refresh", None)
+        if task is not None:
+            task.cancel()
         if getattr(self, "_group", None):
             await self.channel_layer.group_discard(self._group, self.channel_name)
         if getattr(self, "user", None) is not None:

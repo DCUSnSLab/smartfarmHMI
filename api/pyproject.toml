@@ -21,6 +21,13 @@ dependencies = [
   # WebSocket (Channels) + ASGI
   "channels>=4.1,<4.3",
   "channels-redis>=4.2,<4.4",
+  # redis 는 channels-redis 의 전이 의존성이지만 **직접 선언한다.**
+  # 여기만 상한이 없어서, 재빌드가 8.x 를 끌어오며 socket_timeout 기본값이 None →
+  # 5초로 바뀐 것을 아무도 못 봤다. 그 5초가 channels-redis 의 BRPOP 대기(5초)와
+  # 같아져 우편함이 빌 때마다 컨슈머가 죽었다 (GEN-1323, settings/base.py 주석).
+  # 이 저장소는 다른 패키지 전부에 상한을 두는데 redis 만 전이라 규칙에서 빠져 있었다.
+  # 테스트도 redis 를 직접 import 하므로(apps/core/tests) 선언이 맞다.
+  "redis>=8.1,<9",
   "uvicorn[standard]>=0.30,<0.36",
 
   # DB / crypto

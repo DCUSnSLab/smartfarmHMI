@@ -252,8 +252,11 @@ def test_group_registration_cleared_when_consumer_raises(monkeypatch):
         ws = _client()
         assert await ws.connect()
 
-        joined = await _group_members(SYSTEM_GROUP)
-        assert len(joined - before) == 1, "connect 가 system 그룹에 가입하지 않았다"
+        # **우리 채널만** 추적한다. 전체 차집합으로 판정하면, 같은 그룹에 들어 있는
+        # 실사용 브라우저가 이 사이에 재연결했을 때 그 채널이 「잔재」로 잡혀 엉뚱하게
+        # 실패한다. 테스트가 돌아가는 시스템의 상태에 좌우되면 안 된다.
+        ours = await _group_members(SYSTEM_GROUP) - before
+        assert len(ours) == 1, "connect 가 system 그룹에 가입하지 않았다"
 
         monkeypatch.setattr(MonitorConsumer, "receive_json", boom)
         await ws.send_json({"action": "subscribe", "scope": "all"})
@@ -262,14 +265,19 @@ def test_group_registration_cleared_when_consumer_raises(monkeypatch):
         # 두었다가 다시 던지므로 여기서 삼킨다 — 검사 대상은 예외가 아니라 잔재다.
         for _ in range(50):
             await asyncio.sleep(0.1)
-            if not (await _group_members(SYSTEM_GROUP)) - before:
+            if not (ours & await _group_members(SYSTEM_GROUP)):
                 break
 
-        leftover = (await _group_members(SYSTEM_GROUP)) - before
-        assert not leftover, (
-            f"예외로 죽은 컨슈머의 그룹 등록이 남았다: {leftover}. "
-            "group_expiry(24시간) 동안 살아 있는 연결의 우편함을 함께 먹는다"
-        )
+        leftover = ours & await _group_members(SYSTEM_GROUP)
+        try:
+            assert not leftover, (
+                f"예외로 죽은 컨슈머의 그룹 등록이 남았다: {leftover}. "
+                "group_expiry(24시간) 동안 남아 매 메시지에 죽은 채널 이름을 실어 나른다"
+            )
+        finally:
+            # 실패했다면 정의상 잔재가 남아 있다. 그대로 두면 24시간 동안 다음 측정을
+            # 오독시킨다 — 회귀를 알리려고 만든 테스트가 진단을 방해하게 된다.
+            await _purge(SYSTEM_GROUP, ours)
 
         # 예외 자체는 흘러나가는 것이 맞다 — 삼키면 uvicorn 로그에서 원인이 사라진다.
         # 안전망은 정리만 하고 다시 던진다는 것을 여기서 함께 고정한다.
@@ -303,6 +311,12 @@ def test_cleanup_failure_does_not_mask_original_error(monkeypatch):
         ws = _client()
         assert await ws.connect()
 
+        # 정리 대상을 **우리 채널로 한정**해 둔다. 전체 차집합을 지우면, 같은 그룹에 들어
+        # 있는 실사용 브라우저가 이 사이에 재연결했을 때 그 등록까지 지워 화면이 조용히
+        # 실시간을 잃는다. 테스트가 돌아가는 시스템에 부작용을 주면 안 된다.
+        ours = await _group_members(SYSTEM_GROUP) - before
+        assert len(ours) == 1, "connect 가 system 그룹에 가입하지 않았다"
+
         monkeypatch.setattr(MonitorConsumer, "receive_json", boom)
         monkeypatch.setattr(MonitorConsumer, "disconnect", broken_disconnect)
         await ws.send_json({"action": "subscribe", "scope": "all"})
@@ -312,6 +326,6 @@ def test_cleanup_failure_does_not_mask_original_error(monkeypatch):
             await ws.wait()
 
         # 정리를 일부러 깨뜨렸으므로 잔재가 남는다 — 이 테스트가 치운다
-        await _purge(SYSTEM_GROUP, (await _group_members(SYSTEM_GROUP)) - before)
+        await _purge(SYSTEM_GROUP, ours)
 
     async_to_sync(scenario)()

@@ -83,8 +83,12 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
         Channels 의 `AsyncConsumer.__call__` 은 `StopConsumer` 만 삼키고 나머지 예외는
         ASGI 앱 밖으로 흘린다 (channels/consumer.py). 그 경로에서는 `disconnect()` 가
         아예 불리지 않아 **소켓은 닫히는데 그룹 등록만 group_expiry(24시간) 동안 남는다.**
-        잔재는 살아 있는 연결과 프로세스 접두를 공유하므로 우편함(capacity 100)을 함께
-        먹는다 — 실측으로 멤버 4,519개까지 불었고 브리지가 over capacity 를 뱉었다.
+
+        잔재가 해로운 방식은 「정원을 하나씩 차지한다」가 아니다. channels-redis 는 같은
+        프로세스 접두를 공유하는 채널들을 한 메시지로 합쳐 `__asgi_channel__` 에 이름
+        목록으로 싣는다 (core.py 의 _map_channel_keys_to_connection). 그래서 잔재가 쌓이면
+        **매 메시지가 죽은 채널 이름을 전부 실어 나른다** — 실측 4,519개면 수백 KB가 되고,
+        그 무게에 우편함(capacity 100)이 밀려 브리지가 over capacity 를 뱉었다.
 
         원인이 된 redis 읽기 타임아웃은 settings 에서 막았지만(CHANNEL_LAYERS 주석),
         「예외 = 조용한 누수」라는 구조 자체는 그대로다. 여기서 닫는다 (GEN-1323).

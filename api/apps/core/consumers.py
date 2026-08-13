@@ -78,35 +78,20 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(SYSTEM_GROUP, self.channel_name)
 
     async def __call__(self, scope, receive, send):
-        """그룹 등록 정리를 예외 경로에서도 보장한다.
+        """예외로 끝나도 그룹 등록을 정리한다.
 
         Channels 의 `AsyncConsumer.__call__` 은 `StopConsumer` 만 삼키고 나머지 예외는
-        ASGI 앱 밖으로 흘린다 (channels/consumer.py). 그 경로에서는 `disconnect()` 가
-        아예 불리지 않아 **소켓은 닫히는데 그룹 등록만 group_expiry(24시간) 동안 남는다.**
-
-        잔재가 해로운 방식은 「정원을 하나씩 차지한다」가 아니다. channels-redis 는 같은
-        프로세스 접두를 공유하는 채널들을 한 메시지로 합쳐 `__asgi_channel__` 에 이름
-        목록으로 싣는다 (core.py 의 _map_channel_keys_to_connection). 그래서 잔재가 쌓이면
-        **매 메시지가 죽은 채널 이름을 전부 실어 나른다** — 실측 4,519개면 수백 KB가 되고,
-        그 무게에 우편함(capacity 100)이 밀려 브리지가 over capacity 를 뱉었다.
-
-        원인이 된 redis 읽기 타임아웃은 settings 에서 막았지만(CHANNEL_LAYERS 주석),
-        「예외 = 조용한 누수」라는 구조 자체는 그대로다. 여기서 닫는다 (GEN-1323).
+        ASGI 앱 밖으로 흘린다. 그 경로에서는 `disconnect()` 가 불리지 않아 그룹 등록이
+        group_expiry(24시간) 동안 남는다 (GEN-1323).
         """
         try:
             await super().__call__(scope, receive, send)
         except Exception:
-            # 정상 종료는 이미 disconnect() 를 지났다 (websocket_disconnect → StopConsumer).
-            # 여기 오는 것은 그러지 못한 경우뿐이라 이중 호출이 되지 않는다.
+            # 정상 종료는 이미 disconnect() 를 지났으므로 이중 호출이 되지 않는다
             if getattr(self, "channel_name", None):
                 try:
-                    await self.disconnect(1011)   # 내부 오류
+                    await self.disconnect(1011)   # 1011 = 내부 오류
                 except Exception:
-                    # 정리 실패가 **원인을 가려서는 안 된다.** 정리도 redis 를 쓰므로
-                    # redis 가 흔들리면 여기서도 실패하는데, 그 예외를 그대로 흘리면
-                    # uvicorn 이 보고하는 최종 예외가 진짜 원인이 아니게 된다. 이 버그를
-                    # 찾을 때 「보고된 증상 ≠ 원인」으로 며칠을 잃었다 — 같은 함정을
-                    # 우리 손으로 다시 만들지 않는다.
-                    # 정리에 실패한 잔재는 group_expiry(24시간)가 걷어 간다.
+                    # 정리 실패가 원래 예외를 가리면 안 된다. 남은 잔재는 group_expiry 가 걷는다
                     logger.exception("컨슈머 예외 종료 후 그룹 정리 실패")
             raise

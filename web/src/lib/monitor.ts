@@ -253,7 +253,7 @@ export function useMonitor(scope: string) {
   // 넣으면 화면을 옮길 때마다 연결을 닫고 새로 맺는다. 그러면
   //   · 이동마다 실시간이 끊기고 (배너 깜빡임)
   //   · 두 화면이 서로 다른 스코프를 선언하는 전환 구간에서 재연결이 반복되고
-  //   · 끊긴 연결의 그룹 등록이 매번 잔재로 남는다
+  //   · 그 사이에 오는 push(정지·알림)를 놓친다
   // 서버는 한 소켓에서 스코프를 바꿀 수 있다 (consumers.py 의 subscribe). 그래서
   // 스코프 변경은 **연결 교체가 아니라 메시지**로 처리한다.
   const scopeRef = useRef(scope);
@@ -298,6 +298,8 @@ export function useMonitor(scope: string) {
     void loadStops();
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
+      // useGlobalAlerts 와 같은 URL 이지만 지우면 안 된다 — 이 alerts 는 WS 로 갱신되고
+      // globalAlerts 는 폴링만 받는다. 합치려면 두 저장소의 소유권부터 정리해야 한다.
       apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
@@ -306,6 +308,8 @@ export function useMonitor(scope: string) {
     }
     setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
     if (scope !== "all") {
+      // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
+      // showsFleetNav 화면에서만 돌고 카드용 형태로 담는다. 여기서는 장치별 값이 필요하다.
       void loadSnapshot(scope);
       apiFetch(`/api/farms/${scope}/commands`).then(async (r) => {
         if (!r.ok) return;
@@ -447,11 +451,7 @@ export function useMonitor(scope: string) {
         // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
         // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
         beatAt.current = Date.now();
-        // pong 기록은 **소켓마다** 초기화한다. effect 스코프 변수라 재연결 후에도 옛
-        // 소켓에서 받은 시각이 남는다. 판정은 `pongAt > pingAt` 이라 옛 값(항상 과거)이
-        // 결과를 바꾸지는 않지만, 소켓 하나의 상태를 소켓 밖에 두면 읽는 사람이 매번
-        // 이 추론을 다시 해야 한다. 값의 수명을 소켓에 맞춰 둔다.
-        pongAt = 0;
+        pongAt = 0;   // effect 스코프 변수라 옛 소켓 값이 남는다 — 소켓마다 초기화
         let pingAt = 0;
         watchdog = setInterval(() => {
           if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지
@@ -603,8 +603,8 @@ export function useServerLink(
   }, []);
 
   // 소켓 끊김에도 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
-  // 스코프가 바뀌면 WS effect 가 소켓을 닫고 다시 열기 때문에, 유예가 없으면 화면을
-  // 옮길 때마다 배너가 깜빡인다 — 재연결은 1초 안에 끝나므로 장애가 아니다.
+  // 재연결은 백오프 상한(WS_RETRY_MAX_MS) 안에 끝나므로, 유예가 없으면 배포·네트워크
+  // 순간 끊김처럼 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
   // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
   const downSince = useRef<number | null>(null);
   useEffect(() => {

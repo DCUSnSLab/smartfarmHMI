@@ -81,10 +81,35 @@ REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 # 화면이 그룹에서 잘려나간다), 그 대가를 지불할 이유가 없어졌다 — 잔재를 대량으로
 # 만들던 원인이 소켓 재생성이었고 그쪽을 고쳤다 (lib/monitor.ts). 이제 잔재는 프로세스
 # 즉사 시에만 생기고, 그때는 24시간 후 스스로 사라진다.
+#
+# `socket_timeout` 은 **반드시 명시한다** — 생략하면 소켓이 5초마다 죽는다.
+#
+# channels-redis 는 컨슈머의 메시지 대기를 `BRPOP <채널> 5` 로 구현한다 (core.py 의
+# brpop_timeout=5). 즉 우편함이 비어 있으면 5초를 블로킹한다. 그런데 redis-py 8.x 가
+# `socket_timeout` 기본값을 None(무한 대기)에서 5초로 바꿨다 (redis/_defaults.py 의
+# DEFAULT_SOCKET_TIMEOUT). 두 값이 같으면 BRPOP 이 빈 응답을 돌려주기 직전에 읽기
+# 타임아웃이 터지고, 그 예외가 ASGI 앱 밖으로 나가면서 컨슈머가 죽는다.
+#
+# 결과가 고약하다. Channels 는 예외로 끝난 앱에 대해 `disconnect()` 를 부르지 않으므로
+#   · 소켓이 닫히고 (브라우저는 재연결 → 또 5초 후 죽음 → 무한 반복)
+#   · 그룹 등록만 24시간 남아 살아 있는 연결과 우편함을 공유한다 (브리지의 over capacity)
+# 게다가 데이터가 5초 안에 계속 오면 BRPOP 이 먼저 반환해 증상이 숨는다 — 값이 조용히
+# 끊긴 상태에서만 드러나므로 원인을 소켓·재연결 쪽에서 찾게 된다 (GEN-1323).
+#
+# redis 는 channels-redis 의 전이 의존성이라 우리 pyproject 에 핀이 없다. 버전이 올라도
+# 깨지지 않도록 값을 우리가 쥔다. 불변식은 `socket_timeout > brpop_timeout(5)` 하나다.
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]},
+        "CONFIG": {
+            "hosts": [
+                {
+                    "address": REDIS_URL,
+                    "socket_timeout": 15,          # > brpop_timeout(5). 여유 3배
+                    "socket_connect_timeout": 5,   # 접속은 별개 — 짧게 둬 장애를 빨리 본다
+                }
+            ]
+        },
     }
 }
 

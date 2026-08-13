@@ -72,3 +72,24 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self._group, self.channel_name)
         if getattr(self, "user", None) is not None:
             await self.channel_layer.group_discard(SYSTEM_GROUP, self.channel_name)
+
+    async def __call__(self, scope, receive, send):
+        """그룹 등록 정리를 예외 경로에서도 보장한다.
+
+        Channels 의 `AsyncConsumer.__call__` 은 `StopConsumer` 만 삼키고 나머지 예외는
+        ASGI 앱 밖으로 흘린다 (channels/consumer.py). 그 경로에서는 `disconnect()` 가
+        아예 불리지 않아 **소켓은 닫히는데 그룹 등록만 group_expiry(24시간) 동안 남는다.**
+        잔재는 살아 있는 연결과 프로세스 접두를 공유하므로 우편함(capacity 100)을 함께
+        먹는다 — 실측으로 멤버 4,519개까지 불었고 브리지가 over capacity 를 뱉었다.
+
+        원인이 된 redis 읽기 타임아웃은 settings 에서 막았지만(CHANNEL_LAYERS 주석),
+        「예외 = 조용한 누수」라는 구조 자체는 그대로다. 여기서 닫는다 (GEN-1323).
+        """
+        try:
+            await super().__call__(scope, receive, send)
+        except Exception:
+            # 정상 종료는 이미 disconnect() 를 지났다 (websocket_disconnect → StopConsumer).
+            # 여기 오는 것은 그러지 못한 경우뿐이라 이중 호출이 되지 않는다.
+            if getattr(self, "channel_name", None):
+                await self.disconnect(1011)   # 내부 오류
+            raise

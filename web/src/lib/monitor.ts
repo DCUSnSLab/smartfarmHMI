@@ -447,6 +447,11 @@ export function useMonitor(scope: string) {
         // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
         // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
         beatAt.current = Date.now();
+        // pong 기록은 **소켓마다** 초기화한다. effect 스코프 변수라 재연결 후에도 옛
+        // 소켓에서 받은 시각이 남는다. 판정은 `pongAt > pingAt` 이라 옛 값(항상 과거)이
+        // 결과를 바꾸지는 않지만, 소켓 하나의 상태를 소켓 밖에 두면 읽는 사람이 매번
+        // 이 추론을 다시 해야 한다. 값의 수명을 소켓에 맞춰 둔다.
+        pongAt = 0;
         let pingAt = 0;
         watchdog = setInterval(() => {
           if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지

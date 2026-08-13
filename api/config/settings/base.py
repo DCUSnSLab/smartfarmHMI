@@ -75,26 +75,16 @@ MINIO_SECURE = env.bool("MINIO_SECURE", default=False)
 
 # ── Channels — Redis 채널 레이어 ──
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
-# 그룹 등록 수명을 짧게 둔다 (기본 24시간).
+# 그룹 등록 수명은 기본값(24시간)을 쓴다.
 #
-# 프로세스가 즉사하면(크래시·OOM·kill·개발 중 리로드) 컨슈머의 disconnect 가 실행되지
-# 못해 그룹 등록이 Redis 에 남는다. 그 잔재는 방송 대상에 계속 포함되고, **같은
-# 프로세스의 연결들은 우편함(capacity)을 공유**하므로 잔재가 쌓이면 정원을 넘겨
-# 살아 있는 연결의 메시지까지 폐기된다 (실측: 잔재 4,519개 전부 동일 프로세스 접두).
-#
-# 수명을 줄이는 대신 컨슈머가 GROUP_REFRESH_SEC 마다 자기 그룹에 다시 가입한다
-# (core/consumers.py). 갱신이 없으면 만료되므로, 오래 열어둔 화면이 그룹에서
-# 잘려나가지 않게 하려면 재가입이 반드시 함께 있어야 한다.
-CHANNEL_GROUP_EXPIRY_SEC = env.int("CHANNEL_GROUP_EXPIRY_SEC", default=90)
-CHANNEL_GROUP_REFRESH_SEC = CHANNEL_GROUP_EXPIRY_SEC // 3
-
+# 짧게 줄이려면 살아 있는 연결이 주기적으로 재가입해야 하는데(줄이기만 하면 오래 열어둔
+# 화면이 그룹에서 잘려나간다), 그 대가를 지불할 이유가 없어졌다 — 잔재를 대량으로
+# 만들던 원인이 소켓 재생성이었고 그쪽을 고쳤다 (lib/monitor.ts). 이제 잔재는 프로세스
+# 즉사 시에만 생기고, 그때는 24시간 후 스스로 사라진다.
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-            "group_expiry": CHANNEL_GROUP_EXPIRY_SEC,
-        },
+        "CONFIG": {"hosts": [REDIS_URL]},
     }
 }
 

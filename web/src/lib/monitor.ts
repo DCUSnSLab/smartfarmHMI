@@ -249,6 +249,16 @@ export function useMonitor(scope: string) {
   const lastConnState = useRef<Record<string, string>>({});
   /** 마지막 맥박 도착 시각 — 아래 감시 타이머가 읽는다 (effect 클로저에 갇히지 않게 ref) */
   const beatAt = useRef(0);
+  // 소켓은 **스코프와 무관하게 하나만 유지한다.** 아래 WS effect 의 의존성에 scope 를
+  // 넣으면 화면을 옮길 때마다 연결을 닫고 새로 맺는다. 그러면
+  //   · 이동마다 실시간이 끊기고 (배너 깜빡임)
+  //   · 두 화면이 서로 다른 스코프를 선언하는 전환 구간에서 재연결이 반복되고
+  //   · 끊긴 연결의 그룹 등록이 매번 잔재로 남는다
+  // 서버는 한 소켓에서 스코프를 바꿀 수 있다 (consumers.py 의 subscribe). 그래서
+  // 스코프 변경은 **연결 교체가 아니라 메시지**로 처리한다.
+  const scopeRef = useRef(scope);
+  const wsRef = useRef<WebSocket | null>(null);
+  const loadStopsRef = useRef<() => Promise<void>>(async () => {});
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -310,6 +320,21 @@ export function useMonitor(scope: string) {
     }
   }, [scope, loadSnapshot, loadStops, refreshFarms]);
 
+  // 스코프 변경 → 연결을 유지하고 구독만 갈아탄다 (소켓이 아직 없으면 onopen 이 보낸다)
+  useEffect(() => {
+    scopeRef.current = scope;
+    const sock = wsRef.current;
+    if (sock?.readyState === WebSocket.OPEN) {
+      sock.send(JSON.stringify({ action: "subscribe", scope }));
+    }
+  }, [scope]);
+
+  // 재연결 직후의 정지 상태 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때
+  // 소켓이 다시 만들어지므로 ref 로 든다.
+  useEffect(() => {
+    loadStopsRef.current = loadStops;
+  }, [loadStops]);
+
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
     let closed = false;
@@ -358,7 +383,7 @@ export function useMonitor(scope: string) {
         if (d.stop_kind === "physical_estop") {
           // 농장별로 독립 성립하므로 단일 값으로 덮어쓸 수 없다 — 한 농장이 해제되면
           // 다른 농장 것까지 사라진다. 서버가 집계한 목록을 다시 읽는다
-          void loadStops();
+          void loadStopsRef.current();
         } else {
           setStops((prev) => ({
             ...prev,
@@ -410,11 +435,12 @@ export function useMonitor(scope: string) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
+      wsRef.current = sock;
       let watchdog: ReturnType<typeof setInterval> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
         setWsOpen(true);
-        sock.send(JSON.stringify({ action: "subscribe", scope }));
+        sock.send(JSON.stringify({ action: "subscribe", scope: scopeRef.current }));
         // 죽은 소켓 감시 — 서버 프로세스가 즉사하면 close 프레임이 오지 않아 소켓이
         // 열린 채로 남고, onclose 가 불리지 않아 재연결이 시작되지 않는다. 화면은
         // 옛 값에 멈춘 채 사용자가 새로고침할 때까지 방치된다.
@@ -446,7 +472,7 @@ export function useMonitor(scope: string) {
         }, WS_WATCH_MS);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
-        if (reconnected) void loadStops();
+        if (reconnected) void loadStopsRef.current();
       };
       sock.onclose = async (ev) => {
         clearInterval(watchdog);
@@ -469,7 +495,8 @@ export function useMonitor(scope: string) {
       clearTimeout(timer);
       ws?.close();
     };
-  }, [scope, loadStops]);
+    // 의존성이 비어 있는 것이 이 수정의 핵심 — 소켓은 앱이 살아 있는 동안 하나다.
+  }, []);
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,

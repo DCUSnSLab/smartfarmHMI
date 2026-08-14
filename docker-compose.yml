@@ -142,6 +142,7 @@ services:
       MQTT_HOST: mosquitto
       WEATHER_KEY: "${WEATHER_KEY:-change-me}"
       VWORLD_KEY: "${VWORLD_KEY:-change-me}"
+      JUSO_KEY: "${JUSO_KEY:-change-me}"
     depends_on:
       timescaledb:
         condition: service_healthy

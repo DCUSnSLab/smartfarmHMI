@@ -24,7 +24,9 @@ async def _proxy_middleware(path: str):
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
-async def _proxy_write(request, method: str, path: str, *, inject_field: str | None = None):
+async def _proxy_write(
+    request, method: str, path: str, *, inject_field: str | None = None, timeout: int = 10
+):
     """쓰기(POST/PUT/DELETE) 위임 — admin/manager 게이트 (device_control 패턴).
 
     설정(팜·설비 관리) 계열 공용. inject_field 가 주어지면 요청자 email 을 그 필드로 주입한다
@@ -41,7 +43,7 @@ async def _proxy_write(request, method: str, path: str, *, inject_field: str | N
         return JsonResponse({"error": "invalid json"}, status=400)
     if inject_field:
         body[inject_field] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=timeout) as client:
         resp = await client.request(method, path, json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
@@ -109,6 +111,31 @@ async def discovery_register(request, farm_id: str):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     return await _proxy_write(request, "POST", f"/internal/discovery/{farm_id}/register")
+
+
+@csrf_exempt
+async def resolve_farm_location(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    return await _proxy_write(
+        request, "POST", "/internal/location/resolve-current", timeout=120
+    )
+
+
+@csrf_exempt
+async def resolve_farm_address(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    return await _proxy_write(
+        request, "POST", "/internal/location/resolve-address", timeout=120
+    )
+
+
+@csrf_exempt
+async def search_farm_addresses(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    return await _proxy_write(request, 'POST', '/internal/location/search-addresses', timeout=120)
 
 
 async def weather(request):

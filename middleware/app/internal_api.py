@@ -21,9 +21,11 @@ class FarmUpsert(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
-    region_code: str
-    latitude: float
-    longitude: float
+    region_code: str | None = None
+    address: str | None = None
+    zipcode: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     accuracy_m: float | None = None
 
 
@@ -36,29 +38,39 @@ async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
     """
     if req.farm_type not in ("greenhouse", "plant_factory", "open_field"):
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
-    if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+    if (req.latitude is None) != (req.longitude is None):
+        raise HTTPException(400, "latitude와 longitude는 함께 전달해야 합니다")
+    if req.latitude is not None and req.longitude is not None:
+        try:
+            validate_coordinates(req.latitude, req.longitude)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if req.region_code is not None and not (
+        len(req.region_code) == 10 and req.region_code.isdigit()
+    ):
         raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
-    try:
-        validate_coordinates(req.latitude, req.longitude)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         await conn.execute(
             insert(m.farm)
-            .values(farm_id=req.farm_id, name=req.name,
-                    farm_type=req.farm_type, crop=req.crop, region_code=req.region_code,
-                    latitude=req.latitude, longitude=req.longitude)
+            .values(
+                farm_id=req.farm_id, name=req.name, farm_type=req.farm_type,
+                crop=req.crop, region_code=req.region_code, address=req.address,
+                zipcode=req.zipcode, latitude=req.latitude, longitude=req.longitude,
+            )
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 재등록하면 재활성화한다.
                 set_={"name": req.name, "farm_type": req.farm_type, "crop": req.crop,
-                      "region_code": req.region_code, "latitude": req.latitude,
+                      "region_code": req.region_code, "address": req.address,
+                      "zipcode": req.zipcode, "latitude": req.latitude,
                       "longitude": req.longitude, "is_active": True},
             )
         )
-    background_tasks.add_task(
-        collect_farm_weather, _engine(), req.farm_id, req.region_code, req.latitude, req.longitude
-    )
+    if req.region_code and req.latitude is not None and req.longitude is not None:
+        background_tasks.add_task(
+            collect_farm_weather, _engine(), req.farm_id,
+            req.region_code, req.latitude, req.longitude,
+        )
     return {"ok": True, "farm_id": req.farm_id}
 
 
@@ -89,6 +101,7 @@ async def list_farms():
     return [
         {
             "farm_id": f["farm_id"], "name": f["name"], "farm_type": f["farm_type"],
+            "address": f["address"], "zipcode": f["zipcode"],
             "crop": f["crop"], "region_code": f["region_code"],
             "latitude": f["latitude"], "longitude": f["longitude"],
             "devices_total": len(by_farm.get(f["farm_id"], [])),

@@ -43,10 +43,12 @@ export function useWeather() {
   const [loading, setLoading] = useState(true);
 
   // 수동 새로고침(FarmWeather)도 이 함수를 쓴다
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<WeatherRow[]> => {
     const response = await apiFetch("/api/weather");
-    if (response.ok) setRows(await response.json() as WeatherRow[]);
+    const nextRows = response.ok ? await response.json() as WeatherRow[] : [];
+    if (response.ok) setRows(nextRows);
     setLoading(false);
+    return nextRows;
   }, []);
 
   useEffect(() => {

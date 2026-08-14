@@ -69,7 +69,8 @@ kubectl create secret generic minio-credentials -n $NS \
 # 엔드포인트(apis.data.go.kr/...)는 공개 정보라 코드에 두고, 키만 여기로 분리한다.
 kubectl create secret generic smartfarmhmi-external-secrets -n $NS \
   --from-literal=WEATHER_KEY='<공공데이터포털 서비스키>' \
-  --from-literal=VWORLD_KEY='<V-World API 키>'
+  --from-literal=VWORLD_KEY='<V-World API 키>' \
+  --from-literal=JUSO_KEY='<도로명주소 API 키>'
 ```
 
 `overlays/*/config.env` 는 git 에 커밋된다. 비밀번호·서비스키·사내망 주소는 Secret 에, 그 외 환경별 값만 거기 둔다.

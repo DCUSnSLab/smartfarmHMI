@@ -607,8 +607,10 @@ export function useServerLink(
   // 순간 끊김처럼 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
   // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
   const downSince = useRef<number | null>(null);
+  const openedAt = useRef<number | null>(null);
   useEffect(() => {
     downSince.current = wsOpen ? null : Date.now();
+    openedAt.current = wsOpen ? Date.now() : null;
   }, [wsOpen]);
 
   if (!wsOpen) {
@@ -617,7 +619,15 @@ export function useServerLink(
     if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
     return "socket-down";
   }
-  if (beat === null) return "unknown";      // 아직 첫 맥박 전 (retained 라 곧 온다)
+  if (beat === null) {
+    // 첫 맥박 전. 정상 기동이면 retained 라 몇 초 안에 오므로 위와 같은 유예를 준다.
+    // 유예를 넘겨도 오지 않으면 공급이 끊긴 것이다 — 페이지를 여는 시점에 이미 브리지나
+    // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않고, 그동안 화면은 REST 로 받은 값을
+    // 아무 표시 없이 보여 준다.
+    const since = openedAt.current;
+    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
+    return "silent";
+  }
   if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }

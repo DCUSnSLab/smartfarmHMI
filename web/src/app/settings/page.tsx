@@ -403,14 +403,6 @@ function FarmModal({
         </div>
 
         {err && <p className="text-12.5 font-bold text-status-warningDark">{err}</p>}
-        <dl className="mt-2 rounded-lg bg-gray-50 p-3 text-11.5 text-gray-600">
-          {Object.entries(locationDebug).map(([field, value]) => (
-            <div key={field} className="grid grid-cols-[90px_1fr] gap-2">
-              <dt className="font-bold">{field}</dt>
-              <dd className="break-all font-mono">{value ?? "NULL"}</dd>
-            </div>
-          ))}
-        </dl>
         <Actions
           onCancel={onClose}
           submitLabel={discovered ? "등록" : edit ? "수정" : "추가"}

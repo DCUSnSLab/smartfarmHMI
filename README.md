@@ -127,7 +127,7 @@ docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/s
 
 api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 즉시 반영**된다. 예외:
 - `virtual-edge` — 리로드 없음: `docker compose restart virtual-edge` (소스는 마운트됨, 의존성 변경 시 `--build`)
-- 파이썬 **의존성 추가**(pyproject.toml) — 이미지 재빌드: `make build SVC=api && docker compose up -d api`
+- 파이썬 **의존성 추가**(pyproject.toml) — 이미지 재빌드: `make build SVC="api api-bridge" && docker compose up -d api api-bridge` (두 서비스가 같은 `./api` 컨텍스트에서 이미지를 각각 만든다 — 한쪽만 빌드하면 나머지가 옛 이미지로 남는다)
 - `shared/schemas` 수정 — middleware 재시작 (virtual-edge 는 shared 미사용 — 독립 계약 구현)
 - **api·web 컨테이너를 재생성(`up -d --build` 등)한 뒤 502 가 나면** — nginx 가 이전 IP 를 캐시한 것: `docker compose restart nginx`
 

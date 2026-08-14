@@ -602,32 +602,21 @@ export function useServerLink(
     return () => clearInterval(t);
   }, []);
 
-  // 소켓 끊김에도 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
-  // 재연결은 백오프 상한(WS_RETRY_MAX_MS) 안에 끝나므로, 유예가 없으면 배포·네트워크
-  // 순간 끊김처럼 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
+  // 소켓 상태가 바뀐 직후에는 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
+  // 재연결은 백오프 상한(WS_RETRY_MAX_MS) 안에 끝나고 첫 맥박은 retained 라 곧 오므로,
+  // 유예가 없으면 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
   // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
-  const downSince = useRef<number | null>(null);
-  const openedAt = useRef<number | null>(null);
+  const changedAt = useRef<number>(Date.now());
   useEffect(() => {
-    downSince.current = wsOpen ? null : Date.now();
-    openedAt.current = wsOpen ? Date.now() : null;
+    changedAt.current = Date.now();
   }, [wsOpen]);
+  const graceOver = (Date.now() - changedAt.current) / 1000 > SERVER_SILENT_SEC;
 
-  if (!wsOpen) {
-    const since = downSince.current;
-    // 유예 안이면 아직 알리지 않는다 (unknown = 배너 없음)
-    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
-    return "socket-down";
-  }
-  if (beat === null) {
-    // 첫 맥박 전. 정상 기동이면 retained 라 몇 초 안에 오므로 위와 같은 유예를 준다.
-    // 유예를 넘겨도 오지 않으면 공급이 끊긴 것이다 — 페이지를 여는 시점에 이미 브리지나
-    // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않고, 그동안 화면은 REST 로 받은 값을
-    // 아무 표시 없이 보여 준다.
-    const since = openedAt.current;
-    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
-    return "silent";
-  }
+  if (!wsOpen) return graceOver ? "socket-down" : "unknown";   // unknown = 배너 없음
+  // 맥박을 한 번도 못 받은 채 유예가 지났다 = 공급이 끊긴 것. 접속 시점에 이미 브리지나
+  // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않는데, 그동안 화면은 REST 로 받은 값을
+  // 아무 표시 없이 보여 준다.
+  if (beat === null) return graceOver ? "silent" : "unknown";
   if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }

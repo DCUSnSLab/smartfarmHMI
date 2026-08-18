@@ -841,7 +841,10 @@ function SettingsContent() {
       for (let attempt = 0; attempt < 15; attempt += 1) {
         const rows = await reloadWeather();
         const refreshed = rows.find((row) => row.farm_id === farmId);
-        if (refreshed && (!previousReceivedAt || refreshed.received_at !== previousReceivedAt)) return;
+        if (
+          refreshed?.received_at
+          && (!previousReceivedAt || refreshed.received_at !== previousReceivedAt)
+        ) return;
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     })();

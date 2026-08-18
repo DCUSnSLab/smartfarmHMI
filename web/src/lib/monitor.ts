@@ -251,6 +251,16 @@ export function useMonitor(scope: string) {
   const lastConnState = useRef<Record<string, string>>({});
   /** 마지막 맥박 도착 시각 — 아래 감시 타이머가 읽는다 (effect 클로저에 갇히지 않게 ref) */
   const beatAt = useRef(0);
+  // 소켓은 **스코프와 무관하게 하나만 유지한다.** 아래 WS effect 의 의존성에 scope 를
+  // 넣으면 화면을 옮길 때마다 연결을 닫고 새로 맺는다. 그러면
+  //   · 이동마다 실시간이 끊기고 (배너 깜빡임)
+  //   · 두 화면이 서로 다른 스코프를 선언하는 전환 구간에서 재연결이 반복되고
+  //   · 그 사이에 오는 push(정지·알림)를 놓친다
+  // 서버는 한 소켓에서 스코프를 바꿀 수 있다 (consumers.py 의 subscribe). 그래서
+  // 스코프 변경은 **연결 교체가 아니라 메시지**로 처리한다.
+  const scopeRef = useRef(scope);
+  const wsRef = useRef<WebSocket | null>(null);
+  const loadStopsRef = useRef<() => Promise<void>>(async () => {});
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -290,6 +300,8 @@ export function useMonitor(scope: string) {
     void loadStops();
     if (scope === "all") {
       // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
+      // useGlobalAlerts 와 같은 URL 이지만 지우면 안 된다 — 이 alerts 는 WS 로 갱신되고
+      // globalAlerts 는 폴링만 받는다. 합치려면 두 저장소의 소유권부터 정리해야 한다.
       apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
         if (!r.ok) return;
         const page: AlertPageResponse = await r.json();
@@ -298,6 +310,8 @@ export function useMonitor(scope: string) {
     }
     setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
     if (scope !== "all") {
+      // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
+      // showsFleetNav 화면에서만 돌고 카드용 형태로 담는다. 여기서는 장치별 값이 필요하다.
       void loadSnapshot(scope);
       apiFetch(`/api/farms/${scope}/commands`).then(async (r) => {
         if (!r.ok) return;
@@ -312,15 +326,35 @@ export function useMonitor(scope: string) {
     }
   }, [scope, loadSnapshot, loadStops, refreshFarms]);
 
+  // 스코프 변경 → 연결을 유지하고 구독만 갈아탄다 (소켓이 아직 없으면 onopen 이 보낸다)
+  useEffect(() => {
+    scopeRef.current = scope;
+    const sock = wsRef.current;
+    if (sock?.readyState === WebSocket.OPEN) {
+      sock.send(JSON.stringify({ action: "subscribe", scope }));
+    }
+  }, [scope]);
+
+  // 재연결 직후의 정지 상태 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때
+  // 소켓이 다시 만들어지므로 ref 로 든다.
+  useEffect(() => {
+    loadStopsRef.current = loadStops;
+  }, [loadStops]);
+
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
     let closed = false;
     let retry = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let ws: WebSocket | null = null;
+    let pongAt = 0;   // ping 응답 도착 시각 — 감시 타이머가 소켓 생존을 판정한다
 
     const onMessage = (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data);
+      if (msg.type === "pong") {   // 감시 타이머의 생존 확인 응답
+        pongAt = Date.now();
+        return;
+      }
       if (msg.type !== "update") return;
       const d = msg.data;
       if (msg.stream === "health") {
@@ -355,7 +389,7 @@ export function useMonitor(scope: string) {
         if (d.stop_kind === "physical_estop") {
           // 농장별로 독립 성립하므로 단일 값으로 덮어쓸 수 없다 — 한 농장이 해제되면
           // 다른 농장 것까지 사라진다. 서버가 집계한 목록을 다시 읽는다
-          void loadStops();
+          void loadStopsRef.current();
         } else {
           setStops((prev) => ({
             ...prev,
@@ -407,24 +441,45 @@ export function useMonitor(scope: string) {
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
+      wsRef.current = sock;
       let watchdog: ReturnType<typeof setInterval> | undefined;
       sock.onopen = () => {
         const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
         setWsOpen(true);
-        sock.send(JSON.stringify({ action: "subscribe", scope }));
+        sock.send(JSON.stringify({ action: "subscribe", scope: scopeRef.current }));
         // 죽은 소켓 감시 — 서버 프로세스가 즉사하면 close 프레임이 오지 않아 소켓이
         // 열린 채로 남고, onclose 가 불리지 않아 재연결이 시작되지 않는다. 화면은
         // 옛 값에 멈춘 채 사용자가 새로고침할 때까지 방치된다.
         // 맥박이 끊기면 직접 닫아 아래 onclose → 재연결 경로를 타게 한다.
         // 여는 시점을 맥박으로 간주해 유예를 준다 (retained 라 곧 실제 맥박이 온다).
         beatAt.current = Date.now();
+        pongAt = 0;   // effect 스코프 변수라 옛 소켓 값이 남는다 — 소켓마다 초기화
+        let pingAt = 0;
         watchdog = setInterval(() => {
           if (sock.readyState !== WebSocket.OPEN) return;   // 닫는 중이면 중복 호출 방지
-          if ((Date.now() - beatAt.current) / 1000 > SERVER_SILENT_SEC) sock.close();
+          if ((Date.now() - beatAt.current) / 1000 <= SERVER_SILENT_SEC) {
+            pingAt = 0;   // 맥박이 오는 동안에는 확인할 것이 없다
+            return;
+          }
+          // 맥박이 끊겼다 — 원인이 둘이라 **닫기 전에 소켓을 실제로 시험한다.**
+          //   소켓이 죽음        → 닫아야 재연결된다
+          //   서버 쪽이 끊김     → 닫아도 그대로다. 닫으면 무한 재연결이 된다
+          // ping 에 pong 이 오면 소켓은 살아 있는 것이므로 닫지 않고 배너에 맡긴다.
+          if (pingAt === 0) {
+            sock.send(JSON.stringify({ action: "ping" }));
+            pingAt = Date.now();
+            return;
+          }
+          if (Date.now() - pingAt < WS_PONG_WAIT_MS) return;   // 응답 대기 중
+          if (pongAt > pingAt) {
+            pingAt = 0;   // 살아 있음 — 다음 주기에 다시 확인만 한다
+            return;
+          }
+          sock.close();   // 응답 없음 = 죽은 소켓 → onclose → 재연결
         }, WS_WATCH_MS);
         // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
         // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
-        if (reconnected) void loadStops();
+        if (reconnected) void loadStopsRef.current();
       };
       sock.onclose = async (ev) => {
         clearInterval(watchdog);
@@ -447,7 +502,8 @@ export function useMonitor(scope: string) {
       clearTimeout(timer);
       ws?.close();
     };
-  }, [scope, loadStops]);
+    // 의존성이 비어 있는 것이 이 수정의 핵심 — 소켓은 앱이 살아 있는 동안 하나다.
+  }, []);
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
@@ -533,6 +589,9 @@ const WS_UNAUTHORIZED = 4401;
 /** 죽은 소켓 감시 주기 — 맥박 주기의 절반. 판정 자체는 SERVER_SILENT_SEC 이 하므로
  *  이 값은 "얼마나 촘촘히 들여다볼지"만 정한다. */
 const WS_WATCH_MS = (SERVER_BEAT_SEC / 2) * 1000;
+/** ping 응답 대기 — 이 안에 pong 이 없으면 소켓이 죽은 것으로 본다.
+ *  같은 소켓의 왕복이라 네트워크 지연만 감당하면 되므로 짧게 둔다. */
+const WS_PONG_WAIT_MS = 3_000;
 
 export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
 
@@ -545,22 +604,21 @@ export function useServerLink(
     return () => clearInterval(t);
   }, []);
 
-  // 소켓 끊김에도 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
-  // 스코프가 바뀌면 WS effect 가 소켓을 닫고 다시 열기 때문에, 유예가 없으면 화면을
-  // 옮길 때마다 배너가 깜빡인다 — 재연결은 1초 안에 끝나므로 장애가 아니다.
+  // 소켓 상태가 바뀐 직후에는 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
+  // 재연결은 백오프 상한(WS_RETRY_MAX_MS) 안에 끝나고 첫 맥박은 retained 라 곧 오므로,
+  // 유예가 없으면 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
   // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
-  const downSince = useRef<number | null>(null);
+  const changedAt = useRef<number>(Date.now());
   useEffect(() => {
-    downSince.current = wsOpen ? null : Date.now();
+    changedAt.current = Date.now();
   }, [wsOpen]);
+  const graceOver = (Date.now() - changedAt.current) / 1000 > SERVER_SILENT_SEC;
 
-  if (!wsOpen) {
-    const since = downSince.current;
-    // 유예 안이면 아직 알리지 않는다 (unknown = 배너 없음)
-    if (since === null || (Date.now() - since) / 1000 <= SERVER_SILENT_SEC) return "unknown";
-    return "socket-down";
-  }
-  if (beat === null) return "unknown";      // 아직 첫 맥박 전 (retained 라 곧 온다)
+  if (!wsOpen) return graceOver ? "socket-down" : "unknown";   // unknown = 배너 없음
+  // 맥박을 한 번도 못 받은 채 유예가 지났다 = 공급이 끊긴 것. 접속 시점에 이미 브리지나
+  // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않는데, 그동안 화면은 REST 로 받은 값을
+  // 아무 표시 없이 보여 준다.
+  if (beat === null) return graceOver ? "silent" : "unknown";
   if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }

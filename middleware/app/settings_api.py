@@ -13,7 +13,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func as sa_func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -247,7 +247,7 @@ async def _create_device(conn, farm_id: str, d: DeviceUpsert) -> int:
 # ── 팜 수정/삭제 ──────────────────────────────────────────────
 
 @router.put("/farms/{farm_id}")
-async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: BackgroundTasks):
+async def update_farm(farm_id: str, req: FarmUpdate):
     """팜 메타데이터 수정 — farm_id(자연키·MQTT 토픽)는 불변."""
     if req.farm_type is not None and req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
@@ -293,10 +293,11 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
     region_code = patch.get("region_code", existing["region_code"])
     latitude = patch.get("latitude", existing["latitude"])
     longitude = patch.get("longitude", existing["longitude"])
+    # 화면이 저장 직후 갱신된 날씨를 그릴 수 있도록 응답 전에 받아둔다. 예전에는
+    # 백그라운드로 던지고 화면이 2초 간격 15회 폴링했다.
+    # collect_farm_weather 는 내부에서 예외를 삼키므로 수집 실패가 저장을 되돌리지 않는다.
     if location_changed and region_code and latitude is not None and longitude is not None:
-        background_tasks.add_task(
-            collect_farm_weather, _engine(), farm_id, region_code, latitude, longitude
-        )
+        await collect_farm_weather(_engine(), farm_id, region_code, latitude, longitude)
     return {"ok": True, "farm_id": farm_id}
 
 
@@ -639,9 +640,7 @@ async def list_discovery():
 
 
 @router.post("/discovery/{farm_id}/register")
-async def register_discovered(
-    farm_id: str, req: DiscoveryRegister, background_tasks: BackgroundTasks,
-):
+async def register_discovered(farm_id: str, req: DiscoveryRegister):
     """발견된 팜을 등록 — farm + 발견 장치 + (birth/telemetry 로 파악한) 센서를 한 번에 생성.
 
     한 트랜잭션: farm upsert → pending 장치마다 device_meta,
@@ -711,8 +710,9 @@ async def register_discovered(
         await conn.execute(
             delete(m.pending_registration).where(m.pending_registration.c.farm_id == farm_id)
         )
+    # update_farm 과 같은 이유로 응답 전에 받아둔다
     if req.region_code and req.latitude is not None and req.longitude is not None:
-        background_tasks.add_task(
-            collect_farm_weather, _engine(), farm_id, req.region_code, req.latitude, req.longitude,
+        await collect_farm_weather(
+            _engine(), farm_id, req.region_code, req.latitude, req.longitude
         )
     return {"ok": True, "farm_id": farm_id, "devices": devices, "sensors": sensors}

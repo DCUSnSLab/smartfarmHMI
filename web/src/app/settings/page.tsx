@@ -71,7 +71,7 @@ function FarmModal({
   edit?: FarmSummary;
   discovered?: DiscoveredFarm;
   onClose: () => void;
-  onDone: (farmId: string) => void;
+  onDone: () => void;
 }) {
   const initialFarm = edit ?? discovered;
   const [farmId, setFarmId] = useState(initialFarm?.farm_id ?? "");
@@ -263,7 +263,7 @@ function FarmModal({
             ...locationPatch,
           });
     setBusy(false);
-    if (ok) onDone(discovered?.farm_id ?? edit?.farm_id ?? farmId.trim());
+    if (ok) onDone();
     else setErr("저장에 실패했습니다. 입력값과 위치 정보를 확인하세요.");
   };
 
@@ -691,7 +691,7 @@ function FarmDevices({ farmId }: { farmId: string }) {
 }
 
 // ── 발견 섹션 ──
-function DiscoverySection({ onRegistered }: { onRegistered: (farmId: string) => void }) {
+function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   const [farms, setFarms] = useState<DiscoveredFarm[]>([]);
   const [target, setTarget] = useState<DiscoveredFarm | null>(null);
 
@@ -734,7 +734,7 @@ function DiscoverySection({ onRegistered }: { onRegistered: (farmId: string) => 
         <FarmModal
           discovered={target}
           onClose={() => setTarget(null)}
-          onDone={(farmId) => { setTarget(null); reload(); onRegistered(farmId); }}
+          onDone={() => { setTarget(null); reload(); onRegistered(); }}
         />
       )}
     </section>
@@ -768,7 +768,7 @@ export default function SettingsPage() {
 function SettingsContent() {
   const user = useUser();
   // 농장 목록은 공유 컨텍스트에서 — 화면마다 따로 조회하지 않는다
-  const { farms, refreshFarms, weather, reloadWeather } = useFarmData();
+  const { farms, refreshFarms, reloadWeather } = useFarmData();
   // 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을 화면 위로 올린다.
   // 진입 시점에 한 번만 읽는다 — 아래에서 주소를 지우므로 매 렌더 읽으면 값이 바뀐다
   const router = useRouter();
@@ -834,21 +834,11 @@ function SettingsContent() {
     void refreshFarms();
   }, [refreshFarms]);
 
-  const refreshAfterFarmSave = useCallback((farmId: string) => {
+  // 미들웨어가 저장 응답 전에 날씨를 받아두므로 한 번만 다시 읽으면 된다
+  const refreshAfterFarmSave = useCallback(() => {
     void refreshFarms();
-    const previousReceivedAt = weather.find((row) => row.farm_id === farmId)?.received_at ?? null;
-    void (async () => {
-      for (let attempt = 0; attempt < 15; attempt += 1) {
-        const rows = await reloadWeather();
-        const refreshed = rows.find((row) => row.farm_id === farmId);
-        if (
-          refreshed?.received_at
-          && (!previousReceivedAt || refreshed.received_at !== previousReceivedAt)
-        ) return;
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-    })();
-  }, [refreshFarms, reloadWeather, weather]);
+    void reloadWeather();
+  }, [refreshFarms, reloadWeather]);
 
   // 접근 게이트 — viewer 차단 (실제 강제는 api). user 로드 후 판정.
   useEffect(() => {
@@ -952,8 +942,8 @@ function SettingsContent() {
         )}
       </section>
 
-      {addingFarm && <FarmModal onClose={() => setAddingFarm(false)} onDone={(farmId) => { setAddingFarm(false); refreshAfterFarmSave(farmId); }} />}
-      {editingFarm && <FarmModal edit={editingFarm} onClose={() => setEditingFarm(null)} onDone={(farmId) => { setEditingFarm(null); refreshAfterFarmSave(farmId); }} />}
+      {addingFarm && <FarmModal onClose={() => setAddingFarm(false)} onDone={() => { setAddingFarm(false); refreshAfterFarmSave(); }} />}
+      {editingFarm && <FarmModal edit={editingFarm} onClose={() => setEditingFarm(null)} onDone={() => { setEditingFarm(null); refreshAfterFarmSave(); }} />}
       {deletingFarm && (
         <ConfirmModal
           message={`'${deletingFarm.name}' (${deletingFarm.farm_id}) 팜을 비활성화할까요? 목록에서 숨겨집니다. (소프트 삭제)`}

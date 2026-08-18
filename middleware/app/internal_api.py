@@ -5,7 +5,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -30,7 +30,7 @@ class FarmUpsert(BaseModel):
 
 
 @router.post("/farms")
-async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
+async def upsert_farm(req: FarmUpsert):
     """농장 등록 (멱등 upsert) — FR-38 다농장의 초석.
 
     가상 엣지 연동 테스트가 둘째 농장을 붙일 때 사용한다. 미등록 농장의
@@ -66,10 +66,10 @@ async def upsert_farm(req: FarmUpsert, background_tasks: BackgroundTasks):
                       "longitude": req.longitude, "is_active": True},
             )
         )
+    # 저장 응답 전에 받아둔다 — 수집 실패는 collect_farm_weather 안에서 삼킨다
     if req.region_code and req.latitude is not None and req.longitude is not None:
-        background_tasks.add_task(
-            collect_farm_weather, _engine(), req.farm_id,
-            req.region_code, req.latitude, req.longitude,
+        await collect_farm_weather(
+            _engine(), req.farm_id, req.region_code, req.latitude, req.longitude
         )
     return {"ok": True, "farm_id": req.farm_id}
 

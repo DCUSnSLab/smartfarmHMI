@@ -31,7 +31,7 @@ interface FarmDataCtx extends MonitorData {
   weather: WeatherRow[];
   weatherLoading: boolean;
   /** 수동 새로고침 뒤 다시 읽기 (상태 화면의 날씨 카드) */
-  reloadWeather: () => Promise<WeatherRow[]>;
+  reloadWeather: () => Promise<void>;
 }
 
 const Ctx = createContext<FarmDataCtx | null>(null);

@@ -495,9 +495,29 @@ export function useMonitor(scope: string) {
     };
 
     connect();
+
+    // 탭이 다시 보이는 순간 직접 회복시킨다. 브라우저는 배경 탭의 타이머를 늦추거나 탭을
+    // 정지시키는데(화면 잠금 등), 그러면 onclose 가 예약한 재연결도 돌지 않아 깨어난 뒤에도
+    // 새로고침 전까지 낡은 값에 머문다. 정지 자체는 막을 수 없으므로 깨어날 때 처리한다.
+    const onVisible = () => {
+      if (closed || document.visibilityState !== "visible") return;
+      const state = ws?.readyState;
+      if (state === WebSocket.CONNECTING) return;   // 이미 붙는 중 — 소켓을 겹쳐 만들지 않는다
+      if (state === WebSocket.OPEN) {
+        // 정지 중에 조용히 죽어도 한동안 OPEN 으로 보인다. 맥박 시각을 지워 감시 타이머가
+        // 다음 주기에 바로 ping 하게 한다 — 생존 판정을 새로 만들지 않고 앞당긴다.
+        beatAt.current = 0;
+        return;
+      }
+      clearTimeout(timer);
+      connect();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     };
     // 의존성이 비어 있는 것이 이 수정의 핵심 — 소켓은 앱이 살아 있는 동안 하나다.

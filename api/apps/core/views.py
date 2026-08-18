@@ -24,7 +24,9 @@ async def _proxy_middleware(path: str):
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
-async def _proxy_write(request, method: str, path: str, *, inject_field: str | None = None):
+async def _proxy_write(
+    request, method: str, path: str, *, inject_field: str | None = None, timeout: int = 10
+):
     """쓰기(POST/PUT/DELETE) 위임 — admin/manager 게이트 (device_control 패턴).
 
     설정(팜·설비 관리) 계열 공용. inject_field 가 주어지면 요청자 email 을 그 필드로 주입한다
@@ -41,9 +43,17 @@ async def _proxy_write(request, method: str, path: str, *, inject_field: str | N
         return JsonResponse({"error": "invalid json"}, status=400)
     if inject_field:
         body[inject_field] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
+    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=timeout) as client:
         resp = await client.request(method, path, json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
+
+
+# 팜 저장은 미들웨어가 기상청 조회를 마친 뒤 응답한다 (settings_api.update_farm).
+WRITE_WITH_WEATHER_TIMEOUT = 30
+# 위치 변환의 외부 호출 횟수는 상한이 정해져 있다 (location.py):
+#   resolve-current = 역지오코딩 1 + JUSO 최대 단어 수(각 1페이지)
+#   resolve-address = 좌표 변환 1 + 자외선 지역코드 최대 3 (캐시되면 0)
+LOCATION_TIMEOUT = 45
 
 
 @csrf_exempt
@@ -54,7 +64,9 @@ async def farms(request):
             return unauthorized()
         return await _proxy_middleware("/internal/farms")
     if request.method == "POST":
-        return await _proxy_write(request, "POST", "/internal/farms")
+        return await _proxy_write(
+            request, "POST", "/internal/farms", timeout=WRITE_WITH_WEATHER_TIMEOUT
+        )
     return HttpResponseNotAllowed(["GET", "POST"])
 
 
@@ -62,7 +74,9 @@ async def farms(request):
 async def farm_detail(request, farm_id: str):
     """팜 수정(PUT)/소프트 삭제(DELETE) — admin/manager (FR-07·13)."""
     if request.method == "PUT":
-        return await _proxy_write(request, "PUT", f"/internal/farms/{farm_id}")
+        return await _proxy_write(
+            request, "PUT", f"/internal/farms/{farm_id}", timeout=WRITE_WITH_WEATHER_TIMEOUT
+        )
     if request.method == "DELETE":
         return await _proxy_write(request, "DELETE", f"/internal/farms/{farm_id}")
     return HttpResponseNotAllowed(["PUT", "DELETE"])
@@ -108,7 +122,37 @@ async def discovery_register(request, farm_id: str):
     """발견된 팜을 등록 (팜+장치+센서 일괄) — admin/manager."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    return await _proxy_write(request, "POST", f"/internal/discovery/{farm_id}/register")
+    return await _proxy_write(
+        request, "POST", f"/internal/discovery/{farm_id}/register",
+        timeout=WRITE_WITH_WEATHER_TIMEOUT,
+    )
+
+
+@csrf_exempt
+async def resolve_farm_location(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    return await _proxy_write(
+        request, "POST", "/internal/location/resolve-current", timeout=LOCATION_TIMEOUT
+    )
+
+
+@csrf_exempt
+async def resolve_farm_address(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    return await _proxy_write(
+        request, "POST", "/internal/location/resolve-address", timeout=LOCATION_TIMEOUT
+    )
+
+
+@csrf_exempt
+async def search_farm_addresses(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    return await _proxy_write(
+        request, "POST", "/internal/location/search-addresses", timeout=LOCATION_TIMEOUT
+    )
 
 
 async def weather(request):

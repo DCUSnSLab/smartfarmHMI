@@ -57,6 +57,8 @@ export interface FarmSummary {
   farm_type: string;
   crop: string | null;
   region_code?: string | null;
+  address?: string | null;
+  zipcode?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   devices_total: number;

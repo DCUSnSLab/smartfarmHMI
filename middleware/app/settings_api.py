@@ -9,15 +9,22 @@ HMI 설정 화면이 사용하는 CRUD:
 device_meta 와 상세 테이블은 seed.py 의 2단계(device_meta.id 확보 → 상세 FK)를 한 트랜잭션으로 수행.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func as sa_func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.location import (
+    LocationResolutionError,
+    resolve_current_location,
+    resolve_selected_address,
+    search_addresses,
+)
 from middleware.app.weather import collect_farm_weather, validate_coordinates
 from shared.schemas.topics import STREAMS, internal_topic, topic
 
@@ -46,6 +53,8 @@ class FarmUpdate(BaseModel):
     farm_type: str | None = None
     crop: str | None = None
     region_code: str | None = None
+    address: str | None = None
+    zipcode: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     accuracy_m: float | None = None
@@ -98,13 +107,57 @@ class DiscoveryRegister(BaseModel):
     name: str
     farm_type: str = "greenhouse"
     crop: str | None = None
-    region_code: str
-    latitude: float
-    longitude: float
+    region_code: str | None = None
+    address: str | None = None
+    zipcode: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     accuracy_m: float | None = None
 
 
+class AddressSearch(BaseModel):
+    keyword: str
+
+
+class CurrentLocationResolve(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class SelectedAddressResolve(BaseModel):
+    address_keyword: str
+    address: str
+    zipcode: str
+
+
 # ── 헬퍼 ──────────────────────────────────────────────────────
+
+@router.post("/location/resolve-current")
+async def resolve_current(req: CurrentLocationResolve):
+    """브라우저 좌표를 저장 가능한 농장 위치 메타데이터로 변환한다."""
+    try:
+        return await resolve_current_location(req.latitude, req.longitude)
+    except LocationResolutionError as exc:
+        log.warning("현재 위치 변환 실패: %s", exc)
+        return {"ok": False, "error": str(exc), "debug": exc.debug}
+
+
+@router.post("/location/resolve-address")
+async def resolve_address(req: SelectedAddressResolve):
+    """사용자가 고른 도로명주소의 좌표와 행정구역코드를 확정한다."""
+    try:
+        return await resolve_selected_address(
+            req.address_keyword, req.address, req.zipcode
+        )
+    except LocationResolutionError as exc:
+        log.warning("선택 주소 변환 실패: %s", exc)
+        return {"ok": False, "error": str(exc), "debug": exc.debug}
+
+
+@router.post('/location/search-addresses')
+async def search_farm_addresses(req: AddressSearch):
+    return await asyncio.to_thread(search_addresses, req.keyword.strip())
+
 
 async def _require_farm(conn, farm_id: str) -> None:
     exists = (
@@ -194,7 +247,7 @@ async def _create_device(conn, farm_id: str, d: DeviceUpsert) -> int:
 # ── 팜 수정/삭제 ──────────────────────────────────────────────
 
 @router.put("/farms/{farm_id}")
-async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: BackgroundTasks):
+async def update_farm(farm_id: str, req: FarmUpdate):
     """팜 메타데이터 수정 — farm_id(자연키·MQTT 토픽)는 불변."""
     if req.farm_type is not None and req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
@@ -205,16 +258,15 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
         for k, v in req.model_dump(exclude={"region_code", "latitude", "longitude", "accuracy_m"}).items()
         if v is not None
     }
-    location_values = (req.region_code, req.latitude, req.longitude)
-    if any(value is not None for value in location_values):
-        if not all(value is not None for value in location_values):
-            raise HTTPException(400, "region_code, latitude, longitude는 함께 전달해야 합니다")
-        if not (len(req.region_code) == 10 and req.region_code.isdigit()):
-            raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
+    if req.latitude is not None and req.longitude is not None:
         try:
             validate_coordinates(req.latitude, req.longitude)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        if req.region_code is not None and not (
+            len(req.region_code) == 10 and req.region_code.isdigit()
+        ):
+            raise HTTPException(400, "region_code는 10자리 행정구역코드여야 합니다")
         patch["latitude"] = req.latitude
         patch["longitude"] = req.longitude
         patch["region_code"] = req.region_code
@@ -222,13 +274,30 @@ async def update_farm(farm_id: str, req: FarmUpdate, background_tasks: Backgroun
         raise HTTPException(400, "수정할 필드가 없습니다")
     patch["updated_at"] = _now()
     async with _engine().begin() as conn:
-        await _require_farm(conn, farm_id)
-        await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
-    if "latitude" in patch and "longitude" in patch:
-        background_tasks.add_task(
-            collect_farm_weather, _engine(), farm_id, patch["region_code"],
-            patch["latitude"], patch["longitude"]
+        existing = (
+            await conn.execute(
+                select(
+                    m.farm.c.region_code,
+                    m.farm.c.latitude,
+                    m.farm.c.longitude,
+                ).where(m.farm.c.farm_id == farm_id)
+            )
+        ).mappings().first()
+        if existing is None:
+            raise HTTPException(404, f"unknown farm: {farm_id}")
+        location_changed = any(
+            key in patch and patch[key] != existing[key]
+            for key in ("region_code", "latitude", "longitude")
         )
+        await conn.execute(update(m.farm).where(m.farm.c.farm_id == farm_id).values(**patch))
+    region_code = patch.get("region_code", existing["region_code"])
+    latitude = patch.get("latitude", existing["latitude"])
+    longitude = patch.get("longitude", existing["longitude"])
+    # 화면이 저장 직후 갱신된 날씨를 그릴 수 있도록 응답 전에 받아둔다. 예전에는
+    # 백그라운드로 던지고 화면이 2초 간격 15회 폴링했다.
+    # collect_farm_weather 는 내부에서 예외를 삼키므로 수집 실패가 저장을 되돌리지 않는다.
+    if location_changed and region_code and latitude is not None and longitude is not None:
+        await collect_farm_weather(_engine(), farm_id, region_code, latitude, longitude)
     return {"ok": True, "farm_id": farm_id}
 
 
@@ -556,6 +625,7 @@ async def list_discovery():
             "name": existing.get(f["farm_id"], {}).get("name"),
             "farm_type": existing.get(f["farm_id"], {}).get("farm_type"),
             "crop": existing.get(f["farm_id"], {}).get("crop"),
+            "address": existing.get(f["farm_id"], {}).get("address"),
             "region_code": existing.get(f["farm_id"], {}).get("region_code"),
             "latitude": existing.get(f["farm_id"], {}).get("latitude"),
             "longitude": existing.get(f["farm_id"], {}).get("longitude"),
@@ -570,9 +640,7 @@ async def list_discovery():
 
 
 @router.post("/discovery/{farm_id}/register")
-async def register_discovered(
-    farm_id: str, req: DiscoveryRegister, background_tasks: BackgroundTasks,
-):
+async def register_discovered(farm_id: str, req: DiscoveryRegister):
     """발견된 팜을 등록 — farm + 발견 장치 + (birth/telemetry 로 파악한) 센서를 한 번에 생성.
 
     한 트랜잭션: farm upsert → pending 장치마다 device_meta,
@@ -580,12 +648,17 @@ async def register_discovered(
     """
     if req.farm_type not in FARM_TYPES:
         raise HTTPException(400, f"허용되지 않는 farm_type: {req.farm_type}")
-    if not (len(req.region_code) == 10 and req.region_code.isdigit()):
+    if (req.latitude is None) != (req.longitude is None):
+        raise HTTPException(400, "latitude and longitude must be sent together")
+    if req.latitude is not None and req.longitude is not None:
+        try:
+            validate_coordinates(req.latitude, req.longitude)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if req.region_code is not None and not (
+        len(req.region_code) == 10 and req.region_code.isdigit()
+    ):
         raise HTTPException(400, "region_code must be a 10-digit administrative code")
-    try:
-        validate_coordinates(req.latitude, req.longitude)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
     async with _engine().begin() as conn:
         pend = (
             await conn.execute(
@@ -599,14 +672,16 @@ async def register_discovered(
             insert(m.farm)
             .values(
                 farm_id=farm_id, name=req.name, farm_type=req.farm_type, crop=req.crop,
-                region_code=req.region_code, latitude=req.latitude, longitude=req.longitude,
+                region_code=req.region_code, address=req.address, zipcode=req.zipcode,
+                latitude=req.latitude, longitude=req.longitude,
             )
             .on_conflict_do_update(
                 index_elements=["farm_id"],
                 # 소프트 삭제된 팜을 발견으로 재등록하면 재활성화한다.
                 set_={
                     "name": req.name, "farm_type": req.farm_type, "crop": req.crop,
-                    "region_code": req.region_code, "latitude": req.latitude,
+                    "region_code": req.region_code, "address": req.address,
+                    "zipcode": req.zipcode, "latitude": req.latitude,
                     "longitude": req.longitude, "is_active": True,
                 },
             )
@@ -635,7 +710,9 @@ async def register_discovered(
         await conn.execute(
             delete(m.pending_registration).where(m.pending_registration.c.farm_id == farm_id)
         )
-    background_tasks.add_task(
-        collect_farm_weather, _engine(), farm_id, req.region_code, req.latitude, req.longitude,
-    )
+    # update_farm 과 같은 이유로 응답 전에 받아둔다
+    if req.region_code and req.latitude is not None and req.longitude is not None:
+        await collect_farm_weather(
+            _engine(), farm_id, req.region_code, req.latitude, req.longitude
+        )
     return {"ok": True, "farm_id": farm_id, "devices": devices, "sensors": sensors}

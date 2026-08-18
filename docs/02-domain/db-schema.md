@@ -45,6 +45,8 @@
 | farm_type | TEXT | NOT NULL, CHECK (`greenhouse`\|`plant_factory`\|`open_field`) |
 | crop | TEXT | NULL |
 | region_code | TEXT | NULL — 10자리 행정구역코드 |
+| address | TEXT | NULL — 농장 주소 |
+| zipcode | TEXT | NULL — 우편번호 |
 | latitude | DOUBLE PRECISION | NULL — WGS84 위도 |
 | longitude | DOUBLE PRECISION | NULL — WGS84 경도 |
 | is_active | BOOLEAN | NOT NULL DEFAULT true |

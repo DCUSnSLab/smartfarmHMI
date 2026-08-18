@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -9,8 +10,14 @@ from urllib.request import urlopen
 from middleware.app.config import settings
 from middleware.app.weather import KST, _request_uv, validate_coordinates
 
+log = logging.getLogger("mw.location")  # mw.* 로 통일 — main._setup_logging 이 이 트리에 핸들러를 단다
+
 VWORLD_ADDRESS_URL = "https://api.vworld.kr/req/address"
 JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
+
+# JUSO 는 5초에 10건 제한이 있어 totalCount 를 페이지로 이어 받으면 제한에 걸려
+# 통째로 실패한다. 후보를 100건 넘게 늘어놔도 고를 수 없으므로 첫 페이지만 받는다.
+JUSO_PAGE_SIZE = 100
 
 
 class LocationResolutionError(RuntimeError):
@@ -49,41 +56,36 @@ def _road_address_from_coordinates(latitude: float, longitude: float) -> str:
     return address
 
 def _search_addresses(keyword: str) -> list[dict[str, str]]:
+    """역지오코딩된 주소를 JUSO 공식 표기로 검증한다 — 키워드당 첫 페이지만.
+
+    전체 주소로 못 찾으면 뒤 단어부터 떼며 넓혀본다. 시도 횟수는 단어 수로 묶이고
+    각 시도가 1회 호출이라, 예전처럼 totalCount 를 페이지로 훑다 제한에 걸리지 않는다.
+    """
     words = keyword.split()
     for remaining in range(len(words), 0, -1):
-        search_keyword = " ".join(words[:remaining])
-        addresses: list[dict[str, str]] = []
-        page = 1
-        total_count = 0
-        while page == 1 or len(addresses) < total_count:
-            payload = _get_json(
-                JUSO_URL,
-                {
-                    "resultType": "json", "keyword": search_keyword,
-                    "confmKey": settings.juso_key + "=",
-                    "currentPage": page, "countPerPage": 100,
-                },
+        payload = _get_json(
+            JUSO_URL,
+            {
+                "resultType": "json", "keyword": " ".join(words[:remaining]),
+                "confmKey": settings.juso_key + "=",
+                "currentPage": 1, "countPerPage": JUSO_PAGE_SIZE,
+            },
+        )
+        results = payload.get("results", {})
+        common = results.get("common", {})
+        if str(common.get("errorCode")) != "0":
+            raise RuntimeError(
+                f"주소 검색 오류: {common.get('errorMessage', 'unknown')}"
             )
-            results = payload.get("results", {})
-            common = results.get("common", {})
-            if str(common.get("errorCode")) != "0":
-                raise RuntimeError(
-                    f"주소 검색 오류: {common.get('errorMessage', 'unknown')}"
-                )
-            total_count = int(common.get("totalCount", 0) or 0)
-            page_items = results.get("juso") or []
-            addresses.extend(
-                {
-                    "zipNo": str(item.get("zipNo", "")).strip(),
-                    "roadAddr": str(item.get("roadAddr", "")).strip(),
-                    "jibunAddr": str(item.get("jibunAddr", "")).strip(),
-                }
-                for item in page_items
-                if str(item.get("roadAddr", "")).strip()
-            )
-            if not page_items:
-                break
-            page += 1
+        addresses = [
+            {
+                "zipNo": str(item.get("zipNo", "")).strip(),
+                "roadAddr": str(item.get("roadAddr", "")).strip(),
+                "jibunAddr": str(item.get("jibunAddr", "")).strip(),
+            }
+            for item in results.get("juso") or []
+            if str(item.get("roadAddr", "")).strip()
+        ]
         if addresses:
             return addresses
     raise RuntimeError("도로명주소 검색 결과가 없습니다")
@@ -123,15 +125,32 @@ def _coordinates_and_code(address: str) -> tuple[float, float, str]:
     return latitude, longitude, code
 
 
-def _region_candidates(code: str):
-    yield code
-    for zero_count in range(1, 11):
-        yield code[:-zero_count] + ("0" * zero_count)
+def _region_candidates(code: str) -> list[str]:
+    """읍면동 → 시군구 → 시도 순으로 넓혀본다.
+
+    예전에는 뒷자리를 한 자리씩 0 으로 밀어 후보 7개를 만들었지만, 행정구역코드는
+    앞 2자리(시도)·5자리(시군구) 경계에서만 의미가 있어 나머지 4개는 헛호출이었다.
+    """
+    if not (len(code) == 10 and code.isdigit()):
+        return []
+    return list(dict.fromkeys([code, code[:5] + "00000", code[:2] + "00000000"]))
+
+
+# 코드별 판정은 바뀌지 않으므로 프로세스 안에 들고 간다. 성공만 담는다 —
+# 실패를 담으면 일시적인 통신 장애가 영구 결론이 된다.
+_UV_REGION_CACHE: dict[str, str] = {}
 
 
 def _working_uv_region_code(level4_code: str) -> str | None:
+    """자외선지수 API 가 실제로 응답하는 행정구역코드를 고른다.
+
+    기상청이 어느 코드에 응답하는지 공개된 목록이 없어 직접 물어보는 수밖에 없다.
+    """
+    cached = _UV_REGION_CACHE.get(level4_code)
+    if cached is not None:
+        return cached
     requested_at = datetime.now(KST)
-    for candidate in dict.fromkeys(_region_candidates(level4_code)):
+    for candidate in _region_candidates(level4_code):
         try:
             payload = _request_uv(candidate, requested_at)
             response = payload.get("response", {})
@@ -140,9 +159,11 @@ def _working_uv_region_code(level4_code: str) -> str | None:
             body = response.get("body", {})
             items = body.get("items", {}).get("item", [])
             if int(body.get("totalCount", 0) or 0) > 0 and items:
+                _UV_REGION_CACHE[level4_code] = candidate
                 return candidate
-        except Exception:
-            continue
+        except Exception as exc:
+            log.warning("자외선지수 지역코드 확인 실패 code=%s: %s", candidate, exc)
+    log.info("자외선지수 지역코드를 찾지 못했다 level4=%s", level4_code)
     return None
 
 

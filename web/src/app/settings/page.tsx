@@ -28,11 +28,24 @@ type LocationMode = "current" | "manual";
 
 // ── 공용 모달 ──
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  // 모달이 떠 있는 동안 뒤 페이지 스크롤을 잠근다 — 안 잠그면 모달 끝까지 굴렸을 때
+  // 뒤 페이지가 따라 움직여 스크롤이 겹쳐 보인다.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, []);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-16 font-extrabold">{title}</h3>
-        {children}
+      {/* 둥근 모서리와 스크롤을 같은 요소에 두면 스크롤바가 모서리를 사각으로 덮는다.
+          바깥이 모양(rounded + overflow-hidden)을, 안쪽이 스크롤을 맡는다.
+          높이 상한은 vh 인데 내용은 rem 이라 큰 글씨에서 넘친다 — 그래서 안쪽만 흐른다. */}
+      <div
+        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="shrink-0 px-5 pb-4 pt-5 text-16 font-extrabold">{title}</h3>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
       </div>
     </div>
   );
@@ -372,8 +385,8 @@ function FarmModal({
             </div>
           )}
           {(addressCandidates.length > 0 || addressSearchMessage) && (
-            <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200">
-              <div className="sticky top-0 grid grid-cols-[64px_1fr_1fr] gap-2 bg-gray-50 px-2 py-1.5 text-11 font-bold text-gray-500">
+            <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
+              <div className="grid grid-cols-[64px_1fr_1fr] gap-2 bg-gray-50 px-2 py-1.5 text-11 font-bold text-gray-500">
                 <span>우편번호</span>
                 <span>도로명주소</span>
                 <span>지번주소</span>

@@ -35,6 +35,8 @@ farm = sa.Table(
     sa.Column("farm_type", sa.Text, nullable=False),
     sa.Column("crop", sa.Text),
     sa.Column("region_code", sa.Text),  # 10자리 행정구역코드
+    sa.Column("address", sa.Text),
+    sa.Column("zipcode", sa.Text),
     sa.Column("latitude", sa.Double),
     sa.Column("longitude", sa.Double),
     sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),

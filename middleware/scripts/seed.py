@@ -28,8 +28,9 @@ FARMS = [
     {
         "farm": {"farm_id": "seongju", "name": "성주 참외 온실",
                  "farm_type": "greenhouse", "crop": "참외",
-                 "region_code": "4784032000", "latitude": 35.8362641,
-                 "longitude": 128.3368282},
+                 "region_code": "4784025000",
+                 "address": "경상북도 성주군 대가면 참별로 2479", "zipcode": "40056",
+                 "latitude": 35.915958312827335, "longitude": 128.2534148622604},
         # 디자인 전달본 farm-status 화면의 하드웨어 구성 참조
         "devices": [
             # (device_id, device_type, name, location)
@@ -80,8 +81,9 @@ FARMS = [
         # 둘째 팜 — 기본 스택 멀티팜 (virtual-edge-jinju 서비스, configs/jinju.yaml)
         "farm": {"farm_id": "jinju", "name": "진주 토마토 온실",
                  "farm_type": "greenhouse", "crop": "토마토",
-                 "region_code": "4817056500", "latitude": 35.1889639,
-                 "longitude": 128.0884222},
+                 "region_code": "4817040000",
+                 "address": "경상남도 진주시 대곡면 덕곡길 147", "zipcode": "52608",
+                 "latitude": 35.225161797400375, "longitude": 128.1845296134792},
         "devices": [
             ("edge-01", "edge", "엣지 컨트롤러", "기계실"),
             ("growbed-01", "growbed", "재배동", "온실 중앙"),

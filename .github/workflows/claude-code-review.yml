@@ -37,7 +37,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.issue.number }}'
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # high: 확신도가 낮은 항목까지 포함해 넓게 본다 (기본값은 확실한 것만)
+          prompt: '/code-review:code-review high --comment ${{ github.repository }}/pull/${{ github.event.issue.number }}'
+          # 지적이 0건이어도 요약을 남긴다 — 없으면 "검토 완료"와 "고장"을 구분할 수 없다
+          display_report: true
+          claude_args: '--model claude-opus-5 --allowedTools "mcp__github_inline_comment__create_inline_comment"'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options

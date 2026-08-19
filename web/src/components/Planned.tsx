@@ -39,5 +39,3 @@ export function PlannedBox({
     </div>
   );
 }
-
-/** 골격 UI 는 보여주되 비활성 — 디자인 구성을 유지하면서 미구현임을 표시 */

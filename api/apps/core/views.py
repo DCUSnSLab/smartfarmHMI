@@ -191,6 +191,7 @@ async def farm_snapshots(request):
     qs = request.META.get("QUERY_STRING", "")
     return await _proxy_middleware(f"/internal/farms/snapshots?{qs}")
 
+
 async def farm_snapshot(request, farm_id: str):
     """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
     if request_user(request) is None:
@@ -388,5 +389,7 @@ async def robot_jog(request, farm_id: str, device_id: str):
     except ValueError:
         return JsonResponse({"error": "invalid json"}, status=400)
     body["issued_by"] = user.email
-    resp = await _mw().post(f"/internal/farms/{farm_id}/robots/{device_id}/jog", json=body, timeout=2)
+    resp = await _mw().post(
+        f"/internal/farms/{farm_id}/robots/{device_id}/jog", json=body, timeout=2
+    )
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)

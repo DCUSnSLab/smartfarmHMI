@@ -474,11 +474,22 @@ export function useMonitor(scope: string) {
       };
       sock.onclose = async (ev) => {
         clearInterval(watchdog);
+        // 이미 교체된 옛 소켓의 뒤늦은 onclose — 제 감시만 끄고 빠진다.
+        //
+        // onVisible 은 CONNECTING·OPEN 만 걸러내므로 CLOSING 인 소켓을 두고 connect()
+        // 를 부를 수 있다 (죽은 소켓을 close() 하면 상대가 닿지 않아 닫기 핸드셰이크가
+        // 한동안 안 끝난다). 그 뒤 이 핸들러가 돌면 재연결을 또 예약해 소켓이 하나 더
+        // 생기고, 먼저 만든 쪽은 참조를 잃은 채 watchdog·onmessage 를 계속 돌린다.
+        //
+        // 공용 상태(wsOpen)도 건드리면 안 된다 — 새 소켓이 이미 열린 뒤라면 끊긴 것으로
+        // 표시된 채 되돌릴 계기가 없다.
+        if (ws !== sock) return;
         setWsOpen(false);
         if (closed) return;
         // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.
         // 네트워크 끊김·서버 종료에는 갱신이 무의미하고, await 만큼 재연결만 늦어진다.
         if (ev.code === WS_UNAUTHORIZED) await refreshToken();
+        if (closed || ws !== sock) return;   // await 사이에 탭이 돌아와 소켓이 바뀔 수 있다
         // 지수 백오프 + 지터. 지터가 없으면 배포 후 모든 브라우저가 같은 박자로 몰려
         // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
         const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++);

@@ -13,6 +13,7 @@ import { PlannedChip } from "@/components/Planned";
 import { ROLE_LABEL, canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import { FarmSummary, timeAgo } from "@/lib/monitor";
+import { useVisiblePolling } from "@/lib/poll";
 import {
   ACTUATOR_COMMANDS, AddressCandidate, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow,
   DiscoveredFarm, FarmLocationResolutionError, ResolvedFarmLocation,
@@ -709,11 +710,7 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   const [target, setTarget] = useState<DiscoveredFarm | null>(null);
 
   const reload = useCallback(() => { void listDiscovery().then(setFarms); }, []);
-  useEffect(() => {
-    reload();
-    const id = setInterval(reload, 5000); // 발견은 실시간성 있음 — 주기 갱신
-    return () => clearInterval(id);
-  }, [reload]);
+  useVisiblePolling(reload, 5000);   // 발견은 실시간성 있음 — 주기 갱신
 
   const openRegister = (farm: DiscoveredFarm) => setTarget(farm);
 

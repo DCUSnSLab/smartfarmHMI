@@ -23,6 +23,7 @@ from apps.core.views import (
     farm_device_detail,
     farm_devices,
     farm_snapshot,
+    farm_snapshots,
     farm_stop_state,
     farms,
     health,
@@ -49,6 +50,8 @@ urlpatterns = [
     path("api/location/resolve-current", resolve_farm_location),
     path("api/location/resolve-address", resolve_farm_address),
     path("api/location/search-addresses", search_farm_addresses),
+    # <farm_id> 패턴보다 앞 — 뒤에 두면 "snapshots" 가 farm_id 로 잡힌다
+    path("api/farms/snapshots", farm_snapshots),
     path("api/farms/<str:farm_id>", farm_detail),
     path("api/farms/<str:farm_id>/devices", farm_devices),
     path("api/farms/<str:farm_id>/devices/<str:device_id>", farm_device_detail),

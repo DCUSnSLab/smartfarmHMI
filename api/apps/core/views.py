@@ -9,6 +9,19 @@ from django.views.decorators.csrf import csrf_exempt
 from apps.accounts.auth import CONTROL_ROLES, forbidden, request_user, unauthorized
 
 
+# 프록시 요청마다 클라이언트를 새로 만들면 TCP 핸드셰이크를 매번 다시 한다.
+# uvicorn ASGI 는 프로세스당 이벤트 루프가 하나라, 하나를 만들어 계속 재사용한다
+# (httpx 가 커넥션 풀을 관리한다). 첫 요청 때 루프 안에서 만든다.
+_mw_client: httpx.AsyncClient | None = None
+
+
+def _mw() -> httpx.AsyncClient:
+    global _mw_client
+    if _mw_client is None or _mw_client.is_closed:
+        _mw_client = httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10)
+    return _mw_client
+
+
 def health(request):
     """헬스체크 — DB 연결까지 확인한다 (app_user → app 스키마)."""
     with connection.cursor() as cur:
@@ -19,8 +32,7 @@ def health(request):
 
 async def _proxy_middleware(path: str):
     """미들웨어 내부 REST 위임 — 앱서버는 mw 데이터에 직접 접근하지 않는다 (원칙 #2)."""
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.get(path)
+    resp = await _mw().get(path)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -43,8 +55,7 @@ async def _proxy_write(
         return JsonResponse({"error": "invalid json"}, status=400)
     if inject_field:
         body[inject_field] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=timeout) as client:
-        resp = await client.request(method, path, json=body)
+    resp = await _mw().request(method, path, json=body, timeout=timeout)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -169,10 +180,16 @@ async def weather_refresh(request, farm_id: str):
         return HttpResponseNotAllowed(["POST"])
     if request_user(request) is None:
         return unauthorized()
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=30) as client:
-        resp = await client.post(f"/internal/farms/{farm_id}/weather/refresh")
+    resp = await _mw().post(f"/internal/farms/{farm_id}/weather/refresh", timeout=30)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
+
+async def farm_snapshots(request):
+    """농장 카드용 묶음 스냅샷 — 카드가 농장 수만큼 따로 요청하지 않도록."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/farms/snapshots?{qs}")
 
 async def farm_snapshot(request, farm_id: str):
     """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
@@ -224,8 +241,7 @@ async def stop_engage(request):
     except ValueError:
         body = {}
     body["by"] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.post("/internal/stop", json=body)
+    resp = await _mw().post("/internal/stop", json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -244,8 +260,7 @@ async def stop_release(request):
     except ValueError:
         body = {}
     body["by"] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.post("/internal/stop/release", json=body)
+    resp = await _mw().post("/internal/stop/release", json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -289,8 +304,7 @@ async def alert_ack(request, alert_id: int):
     user = request_user(request)
     if user is None:
         return unauthorized()
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.post(f"/internal/alerts/{alert_id}/ack", json={"by": user.email})
+    resp = await _mw().post(f"/internal/alerts/{alert_id}/ack", json={"by": user.email})
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -301,10 +315,9 @@ async def alerts_ack_all(request, farm_id: str):
     user = request_user(request)
     if user is None:
         return unauthorized()
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.post(
-            f"/internal/farms/{farm_id}/alerts/ack-all", json={"by": user.email}
-        )
+    resp = await _mw().post(
+        f"/internal/farms/{farm_id}/alerts/ack-all", json={"by": user.email}
+    )
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -330,8 +343,7 @@ async def alert_rule_update(request, rule_id: int):
     except ValueError:
         return JsonResponse({"error": "invalid json"}, status=400)
     body["updated_by"] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.put(f"/internal/alert-rules/{rule_id}", json=body)
+    resp = await _mw().put(f"/internal/alert-rules/{rule_id}", json=body)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -350,10 +362,9 @@ async def device_control(request, farm_id: str, device_id: str):
     except ValueError:
         return JsonResponse({"error": "invalid json"}, status=400)
     body["issued_by"] = user.email  # 발행자 기록 (command_log.issued_by)
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=10) as client:
-        resp = await client.post(
-            f"/internal/farms/{farm_id}/devices/{device_id}/control", json=body
-        )
+    resp = await _mw().post(
+        f"/internal/farms/{farm_id}/devices/{device_id}/control", json=body
+    )
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)
 
 
@@ -377,6 +388,5 @@ async def robot_jog(request, farm_id: str, device_id: str):
     except ValueError:
         return JsonResponse({"error": "invalid json"}, status=400)
     body["issued_by"] = user.email
-    async with httpx.AsyncClient(base_url=settings.MIDDLEWARE_URL, timeout=2) as client:
-        resp = await client.post(f"/internal/farms/{farm_id}/robots/{device_id}/jog", json=body)
+    resp = await _mw().post(f"/internal/farms/{farm_id}/robots/{device_id}/jog", json=body, timeout=2)
     return JsonResponse(resp.json(), safe=False, status=resp.status_code)

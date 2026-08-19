@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
+import { useVisiblePolling } from "@/lib/poll";
 
 export interface SensorValue {
   sensor_id: string;
@@ -198,24 +199,14 @@ export interface AlertPageResponse {
 export function useGlobalAlerts(intervalMs = 15_000) {
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(async () => {
+    const res = await apiFetch("/api/alerts?limit=100&counts=false");
+    if (!res.ok) return;
+    const page: AlertPageResponse = await res.json();
+    setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
+  }, []);
 
-    const load = async () => {
-      const res = await apiFetch("/api/alerts?limit=100&counts=false");
-      if (!res.ok || !active) return;
-      const page: AlertPageResponse = await res.json();
-      setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
-    };
-
-    void load();
-    const timer = window.setInterval(() => void load(), intervalMs);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [intervalMs]);
+  useVisiblePolling(() => void load(), intervalMs);
 
   return alerts;
 }

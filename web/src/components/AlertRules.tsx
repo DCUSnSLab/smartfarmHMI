@@ -5,7 +5,7 @@
  * admin/manager 만 수정 가능. 기본값은 잠정 (OPN-20).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 interface Rule {
@@ -25,6 +25,9 @@ const TYPE_LABEL: Record<string, string> = {
 export function AlertRules({ farmId, editable }: { farmId: string; editable: boolean }) {
   const [rules, setRules] = useState<Rule[]>([]);
   const [saved, setSaved] = useState<number | null>(null);
+  // 저장 표시를 지우는 타이머 — 연달아 저장하거나 화면을 떠나도 남지 않게 잡아 둔다
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
   useEffect(() => {
     apiFetch(`/api/farms/${farmId}/alert-rules`).then(async (r) => r.ok && setRules(await r.json()));
@@ -40,7 +43,8 @@ export function AlertRules({ farmId, editable }: { farmId: string; editable: boo
     });
     if (res.ok) {
       setSaved(rule.id);
-      setTimeout(() => setSaved(null), 1500);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(null), 1500);
     }
   };
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
@@ -169,95 +169,19 @@ async def refresh_farm_weather(farm_id: str):
     return {"ok": True}
 
 
-@router.get("/farms/{farm_id}/snapshot")
-async def farm_snapshot(farm_id: str):
-    """대시보드 초기 로드용 스냅샷 — 센서 최신값·로봇 최신 상태·통신 상태."""
-    async with _engine().connect() as conn:
-        farm = (
-            (await conn.execute(select(m.farm).where(m.farm.c.farm_id == farm_id)))
-            .mappings().first()
-        )
-        if farm is None:
-            raise HTTPException(404, f"unknown farm: {farm_id}")
+def _tank_view(tanks, sensors) -> list[dict]:
+    """탱크 잔량 환산 — 용량·소비율로 "약 NL · N일분" (FR-08 비고)
 
-        # 표시 이름을 따로 모아 붙인다 — 화면이 사유를 적을 때 device_id 를 그대로 쓰면
-        # 「co2-a 값 두절」처럼 사람이 못 알아보는 문구가 된다 (목록은 「CO₂센서」로 부른다).
-        # 조인 대신 map 을 쓰는 이유: not_soft_deleted 가 device_meta 를 참조하는
-        # 상관 서브쿼리라, 같은 표를 FROM 에 넣으면 자동 상관으로 서브쿼리가 비어 버린다.
-        names = {
-            r["device_id"]: r["name"]
-            for r in (await conn.execute(
-                select(m.device_meta.c.device_id, m.device_meta.c.name)
-                .where(m.device_meta.c.farm_id == farm_id)
-            )).mappings().all()
-        }
-        sensors = (
-            (await conn.execute(
-                select(m.sensor).where(m.sensor.c.farm_id == farm_id)
-                .order_by(m.sensor.c.sensor_id)
-            )).mappings().all()
-        )
-        robots = (
-            (await conn.execute(text(
-                # 명단은 대장(device_meta), 값은 이력(robot_status). 이력에서 명단을
-                # 만들면 한 번 발행한 장치가 영원히 남는다 (models.registered).
-                # 등록되지 않은 로봇은 설정 화면 「미등록」 칸에 모인다.
-                "SELECT DISTINCT ON (r.device_id) r.device_id, r.ts, r.pos_x, r.pos_y, r.speed, "
-                "r.battery_pct, r.charging, r.phase, r.error "
-                "FROM mw.robot_status r "
-                "JOIN mw.device_meta d "
-                "  ON d.farm_id = r.farm_id AND d.device_id = r.device_id "
-                " AND d.deleted_at IS NULL "
-                "WHERE r.farm_id = :farm "
-                "ORDER BY r.device_id, r.ts DESC"
-            ), {"farm": farm_id})).mappings().all()
-        )
-        connections = (
-            (await conn.execute(
-                select(m.device_connection_state)
-                .where(m.device_connection_state.c.farm_id == farm_id)
-                .where(m.registered(
-                    m.device_connection_state.c.farm_id,
-                    m.device_connection_state.c.device_id,
-                ))
-            )).mappings().all()
-        )
-        # 탱크·워크스테이션·랙 — 작업·공급 화면과 농장 카드 게이지 (FR-08·21~26 표시)
-        tanks = (
-            (await conn.execute(
-                select(m.tank, m.device_meta.c.device_id, m.device_meta.c.name)
-                .join(m.device_meta, m.tank.c.device_meta_id == m.device_meta.c.id)
-                .where(m.tank.c.farm_id == farm_id)
-                .order_by(m.tank.c.tank_type)
-            )).mappings().all()
-        )
-        stations = (
-            (await conn.execute(
-                select(m.work_station).where(m.work_station.c.farm_id == farm_id)
-                .order_by(m.work_station.c.station_id)
-            )).mappings().all()
-        )
-        rack = (
-            await conn.execute(text(
-                "SELECT (SELECT count(*) FROM mw.rack_slot WHERE farm_id = :farm) AS slots, "
-                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm) AS pallets, "
-                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='stored') AS stored, "
-                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='moving') AS moving, "
-                "(SELECT count(*) FROM mw.pallet WHERE farm_id = :farm AND state='at_station') AS at_station"
-            ), {"farm": farm_id})
-        ).mappings().first()
-
-    # 탱크 잔량 환산 — 용량·소비율로 "약 NL · N일분" (FR-08 비고)
-    #
-    # 수위 센서와 탱크의 연결: 규약상 센서 id 가 `tank-{tank_type}-lv` 다
-    # (virtual-edge config·시드가 이 규약을 공유). 장비 등록 화면에서 임의 이름의
-    # 수위 센서를 만들 수 있으므로, 매칭 실패는 정상 경로로 두고 정적 수위로 폴백한다.
+    수위 센서와 탱크의 연결: 규약상 센서 id 가 `tank-{tank_type}-lv` 다
+    (virtual-edge config·시드가 이 규약을 공유). 장비 등록 화면에서 임의 이름의
+    수위 센서를 만들 수 있으므로, 매칭 실패는 정상 경로로 두고 정적 수위로 폴백한다.
+    """
     level_by_type = {
         s["sensor_id"].removeprefix("tank-").removesuffix("-lv"): s["last_value"]
         for s in sensors
         if s["sensor_type"] == "water_level" and s["sensor_id"].startswith("tank-")
     }
-    tank_out = []
+    out = []
     for t in tanks:
         pct = level_by_type.get(t["tank_type"], t["current_level_pct"])
         remain_l = round(t["capacity_l"] * (pct or 0) / 100, 1) if pct is not None else None
@@ -268,45 +192,192 @@ async def farm_snapshot(farm_id: str):
             uses = round(remain_l / rate) if t["consumption_unit"] == "per_task" else None
         else:
             days = uses = None
-        tank_out.append({
+        out.append({
             "device_id": t["device_id"], "name": t["name"], "tank_type": t["tank_type"],
             "capacity_l": t["capacity_l"], "level_pct": pct, "remain_l": remain_l,
             "days_left": days, "uses_left": uses,
         })
+    return out
 
-    return {
-        "farm": {"farm_id": farm["farm_id"], "name": farm["name"],
-                 "farm_type": farm["farm_type"], "crop": farm["crop"]},
-        "sensors": [
-            {"sensor_id": s["sensor_id"], "name": names.get(s["sensor_id"]),
-             "sensor_type": s["sensor_type"], "unit": s["unit"],
-             "location": s["location"], "value": s["last_value"],
-             "ts": s["last_ts"].isoformat() if s["last_ts"] else None,
-             "sensor_state": s["sensor_state"]}
-            for s in sensors
-        ],
-        "robots": [
-            {"device_id": r["device_id"], "ts": r["ts"].isoformat(),
-             "pos_x": r["pos_x"], "pos_y": r["pos_y"], "speed": r["speed"],
-             "battery_pct": r["battery_pct"], "charging": r["charging"],
-             "phase": r["phase"], "error": r["error"]}
-            for r in robots
-        ],
-        "connections": [
-            {"device_id": c["device_id"], "name": names.get(c["device_id"]), "state": c["state"],
-             "device_type": c["device_type"],
-             "last_received_at": c["last_received_at"].isoformat()
-             if c["last_received_at"] else None}
-            for c in connections
-        ],
-        "tanks": tank_out,
-        "stations": [
-            {"station_id": s["station_id"], "station_type": s["station_type"],
-             "state": s["state"]}
-            for s in stations
-        ],
-        "rack": dict(rack) if rack else {},
+
+async def _snapshots(conn, farm_ids: list[str]) -> dict[str, dict]:
+    """농장별 스냅샷을 한 묶음으로 조회한다 — 표마다 1회 질의한 뒤 farm_id 로 나눈다.
+
+    농장마다 따로 부르면 질의 수가 농장 수에 비례한다 (표 8개 × N). 대시보드는
+    농장 전부를 주기적으로 다시 읽으므로 그 비례가 그대로 부하가 된다.
+    """
+    ids = list(dict.fromkeys(farm_ids))
+    if not ids:
+        return {}
+
+    def _group(rows):
+        grouped: dict[str, list] = {i: [] for i in ids}
+        for r in rows:
+            grouped.setdefault(r["farm_id"], []).append(r)
+        return grouped
+
+    farms = (await conn.execute(
+        select(m.farm).where(m.farm.c.farm_id.in_(ids))
+    )).mappings().all()
+
+    # 표시 이름을 따로 모아 붙인다 — 화면이 사유를 적을 때 device_id 를 그대로 쓰면
+    # 「co2-a 값 두절」처럼 사람이 못 알아보는 문구가 된다 (목록은 「CO₂센서」로 부른다).
+    # 조인 대신 map 을 쓰는 이유: not_soft_deleted 가 device_meta 를 참조하는
+    # 상관 서브쿼리라, 같은 표를 FROM 에 넣으면 자동 상관으로 서브쿼리가 비어 버린다.
+    names: dict[str, dict[str, str]] = {i: {} for i in ids}
+    for r in (await conn.execute(
+        select(m.device_meta.c.farm_id, m.device_meta.c.device_id, m.device_meta.c.name)
+        .where(m.device_meta.c.farm_id.in_(ids))
+    )).mappings().all():
+        names.setdefault(r["farm_id"], {})[r["device_id"]] = r["name"]
+
+    sensors = _group((await conn.execute(
+        select(m.sensor).where(m.sensor.c.farm_id.in_(ids))
+        .order_by(m.sensor.c.farm_id, m.sensor.c.sensor_id)
+    )).mappings().all())
+
+    # 명단은 대장(device_meta), 값은 이력(robot_status). 이력에서 명단을
+    # 만들면 한 번 발행한 장치가 영원히 남는다 (models.registered).
+    # 등록되지 않은 로봇은 설정 화면 「미등록」 칸에 모인다.
+    #
+    # 대장을 바깥에 두고 장치마다 LATERAL 로 최신 1행만 집는다. DISTINCT ON 으로
+    # 뒤집으면 계획기가 해당 농장의 이력 전체를 정렬한다 — 2행을 얻으려 90만 행을
+    # 읽고 디스크 정렬(10MB)까지 갔다. 지금은 PK(farm_id, device_id, ts) 역방향
+    # 인덱스 스캔 + LIMIT 1 이라 로봇 수에만 비례한다.
+    # 바깥을 device_type='robot' 으로 좁히는 것이 핵심이다 — 로봇 이력이 없는
+    # 센서까지 훑으면 장치마다 압축 청크를 풀어 오히려 느려진다 (3.8초 관측).
+    robots = _group((await conn.execute(
+        text(
+            "SELECT d.farm_id, d.device_id, r.ts, r.pos_x, r.pos_y, r.speed, "
+            "r.battery_pct, r.charging, r.phase, r.error "
+            "FROM mw.device_meta d "
+            "CROSS JOIN LATERAL ( "
+            "  SELECT s.ts, s.pos_x, s.pos_y, s.speed, s.battery_pct, "
+            "         s.charging, s.phase, s.error "
+            "  FROM mw.robot_status s "
+            "  WHERE s.farm_id = d.farm_id AND s.device_id = d.device_id "
+            "  ORDER BY s.ts DESC LIMIT 1 "
+            ") r "
+            "WHERE d.farm_id IN :farms AND d.deleted_at IS NULL "
+            "  AND d.device_type = 'robot' "
+            "ORDER BY d.farm_id, d.device_id"
+        ).bindparams(bindparam("farms", expanding=True)),
+        {"farms": ids},
+    )).mappings().all())
+
+    connections = _group((await conn.execute(
+        select(m.device_connection_state)
+        .where(m.device_connection_state.c.farm_id.in_(ids))
+        .where(m.registered(
+            m.device_connection_state.c.farm_id,
+            m.device_connection_state.c.device_id,
+        ))
+    )).mappings().all())
+
+    # 탱크·워크스테이션·랙 — 작업·공급 화면과 농장 카드 게이지 (FR-08·21~26 표시)
+    tanks = _group((await conn.execute(
+        select(m.tank, m.device_meta.c.device_id, m.device_meta.c.name)
+        .join(m.device_meta, m.tank.c.device_meta_id == m.device_meta.c.id)
+        .where(m.tank.c.farm_id.in_(ids))
+        .order_by(m.tank.c.farm_id, m.tank.c.tank_type)
+    )).mappings().all())
+
+    stations = _group((await conn.execute(
+        select(m.work_station).where(m.work_station.c.farm_id.in_(ids))
+        .order_by(m.work_station.c.farm_id, m.work_station.c.station_id)
+    )).mappings().all())
+
+    slots = {
+        r["farm_id"]: r["slots"]
+        for r in (await conn.execute(
+            text("SELECT farm_id, count(*) AS slots FROM mw.rack_slot "
+                 "WHERE farm_id IN :farms GROUP BY farm_id")
+            .bindparams(bindparam("farms", expanding=True)),
+            {"farms": ids},
+        )).mappings().all()
     }
+    pallets = {
+        r["farm_id"]: r
+        for r in (await conn.execute(
+            text("SELECT farm_id, count(*) AS pallets, "
+                 "count(*) FILTER (WHERE state = 'stored') AS stored, "
+                 "count(*) FILTER (WHERE state = 'moving') AS moving, "
+                 "count(*) FILTER (WHERE state = 'at_station') AS at_station "
+                 "FROM mw.pallet WHERE farm_id IN :farms GROUP BY farm_id")
+            .bindparams(bindparam("farms", expanding=True)),
+            {"farms": ids},
+        )).mappings().all()
+    }
+
+    result: dict[str, dict] = {}
+    for farm in farms:
+        fid = farm["farm_id"]
+        name_of = names.get(fid, {})
+        pallet = pallets.get(fid)
+        result[fid] = {
+            "farm": {"farm_id": farm["farm_id"], "name": farm["name"],
+                     "farm_type": farm["farm_type"], "crop": farm["crop"]},
+            "sensors": [
+                {"sensor_id": s["sensor_id"], "name": name_of.get(s["sensor_id"]),
+                 "sensor_type": s["sensor_type"], "unit": s["unit"],
+                 "location": s["location"], "value": s["last_value"],
+                 "ts": s["last_ts"].isoformat() if s["last_ts"] else None,
+                 "sensor_state": s["sensor_state"]}
+                for s in sensors[fid]
+            ],
+            "robots": [
+                {"device_id": r["device_id"], "ts": r["ts"].isoformat(),
+                 "pos_x": r["pos_x"], "pos_y": r["pos_y"], "speed": r["speed"],
+                 "battery_pct": r["battery_pct"], "charging": r["charging"],
+                 "phase": r["phase"], "error": r["error"]}
+                for r in robots[fid]
+            ],
+            "connections": [
+                {"device_id": c["device_id"], "name": name_of.get(c["device_id"]),
+                 "state": c["state"], "device_type": c["device_type"],
+                 "last_received_at": c["last_received_at"].isoformat()
+                 if c["last_received_at"] else None}
+                for c in connections[fid]
+            ],
+            "tanks": _tank_view(tanks[fid], sensors[fid]),
+            "stations": [
+                {"station_id": s["station_id"], "station_type": s["station_type"],
+                 "state": s["state"]}
+                for s in stations[fid]
+            ],
+            "rack": {
+                "slots": slots.get(fid, 0),
+                "pallets": pallet["pallets"] if pallet else 0,
+                "stored": pallet["stored"] if pallet else 0,
+                "moving": pallet["moving"] if pallet else 0,
+                "at_station": pallet["at_station"] if pallet else 0,
+            },
+        }
+    return result
+
+
+@router.get("/farms/snapshots")
+async def farm_snapshots(ids: str = ""):
+    """여러 농장의 스냅샷을 한 번에 — 농장 카드가 농장 수만큼 요청하지 않도록.
+
+    없는 farm_id 는 결과에서 빠진다. 경로 순서상 /farms/{farm_id}/snapshot 보다
+    앞에 둘 필요는 없다 (경로 모양이 겹치지 않는다).
+    """
+    farm_ids = [i for i in (part.strip() for part in ids.split(",")) if i]
+    if not farm_ids:
+        return {}
+    async with _engine().connect() as conn:
+        return await _snapshots(conn, farm_ids)
+
+
+@router.get("/farms/{farm_id}/snapshot")
+async def farm_snapshot(farm_id: str):
+    """대시보드 초기 로드용 스냅샷 — 센서 최신값·로봇 최신 상태·통신 상태."""
+    async with _engine().connect() as conn:
+        found = await _snapshots(conn, [farm_id])
+    if farm_id not in found:
+        raise HTTPException(404, f"unknown farm: {farm_id}")
+    return found[farm_id]
 
 
 @router.get("/farms/{farm_id}/environment/history")

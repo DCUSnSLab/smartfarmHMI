@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useVisiblePolling } from "@/lib/poll";
 import { apiFetch } from "@/lib/api";
 import { sensorLiveness, type ConnState, type RobotValue, type SensorValue, type StopState } from "@/lib/monitor";
 
@@ -124,8 +125,8 @@ export const showsFleetNav = (pathname: string) =>
   pathname === "/" || /^\/farms\/[^/]+/.test(pathname);
 
 /**
- * 전 농장 스냅샷 폴링. 농장 수만큼 병렬 요청하므로 소유자는 하나여야 한다
- * (FarmDataProvider) — 두 곳에서 부르면 틱당 요청이 2N 건이 된다.
+ * 전 농장 스냅샷 폴링. 소유자는 하나여야 한다 (FarmDataProvider) — 두 곳에서
+ * 부르면 틱당 요청이 두 배가 된다.
  *
  * farmIds 가 비면 요청을 건너뛰고 직전 값을 유지한다 — 쓰지 않는 화면에서 폴링을
  * 멈추되, 되돌아왔을 때 빈 카드가 보이지 않게 하기 위한 것이다.
@@ -134,24 +135,16 @@ export function useFleetSnapshots(farmIds: string[], liveTick = 0, intervalMs = 
   const [snaps, setSnaps] = useState<Record<string, FarmSnapshot>>({});
   const key = farmIds.join(",");
 
+  // 농장별로 부르면 요청 수도 미들웨어 질의 수도 농장 수에 비례한다.
+  // 묶음 조회 하나로 받는다 — 없는 농장은 응답에서 빠진다.
   const load = useCallback(async () => {
     if (!key) return;
-    const ids = key.split(",");
-    const results = await Promise.all(
-      ids.map(async (id) => {
-        const r = await apiFetch(`/api/farms/${id}/snapshot`);
-        return r.ok ? ([id, (await r.json()) as FarmSnapshot] as const) : null;
-      }),
-    );
-    setSnaps(Object.fromEntries(results.filter(Boolean) as [string, FarmSnapshot][]));
+    const r = await apiFetch(`/api/farms/snapshots?ids=${encodeURIComponent(key)}`);
+    if (r.ok) setSnaps(await r.json() as Record<string, FarmSnapshot>);
   }, [key]);
 
-  useEffect(() => {
-    if (!key) return;   // 쓰지 않는 화면 — 아무 일도 안 하는 타이머를 남기지 않는다
-    void load();
-    const t = setInterval(() => void load(), intervalMs);
-    return () => clearInterval(t);
-  }, [key, load, intervalMs]);
+  // 쓰지 않는 화면(key 없음)과 숨은 탭에서는 돌지 않는다
+  useVisiblePolling(() => void load(), intervalMs, Boolean(key));
 
   // 통신·정지 변화가 실시간으로 오면 다음 폴링을 기다리지 않는다. 현장에서 엣지가
   // 끊긴 순간 농장 점과 헤더가 같이 바뀌어야 한다 (새로고침 없이).

@@ -39,20 +39,3 @@ export function PlannedBox({
     </div>
   );
 }
-
-/** 골격 UI 는 보여주되 비활성 — 디자인 구성을 유지하면서 미구현임을 표시 */
-export function PlannedOverlay({
-  basis, children,
-}: {
-  basis: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <div className="pointer-events-none select-none opacity-40">{children}</div>
-      <div className="absolute right-3 top-3">
-        <PlannedChip basis={basis} />
-      </div>
-    </div>
-  );
-}

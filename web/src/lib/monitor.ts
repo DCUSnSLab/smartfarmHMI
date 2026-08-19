@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
+import { useVisiblePolling } from "@/lib/poll";
 
 export interface SensorValue {
   sensor_id: string;
@@ -198,24 +199,14 @@ export interface AlertPageResponse {
 export function useGlobalAlerts(intervalMs = 15_000) {
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(async () => {
+    const res = await apiFetch("/api/alerts?limit=100&counts=false");
+    if (!res.ok) return;
+    const page: AlertPageResponse = await res.json();
+    setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
+  }, []);
 
-    const load = async () => {
-      const res = await apiFetch("/api/alerts?limit=100&counts=false");
-      if (!res.ok || !active) return;
-      const page: AlertPageResponse = await res.json();
-      setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
-    };
-
-    void load();
-    const timer = window.setInterval(() => void load(), intervalMs);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [intervalMs]);
+  useVisiblePolling(() => void load(), intervalMs);
 
   return alerts;
 }
@@ -483,11 +474,22 @@ export function useMonitor(scope: string) {
       };
       sock.onclose = async (ev) => {
         clearInterval(watchdog);
+        // 이미 교체된 옛 소켓의 뒤늦은 onclose — 제 감시만 끄고 빠진다.
+        //
+        // onVisible 은 CONNECTING·OPEN 만 걸러내므로 CLOSING 인 소켓을 두고 connect()
+        // 를 부를 수 있다 (죽은 소켓을 close() 하면 상대가 닿지 않아 닫기 핸드셰이크가
+        // 한동안 안 끝난다). 그 뒤 이 핸들러가 돌면 재연결을 또 예약해 소켓이 하나 더
+        // 생기고, 먼저 만든 쪽은 참조를 잃은 채 watchdog·onmessage 를 계속 돌린다.
+        //
+        // 공용 상태(wsOpen)도 건드리면 안 된다 — 새 소켓이 이미 열린 뒤라면 끊긴 것으로
+        // 표시된 채 되돌릴 계기가 없다.
+        if (ws !== sock) return;
         setWsOpen(false);
         if (closed) return;
         // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.
         // 네트워크 끊김·서버 종료에는 갱신이 무의미하고, await 만큼 재연결만 늦어진다.
         if (ev.code === WS_UNAUTHORIZED) await refreshToken();
+        if (closed || ws !== sock) return;   // await 사이에 탭이 돌아와 소켓이 바뀔 수 있다
         // 지수 백오프 + 지터. 지터가 없으면 배포 후 모든 브라우저가 같은 박자로 몰려
         // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
         const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++);
@@ -497,9 +499,29 @@ export function useMonitor(scope: string) {
     };
 
     connect();
+
+    // 탭이 다시 보이는 순간 직접 회복시킨다. 브라우저는 배경 탭의 타이머를 늦추거나 탭을
+    // 정지시키는데(화면 잠금 등), 그러면 onclose 가 예약한 재연결도 돌지 않아 깨어난 뒤에도
+    // 새로고침 전까지 낡은 값에 머문다. 정지 자체는 막을 수 없으므로 깨어날 때 처리한다.
+    const onVisible = () => {
+      if (closed || document.visibilityState !== "visible") return;
+      const state = ws?.readyState;
+      if (state === WebSocket.CONNECTING) return;   // 이미 붙는 중 — 소켓을 겹쳐 만들지 않는다
+      if (state === WebSocket.OPEN) {
+        // 정지 중에 조용히 죽어도 한동안 OPEN 으로 보인다. 맥박 시각을 지워 감시 타이머가
+        // 다음 주기에 바로 ping 하게 한다 — 생존 판정을 새로 만들지 않고 앞당긴다.
+        beatAt.current = 0;
+        return;
+      }
+      clearTimeout(timer);
+      connect();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     };
     // 의존성이 비어 있는 것이 이 수정의 핵심 — 소켓은 앱이 살아 있는 동안 하나다.

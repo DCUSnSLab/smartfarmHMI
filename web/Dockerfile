@@ -23,6 +23,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# public/ 이 비면 Git 이 디렉터리를 남기지 않아 아래 prod 단계의 COPY 가 깨진다.
+# 실제로 GEN-1285 에서 public 의 마지막 파일을 지운 뒤 prod 빌드가 실패했다.
+RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -33,7 +36,7 @@ ENV NODE_ENV=production TZ=Asia/Seoul NEXT_TELEMETRY_DISABLED=1
 RUN apk add --no-cache tzdata curl && adduser -S -u 10001 appuser
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public* ./public
+COPY --from=builder /app/public ./public
 USER appuser
 EXPOSE 3000
 CMD ["node", "server.js"]

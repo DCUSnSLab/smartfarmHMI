@@ -16,6 +16,9 @@ from apps.accounts.auth import ACCESS_COOKIE, user_from_token
 logger = logging.getLogger(__name__)
 
 SYSTEM_GROUP = "system"
+# 알림도 스코프와 무관하다 — 헤더 벨은 어느 농장 화면에서든 전 농장 알림을 보여준다.
+# 스코프 그룹에 실으면 농장을 옮길 때마다 다른 농장 알림을 놓친다.
+ALERTS_GROUP = "alerts"
 
 
 def _cookie(scope, name: str) -> str | None:
@@ -40,8 +43,9 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             return
         # 농장별 접근 권한 분리는 OPN-07 확정 시 여기서 검사
         await self.accept()
-        # 서버 생존 신호는 스코프와 무관하다 — 전환해도 유지되도록 따로 가입한다.
+        # 서버 생존 신호와 알림은 스코프와 무관하다 — 전환해도 유지되도록 따로 가입한다.
         await self.channel_layer.group_add(SYSTEM_GROUP, self.channel_name)
+        await self.channel_layer.group_add(ALERTS_GROUP, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         """{"action":"subscribe","scope":...} 스코프 전환 (FR-38), {"action":"ping"} 생존 확인."""
@@ -76,6 +80,7 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self._group, self.channel_name)
         if getattr(self, "user", None) is not None:
             await self.channel_layer.group_discard(SYSTEM_GROUP, self.channel_name)
+            await self.channel_layer.group_discard(ALERTS_GROUP, self.channel_name)
 
     async def __call__(self, scope, receive, send):
         """예외로 끝나도 그룹 등록을 정리한다.

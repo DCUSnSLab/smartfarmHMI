@@ -356,21 +356,38 @@ async def ack_all(farm_id: str, req: AckRequest):
     return {"acked": result.rowcount}
 
 
-@router.get("/farms/{farm_id}/alert-rules")
-async def list_rules(farm_id: str):
+def _rule_view(r) -> dict:
+    return {"id": r["id"], "alert_kind": r["alert_kind"], "sensor_type": r["sensor_type"],
+            "min_value": r["min_value"], "max_value": r["max_value"], "enabled": r["enabled"]}
+
+
+@router.get("/alert-rules")
+async def list_rules_bulk(farm_ids: str = ""):
+    """여러 농장의 규칙을 한 번에 — 설정 화면이 농장 수만큼 요청하지 않도록.
+
+    없는 farm_id 는 빈 배열로 돌려준다. 화면이 농장 목록을 그대로 순회하므로,
+    빠뜨리면 그 농장만 영원히 로딩 상태로 남는다.
+    """
+    ids = [i for i in (part.strip() for part in farm_ids.split(",")) if i]
+    if not ids:
+        return {}
     engine, _ = _deps()
     async with engine.connect() as conn:
         rows = (
             (await conn.execute(
-                select(m.alert_rule).where(m.alert_rule.c.farm_id == farm_id)
-                .order_by(m.alert_rule.c.id)
+                select(m.alert_rule).where(m.alert_rule.c.farm_id.in_(ids))
+                .order_by(m.alert_rule.c.farm_id, m.alert_rule.c.id)
             )).mappings().all()
         )
-    return [
-        {"id": r["id"], "alert_kind": r["alert_kind"], "sensor_type": r["sensor_type"],
-         "min_value": r["min_value"], "max_value": r["max_value"], "enabled": r["enabled"]}
-        for r in rows
-    ]
+    grouped: dict[str, list] = {i: [] for i in ids}
+    for r in rows:
+        grouped.setdefault(r["farm_id"], []).append(_rule_view(r))
+    return grouped
+
+
+@router.get("/farms/{farm_id}/alert-rules")
+async def list_rules(farm_id: str):
+    return (await list_rules_bulk(farm_id)).get(farm_id, [])
 
 
 class RuleUpdate(BaseModel):

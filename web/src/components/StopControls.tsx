@@ -223,7 +223,7 @@ export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSum
                 ? `현장 비상정지 작동됨 · ${estopFarms.length}곳`
                 : "현장 비상정지 작동됨"
           }
-          meta={timeAgo(stops.physical_estop.engaged_at)}
+          meta={timeAgo(stops.physical_estop.engaged_at, { withTime: true })}
           detail={
             <>
               {/* 농장명을 나열하므로 개수가 늘어도 문장이 자연스럽다. 개수 자체는 제목에 */}
@@ -258,7 +258,7 @@ export function StopBanners({ stops, farms }: { stops: StopState; farms: FarmSum
           icon={<WarningIcon size={20} />}
           // 「전체정지」 붙여 씀 — 물리 배너 제목과 폭을 같게 맞춘 것 (정식 명칭은 모달·aria)
           title="원격 전체정지 발동됨"
-          meta={timeAgo(stops.remote.engaged_at)}
+          meta={timeAgo(stops.remote.engaged_at, { withTime: true })}
           detail={
             <>
               전 농장의 모든 로봇·설비 작동이 중단되었습니다. 안전이 확인되면 상단

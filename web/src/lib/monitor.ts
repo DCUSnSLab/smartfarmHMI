@@ -8,7 +8,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
-import { useVisiblePolling } from "@/lib/poll";
 
 export interface SensorValue {
   sensor_id: string;
@@ -191,25 +190,6 @@ export interface AlertPageResponse {
   anchor: string | null;
 }
 
-/**
- * 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다.
- * 소유자는 FarmDataProvider 하나뿐이다 (globalAlerts) — 소비 측에서 직접 부르면
- * 15 초마다 같은 요청이 겹친다.
- */
-export function useGlobalAlerts(intervalMs = 15_000) {
-  const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
-
-  const load = useCallback(async () => {
-    const res = await apiFetch("/api/alerts?limit=100&counts=false");
-    if (!res.ok) return;
-    const page: AlertPageResponse = await res.json();
-    setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
-  }, []);
-
-  useVisiblePolling(load, intervalMs);
-
-  return alerts;
-}
 export interface CommandState {
   command_id: string;
   device_id: string;
@@ -253,6 +233,7 @@ export function useMonitor(scope: string) {
   const scopeRef = useRef(scope);
   const wsRef = useRef<WebSocket | null>(null);
   const loadStopsRef = useRef<() => Promise<void>>(async () => {});
+  const loadAlertsRef = useRef<() => Promise<void>>(async () => {});
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -287,19 +268,23 @@ export function useMonitor(scope: string) {
     if (r.ok) setStops(await r.json());
   }, [scope]);
 
+  // 알림은 스코프와 무관하게 전 농장분을 한 벌만 든다. 헤더 벨은 농장을 옮겨도 전체를
+  // 보여야 하고, 농장별 화면은 이 저장소를 farm_id 로 걸러 쓴다 (lib/farmData.tsx).
+  // 서버도 알림을 스코프 그룹이 아닌 전용 그룹으로 보낸다 (mqtt_bridge 의 ALERTS_GROUP).
+  const loadAlerts = useCallback(async () => {
+    const r = await apiFetch("/api/alerts?limit=100&counts=false");
+    if (!r.ok) return;
+    const page: AlertPageResponse = await r.json();
+    setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
+  }, []);
+
+  useEffect(() => {
+    void loadAlerts();
+  }, [loadAlerts]);
+
   useEffect(() => {
     void refreshFarms();
     void loadStops();
-    if (scope === "all") {
-      // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      // useGlobalAlerts 와 같은 URL 이지만 지우면 안 된다 — 이 alerts 는 WS 로 갱신되고
-      // globalAlerts 는 폴링만 받는다. 합치려면 두 저장소의 소유권부터 정리해야 한다.
-      apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
-        if (!r.ok) return;
-        const page: AlertPageResponse = await r.json();
-        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
-      });
-    }
     setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
     if (scope !== "all") {
       // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
@@ -309,11 +294,6 @@ export function useMonitor(scope: string) {
         if (!r.ok) return;
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
-      });
-      apiFetch(`/api/farms/${scope}/alerts?limit=50&counts=false`).then(async (r) => {
-        if (!r.ok) return;
-        const page: AlertPageResponse = await r.json();
-        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
       });
     }
   }, [scope, loadSnapshot, loadStops, refreshFarms]);
@@ -327,11 +307,12 @@ export function useMonitor(scope: string) {
     }
   }, [scope]);
 
-  // 재연결 직후의 정지 상태 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때
-  // 소켓이 다시 만들어지므로 ref 로 든다.
+  // 재연결 직후의 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때 소켓이
+  // 다시 만들어지므로 ref 로 든다.
   useEffect(() => {
     loadStopsRef.current = loadStops;
-  }, [loadStops]);
+    loadAlertsRef.current = loadAlerts;
+  }, [loadStops, loadAlerts]);
 
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
@@ -395,10 +376,14 @@ export function useMonitor(scope: string) {
       } else if (msg.stream === "alert") {
         setAlerts((prev) => {
           if (d.ack_all) {
+            // 저장소가 전 농장분이므로 발행 농장 것만 처리한다 — 거르지 않으면 한 농장의
+            // 일괄 읽음이 다른 농장 알림까지 읽음으로 바꾼다.
             const next: typeof prev = {};
             for (const k of Object.keys(prev)) {
               const id = Number(k);
-              next[id] = { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at };
+              next[id] = prev[id].farm_id === msg.farm_id
+                ? { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at }
+                : prev[id];
             }
             return next;
           }
@@ -448,9 +433,15 @@ export function useMonitor(scope: string) {
         sock.send(JSON.stringify({ action: "subscribe", scope: scopeRef.current }));
         // 여는 시점을 수신으로 친다 — 맥박은 retained 라 곧 실제로 온다
         rxAt.current = Date.now();
-        // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
-        // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
-        if (reconnected) void loadStopsRef.current();
+        // 끊긴 동안의 이벤트는 재전송되지 않는다. 서버도 가입 시 백로그를 주지 않으므로
+        // 재연결 때 현재 상태를 다시 읽는다 (둘 다 이벤트가 드물어 비용이 없다).
+        //   정지 — 안전 표시라 어긋난 채로 남으면 안 된다
+        //   알림 — 폴링을 걷어낸 뒤로 이 저장소를 채우는 경로가 여기뿐이다.
+        //          빠뜨리면 끊긴 동안의 알림이 새로고침 전까지 영영 누락된다.
+        if (reconnected) {
+          void loadStopsRef.current();
+          void loadAlertsRef.current();
+        }
       };
       sock.onclose = async (ev) => {
         if (ws !== sock) return;   // 감독자가 이미 버린 소켓의 뒤늦은 통보
@@ -687,11 +678,38 @@ export function useServerLink(
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }
 
-export function timeAgo(iso: string | null): string {
+/** 상대 표기를 유지하는 상한. 넘으면 날짜로 적는다 — 「230시간 전」·「180일 전」은
+ *  읽어도 언제인지 감이 오지 않는다. 알림은 정리 정책이 없어 계속 쌓인다. */
+const RELATIVE_DAYS_MAX = 7;
+
+/**
+ * 경과 시간을 사람이 읽는 문구로.
+ *
+ * withTime 은 날짜로 넘어간 구간에만 시:분을 붙인다. 이력을 되짚는 화면(알림 목록,
+ * 제어 이력, 정지 발동 시각)은 「8월 13일」만으로는 언제였는지 좁혀지지 않는다.
+ * 반대로 지금 값이 신선한지 훑는 화면(대시보드·상태)은 짧아야 하므로 붙이지 않는다.
+ */
+export function timeAgo(iso: string | null, opts?: { withTime?: boolean }): string {
   if (!iso) return "—";
-  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const then = new Date(iso);
+  const at = then.getTime();
+  if (Number.isNaN(at)) return "—";   // 날짜 분기가 「Invalid Date」를 그대로 내보내지 않게
+  const now = Date.now();
+  const sec = Math.max(0, (now - at) / 1000);
   if (sec < 10) return "방금";
   if (sec < 60) return `${Math.floor(sec)}초 전`;
   if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
-  return `${Math.floor(sec / 3600)}시간 전`;
+  if (sec < 86_400) return `${Math.floor(sec / 3600)}시간 전`;
+  const days = Math.floor(sec / 86_400);
+  if (days <= RELATIVE_DAYS_MAX) return `${days}일 전`;
+  // 해가 같으면 연도를 빼서 짧게 — 목록에서 한 줄에 들어가야 한다
+  const date: Intl.DateTimeFormatOptions =
+    then.getFullYear() === new Date(now).getFullYear()
+      ? { month: "long", day: "numeric" }
+      : { year: "numeric", month: "long", day: "numeric" };
+  if (!opts?.withTime) return then.toLocaleDateString("ko-KR", date);
+  // hourCycle 을 h23 으로 못 박는다. hour12:false 는 ko-KR 에서 h24 로 풀려
+  // 자정 7분이 「24:07」로 나온다.
+  return then.toLocaleString("ko-KR",
+    { ...date, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }

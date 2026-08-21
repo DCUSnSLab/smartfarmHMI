@@ -73,7 +73,7 @@ export function SensorModal({
         </div>
         <div>
           <div className="text-12 font-bold text-gray-500">마지막 수신</div>
-          <div className="mt-1 text-13.5 font-bold">{timeAgo(sensor.ts)}</div>
+          <div className="mt-1 text-13.5 font-bold">{timeAgo(sensor.ts, { withTime: true })}</div>
         </div>
       </div>
 

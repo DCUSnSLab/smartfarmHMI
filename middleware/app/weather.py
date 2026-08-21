@@ -210,15 +210,15 @@ async def collect_location_weather(
     try:
         reading = await fetch_weather(region_code, latitude, longitude)
         async with engine.begin() as conn:
-            for farm_id in farm_ids:
-                await conn.execute(
-                    insert(m.weather_reading)
-                    .values(farm_id=farm_id, **reading)
-                    .on_conflict_do_update(
-                        constraint="pk_weather_reading",
-                        set_={k: v for k, v in reading.items() if k != "ts"},
-                    )
+            # 같은 관측값을 농장 수만큼 나눠 넣는다 — 한 문장으로 묶는다
+            await conn.execute(
+                insert(m.weather_reading)
+                .values([{"farm_id": fid, **reading} for fid in farm_ids])
+                .on_conflict_do_update(
+                    constraint="pk_weather_reading",
+                    set_={k: v for k, v in reading.items() if k != "ts"},
                 )
+            )
     except Exception:
         log.exception(
             "기상 수집 실패 region=%s lat=%s lon=%s farms=%s",

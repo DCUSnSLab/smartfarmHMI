@@ -7,31 +7,29 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-
-interface Rule {
-  id: number;
-  alert_kind: string;
-  sensor_type: string | null;
-  min_value: number | null;
-  max_value: number | null;
-  enabled: boolean;
-}
+import type { AlertRuleRow as Rule } from "@/lib/settings";
 
 const TYPE_LABEL: Record<string, string> = {
   temperature: "온도 (℃)", humidity: "습도 (%)", ec: "양분 EC", co2: "CO₂ (ppm)",
   illuminance: "조도 (klx)", power: "전력 (kW)",
 };
 
-export function AlertRules({ farmId, editable }: { farmId: string; editable: boolean }) {
-  const [rules, setRules] = useState<Rule[]>([]);
+/**
+ * rules 는 부모가 묶음 조회로 받아 넘긴다 — 농장마다 이 컴포넌트가 각자 조회하면
+ * 설정 화면 진입 때 농장 수만큼 요청이 나간다 (lib/settings.ts 의 listAlertRules).
+ * 편집은 지역 상태로 처리하므로 초기값만 받아 심는다.
+ */
+export function AlertRules(
+  { editable, rules: initial }: { editable: boolean; rules: Rule[] },
+) {
+  const [rules, setRules] = useState<Rule[]>(initial);
   const [saved, setSaved] = useState<number | null>(null);
   // 저장 표시를 지우는 타이머 — 연달아 저장하거나 화면을 떠나도 남지 않게 잡아 둔다
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
 
-  useEffect(() => {
-    apiFetch(`/api/farms/${farmId}/alert-rules`).then(async (r) => r.ok && setRules(await r.json()));
-  }, [farmId]);
+  // 부모가 다시 읽어 오면(농장 추가·삭제) 그 값으로 갈아탄다
+  useEffect(() => setRules(initial), [initial]);
 
   const save = async (rule: Rule) => {
     const res = await apiFetch(`/api/alert-rules/${rule.id}`, {

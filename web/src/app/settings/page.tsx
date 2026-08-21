@@ -709,7 +709,7 @@ function DiscoverySection({ onRegistered }: { onRegistered: () => void }) {
   const [farms, setFarms] = useState<DiscoveredFarm[]>([]);
   const [target, setTarget] = useState<DiscoveredFarm | null>(null);
 
-  const reload = useCallback(() => { void listDiscovery().then(setFarms); }, []);
+  const reload = useCallback(() => listDiscovery().then(setFarms, () => {}), []);
   useVisiblePolling(reload, 5000);   // 발견은 실시간성 있음 — 주기 갱신
 
   const openRegister = (farm: DiscoveredFarm) => setTarget(farm);

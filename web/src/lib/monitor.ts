@@ -206,7 +206,7 @@ export function useGlobalAlerts(intervalMs = 15_000) {
     setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
   }, []);
 
-  useVisiblePolling(() => void load(), intervalMs);
+  useVisiblePolling(load, intervalMs);
 
   return alerts;
 }

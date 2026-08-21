@@ -144,7 +144,7 @@ export function useFleetSnapshots(farmIds: string[], liveTick = 0, intervalMs = 
   }, [key]);
 
   // 쓰지 않는 화면(key 없음)과 숨은 탭에서는 돌지 않는다
-  useVisiblePolling(() => void load(), intervalMs, Boolean(key));
+  useVisiblePolling(load, intervalMs, Boolean(key));
 
   // 통신·정지 변화가 실시간으로 오면 다음 폴링을 기다리지 않는다. 현장에서 엣지가
   // 끊긴 순간 농장 점과 헤더가 같이 바뀌어야 한다 (새로고침 없이).

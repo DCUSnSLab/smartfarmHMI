@@ -8,7 +8,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, refreshToken } from "@/lib/api";
-import { useVisiblePolling } from "@/lib/poll";
 
 export interface SensorValue {
   sensor_id: string;
@@ -191,25 +190,6 @@ export interface AlertPageResponse {
   anchor: string | null;
 }
 
-/**
- * 전역 알림 — 현재 페이지의 농장 스코프와 무관하게 전체 알림을 유지한다.
- * 소유자는 FarmDataProvider 하나뿐이다 (globalAlerts) — 소비 측에서 직접 부르면
- * 15 초마다 같은 요청이 겹친다.
- */
-export function useGlobalAlerts(intervalMs = 15_000) {
-  const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
-
-  const load = useCallback(async () => {
-    const res = await apiFetch("/api/alerts?limit=100&counts=false");
-    if (!res.ok) return;
-    const page: AlertPageResponse = await res.json();
-    setAlerts(Object.fromEntries(page.items.map((alert) => [alert.id, alert])));
-  }, []);
-
-  useVisiblePolling(load, intervalMs);
-
-  return alerts;
-}
 export interface CommandState {
   command_id: string;
   device_id: string;
@@ -287,19 +267,21 @@ export function useMonitor(scope: string) {
     if (r.ok) setStops(await r.json());
   }, [scope]);
 
+  // 알림은 스코프와 무관하게 전 농장분을 한 벌만 든다. 헤더 벨은 농장을 옮겨도 전체를
+  // 보여야 하고, 농장별 화면은 이 저장소를 farm_id 로 걸러 쓴다 (lib/farmData.tsx).
+  // 서버도 알림을 스코프 그룹이 아닌 전용 그룹으로 보낸다 (mqtt_bridge 의 ALERTS_GROUP)
+  // — 그래서 여기서 한 번만 읽고 이후는 WS 가 갱신한다.
+  useEffect(() => {
+    apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
+      if (!r.ok) return;
+      const page: AlertPageResponse = await r.json();
+      setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
+    });
+  }, []);
+
   useEffect(() => {
     void refreshFarms();
     void loadStops();
-    if (scope === "all") {
-      // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      // useGlobalAlerts 와 같은 URL 이지만 지우면 안 된다 — 이 alerts 는 WS 로 갱신되고
-      // globalAlerts 는 폴링만 받는다. 합치려면 두 저장소의 소유권부터 정리해야 한다.
-      apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
-        if (!r.ok) return;
-        const page: AlertPageResponse = await r.json();
-        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
-      });
-    }
     setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
     if (scope !== "all") {
       // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
@@ -309,11 +291,6 @@ export function useMonitor(scope: string) {
         if (!r.ok) return;
         const list: CommandState[] = await r.json();
         setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
-      });
-      apiFetch(`/api/farms/${scope}/alerts?limit=50&counts=false`).then(async (r) => {
-        if (!r.ok) return;
-        const page: AlertPageResponse = await r.json();
-        setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
       });
     }
   }, [scope, loadSnapshot, loadStops, refreshFarms]);
@@ -395,10 +372,14 @@ export function useMonitor(scope: string) {
       } else if (msg.stream === "alert") {
         setAlerts((prev) => {
           if (d.ack_all) {
+            // 저장소가 전 농장분이므로 발행 농장 것만 처리한다 — 거르지 않으면 한 농장의
+            // 일괄 읽음이 다른 농장 알림까지 읽음으로 바꾼다.
             const next: typeof prev = {};
             for (const k of Object.keys(prev)) {
               const id = Number(k);
-              next[id] = { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at };
+              next[id] = prev[id].farm_id === msg.farm_id
+                ? { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at }
+                : prev[id];
             }
             return next;
           }

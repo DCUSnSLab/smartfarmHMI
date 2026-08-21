@@ -687,11 +687,26 @@ export function useServerLink(
   return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
 }
 
+/** 상대 표기를 유지하는 상한. 넘으면 날짜로 적는다 — 「230시간 전」·「180일 전」은
+ *  읽어도 언제인지 감이 오지 않는다. 알림은 정리 정책이 없어 계속 쌓인다. */
+const RELATIVE_DAYS_MAX = 7;
+
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";
-  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const then = new Date(iso);
+  const at = then.getTime();
+  if (Number.isNaN(at)) return "—";   // 날짜 분기가 「Invalid Date」를 그대로 내보내지 않게
+  const now = Date.now();
+  const sec = Math.max(0, (now - at) / 1000);
   if (sec < 10) return "방금";
   if (sec < 60) return `${Math.floor(sec)}초 전`;
   if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
-  return `${Math.floor(sec / 3600)}시간 전`;
+  if (sec < 86_400) return `${Math.floor(sec / 3600)}시간 전`;
+  const days = Math.floor(sec / 86_400);
+  if (days <= RELATIVE_DAYS_MAX) return `${days}일 전`;
+  // 해가 같으면 연도를 빼서 짧게 — 목록에서 한 줄에 들어가야 한다
+  const sameYear = then.getFullYear() === new Date(now).getFullYear();
+  return then.toLocaleDateString("ko-KR", sameYear
+    ? { month: "long", day: "numeric" }
+    : { year: "numeric", month: "long", day: "numeric" });
 }

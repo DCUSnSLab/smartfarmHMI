@@ -18,10 +18,14 @@ import {
   ACTUATOR_COMMANDS, AddressCandidate, DEVICE_TYPES, DEVICE_TYPE_LABEL, DeviceRow,
   DiscoveredFarm, FarmLocationResolutionError, ResolvedFarmLocation,
   FARM_TYPES, SENSOR_TYPES, STATION_TYPES, TANK_TYPES,
-  createDevice, createFarm, deleteDevice, deleteFarm, listDevices, listDiscovery,
+  createDevice, createFarm, deleteDevice, deleteFarm, listAlertRules, listDevices, listDiscovery,
   registerDiscovered, resolveCurrentFarmLocation, resolveSelectedFarmAddress,
   searchFarmAddresses, updateDevice, updateFarm,
 } from "@/lib/settings";
+import type { AlertRuleRow } from "@/lib/settings";
+
+/** 참조가 매 렌더 바뀌면 AlertRules 의 초기값 동기화 effect 가 끝없이 돈다 */
+const NO_RULES: AlertRuleRow[] = [];
 
 const farmTypeLabel = (t: string) => FARM_TYPES.find((f) => f.value === t)?.label ?? t;
 
@@ -779,6 +783,14 @@ function SettingsContent() {
   const user = useUser();
   // 농장 목록은 공유 컨텍스트에서 — 화면마다 따로 조회하지 않는다
   const { farms, refreshFarms, reloadWeather } = useFarmData();
+  // 알림 규칙은 농장 전부를 한 번에 읽어 각 AlertRules 에 넘긴다 — 컴포넌트가 각자
+  // 조회하면 화면 진입 때 농장 수만큼 요청이 나간다.
+  const [rulesByFarm, setRulesByFarm] = useState<Record<string, AlertRuleRow[]>>({});
+  const farmIdsKey = farms.map((f) => f.farm_id).join(",");
+  useEffect(() => {
+    if (!farmIdsKey) return;
+    void listAlertRules(farmIdsKey.split(",")).then(setRulesByFarm);
+  }, [farmIdsKey]);
   // 「?farm=…&section=devices|rules」로 들어오면 그 농장의 해당 절을 화면 위로 올린다.
   // 진입 시점에 한 번만 읽는다 — 아래에서 주소를 지우므로 매 렌더 읽으면 값이 바뀐다
   const router = useRouter();
@@ -946,7 +958,7 @@ function SettingsContent() {
               className="mb-3"
             >
               <div className="mb-1.5 text-13 font-extrabold text-gray-600">{f.name}</div>
-              <AlertRules farmId={f.farm_id} editable={canControl(user)} />
+              <AlertRules editable={canControl(user)} rules={rulesByFarm[f.farm_id] ?? NO_RULES} />
             </div>
           ))
         )}

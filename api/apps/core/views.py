@@ -192,6 +192,14 @@ async def farm_snapshots(request):
     return await _proxy_middleware(f"/internal/farms/snapshots?{qs}")
 
 
+async def alert_rules_bulk(request):
+    """설정 화면용 묶음 규칙 조회 — 농장 수만큼 따로 요청하지 않도록."""
+    if request_user(request) is None:
+        return unauthorized()
+    qs = request.META.get("QUERY_STRING", "")
+    return await _proxy_middleware(f"/internal/alert-rules?{qs}")
+
+
 async def farm_snapshot(request, farm_id: str):
     """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
     if request_user(request) is None:

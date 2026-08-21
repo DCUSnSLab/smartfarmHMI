@@ -177,6 +177,22 @@ async function jsonOk(res: Response): Promise<boolean> {
 }
 
 // ── 발견(discovery) ──
+export interface AlertRuleRow {
+  id: number;
+  alert_kind: string;
+  sensor_type: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  enabled: boolean;
+}
+
+/** 농장별 알림 규칙을 한 번에 — 설정 화면이 농장 수만큼 요청하지 않도록 */
+export async function listAlertRules(farmIds: string[]): Promise<Record<string, AlertRuleRow[]>> {
+  if (farmIds.length === 0) return {};
+  const r = await apiFetch(`/api/alert-rules?farm_ids=${encodeURIComponent(farmIds.join(","))}`);
+  return r.ok ? r.json() : {};
+}
+
 export async function listDiscovery(): Promise<DiscoveredFarm[]> {
   const r = await apiFetch("/api/discovery");
   return r.ok ? r.json() : [];

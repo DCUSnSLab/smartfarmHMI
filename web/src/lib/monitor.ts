@@ -672,7 +672,13 @@ export function useServerLink(
   }, [wsOpen]);
   const graceOver = (Date.now() - changedAt.current) / 1000 > SERVER_SILENT_SEC;
 
-  if (!wsOpen) return graceOver ? "socket-down" : "unknown";   // unknown = 배너 없음
+  if (!wsOpen) {
+    // 유예는 「곧 복구될 재연결」에만 준다. 감독자는 수신이 SERVER_SILENT_SEC 넘게
+    // 끊긴 것을 확인한 뒤에야 소켓을 버리므로, 그 경우는 blip 이 아니다. 여기에
+    // 또 유예를 주면 이미 끊긴 것을 아는 채로 30초간 배너를 숨기게 된다.
+    const beatStale = beat !== null && (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC;
+    return graceOver || beatStale ? "socket-down" : "unknown";   // unknown = 배너 없음
+  }
   // 맥박을 한 번도 못 받은 채 유예가 지났다 = 공급이 끊긴 것. 접속 시점에 이미 브리지나
   // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않는데, 그동안 화면은 REST 로 받은 값을
   // 아무 표시 없이 보여 준다.

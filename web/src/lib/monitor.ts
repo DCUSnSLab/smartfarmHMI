@@ -233,6 +233,7 @@ export function useMonitor(scope: string) {
   const scopeRef = useRef(scope);
   const wsRef = useRef<WebSocket | null>(null);
   const loadStopsRef = useRef<() => Promise<void>>(async () => {});
+  const loadAlertsRef = useRef<() => Promise<void>>(async () => {});
 
   // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
@@ -269,15 +270,17 @@ export function useMonitor(scope: string) {
 
   // 알림은 스코프와 무관하게 전 농장분을 한 벌만 든다. 헤더 벨은 농장을 옮겨도 전체를
   // 보여야 하고, 농장별 화면은 이 저장소를 farm_id 로 걸러 쓴다 (lib/farmData.tsx).
-  // 서버도 알림을 스코프 그룹이 아닌 전용 그룹으로 보낸다 (mqtt_bridge 의 ALERTS_GROUP)
-  // — 그래서 여기서 한 번만 읽고 이후는 WS 가 갱신한다.
-  useEffect(() => {
-    apiFetch("/api/alerts?limit=100&counts=false").then(async (r) => {
-      if (!r.ok) return;
-      const page: AlertPageResponse = await r.json();
-      setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
-    });
+  // 서버도 알림을 스코프 그룹이 아닌 전용 그룹으로 보낸다 (mqtt_bridge 의 ALERTS_GROUP).
+  const loadAlerts = useCallback(async () => {
+    const r = await apiFetch("/api/alerts?limit=100&counts=false");
+    if (!r.ok) return;
+    const page: AlertPageResponse = await r.json();
+    setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
   }, []);
+
+  useEffect(() => {
+    void loadAlerts();
+  }, [loadAlerts]);
 
   useEffect(() => {
     void refreshFarms();
@@ -304,11 +307,12 @@ export function useMonitor(scope: string) {
     }
   }, [scope]);
 
-  // 재연결 직후의 정지 상태 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때
-  // 소켓이 다시 만들어지므로 ref 로 든다.
+  // 재연결 직후의 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때 소켓이
+  // 다시 만들어지므로 ref 로 든다.
   useEffect(() => {
     loadStopsRef.current = loadStops;
-  }, [loadStops]);
+    loadAlertsRef.current = loadAlerts;
+  }, [loadStops, loadAlerts]);
 
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
@@ -429,9 +433,15 @@ export function useMonitor(scope: string) {
         sock.send(JSON.stringify({ action: "subscribe", scope: scopeRef.current }));
         // 여는 시점을 수신으로 친다 — 맥박은 retained 라 곧 실제로 온다
         rxAt.current = Date.now();
-        // 끊긴 동안의 이벤트는 재전송되지 않는다 — 정지는 안전 표시라 어긋난 채로
-        // 남으면 안 되므로 재연결 시 현재 상태를 다시 읽는다 (이벤트가 드물어 비용 없음)
-        if (reconnected) void loadStopsRef.current();
+        // 끊긴 동안의 이벤트는 재전송되지 않는다. 서버도 가입 시 백로그를 주지 않으므로
+        // 재연결 때 현재 상태를 다시 읽는다 (둘 다 이벤트가 드물어 비용이 없다).
+        //   정지 — 안전 표시라 어긋난 채로 남으면 안 된다
+        //   알림 — 폴링을 걷어낸 뒤로 이 저장소를 채우는 경로가 여기뿐이다.
+        //          빠뜨리면 끊긴 동안의 알림이 새로고침 전까지 영영 누락된다.
+        if (reconnected) {
+          void loadStopsRef.current();
+          void loadAlertsRef.current();
+        }
       };
       sock.onclose = async (ev) => {
         if (ws !== sock) return;   // 감독자가 이미 버린 소켓의 뒤늦은 통보

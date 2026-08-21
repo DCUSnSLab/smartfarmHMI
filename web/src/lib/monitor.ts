@@ -691,7 +691,14 @@ export function useServerLink(
  *  읽어도 언제인지 감이 오지 않는다. 알림은 정리 정책이 없어 계속 쌓인다. */
 const RELATIVE_DAYS_MAX = 7;
 
-export function timeAgo(iso: string | null): string {
+/**
+ * 경과 시간을 사람이 읽는 문구로.
+ *
+ * withTime 은 날짜로 넘어간 구간에만 시:분을 붙인다. 이력을 되짚는 화면(알림 목록,
+ * 제어 이력, 정지 발동 시각)은 「8월 13일」만으로는 언제였는지 좁혀지지 않는다.
+ * 반대로 지금 값이 신선한지 훑는 화면(대시보드·상태)은 짧아야 하므로 붙이지 않는다.
+ */
+export function timeAgo(iso: string | null, opts?: { withTime?: boolean }): string {
   if (!iso) return "—";
   const then = new Date(iso);
   const at = then.getTime();
@@ -705,8 +712,13 @@ export function timeAgo(iso: string | null): string {
   const days = Math.floor(sec / 86_400);
   if (days <= RELATIVE_DAYS_MAX) return `${days}일 전`;
   // 해가 같으면 연도를 빼서 짧게 — 목록에서 한 줄에 들어가야 한다
-  const sameYear = then.getFullYear() === new Date(now).getFullYear();
-  return then.toLocaleDateString("ko-KR", sameYear
-    ? { month: "long", day: "numeric" }
-    : { year: "numeric", month: "long", day: "numeric" });
+  const date: Intl.DateTimeFormatOptions =
+    then.getFullYear() === new Date(now).getFullYear()
+      ? { month: "long", day: "numeric" }
+      : { year: "numeric", month: "long", day: "numeric" };
+  if (!opts?.withTime) return then.toLocaleDateString("ko-KR", date);
+  // hourCycle 을 h23 으로 못 박는다. hour12:false 는 ko-KR 에서 h24 로 풀려
+  // 자정 7분이 「24:07」로 나온다.
+  return then.toLocaleString("ko-KR",
+    { ...date, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }

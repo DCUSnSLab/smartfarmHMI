@@ -113,7 +113,7 @@ export function ControlPanel({
                 {c.params?.target != null && <span className="text-muted"> → {String(c.params.target)}</span>}
               </span>
               <span className="flex items-center gap-2">
-                <span className="text-11.5 font-semibold text-muted">{timeAgo(c.issued_at ?? null)}</span>
+                <span className="text-11.5 font-semibold text-muted">{timeAgo(c.issued_at ?? null, { withTime: true })}</span>
                 <span className={`rounded-lg px-2 py-0.5 text-12 font-extrabold ${STATUS_LABEL[c.status]?.cls ?? ""}`}>
                   {STATUS_LABEL[c.status]?.text ?? c.status}
                 </span>

@@ -673,7 +673,7 @@ function FarmDevices({ farmId }: { farmId: string }) {
                 {d.device_id}
                 <span className="font-semibold text-muted"> · {DEVICE_TYPE_LABEL[d.device_type] ?? d.device_type}</span>
                 {/* 지금 발행 중인 장치와 오래전에 사라진 흔적이 같이 모인다 */}
-                <span className="font-semibold text-muted"> · {timeAgo(d.last_seen ?? null)}</span>
+                <span className="font-semibold text-muted"> · {timeAgo(d.last_seen ?? null, { withTime: true })}</span>
               </span>
               <button onClick={() => setRegistering(d)} className="rounded-md px-2 py-1 text-12 font-bold text-primary-dark hover:bg-gray-100">등록</button>
             </div>

@@ -236,7 +236,7 @@ export function AlertList({
                 {SEV[a.severity].label}
               </span>
               <span className="block text-11.5 font-semibold text-muted">
-                {timeAgo(a.occurred_at)}
+                {timeAgo(a.occurred_at, { withTime: true })}
               </span>
             </span>
           </button>

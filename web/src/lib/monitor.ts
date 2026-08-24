@@ -19,6 +19,8 @@ export interface SensorValue {
   value: number | null;
   ts: string | null;
   sensor_state: string;
+  /** 이 센서를 묶어 발행하는 생육기 — 통신 판정이 부모를 먼저 본다 (FR-37) */
+  parent_device_id?: string | null;
 }
 
 export interface RobotValue {

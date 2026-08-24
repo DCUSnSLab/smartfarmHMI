@@ -154,7 +154,8 @@ async def _handle_layout(conn, msg: Layout, received_at: datetime) -> None:
     # 모양으로 채운다.
     def _row(**kw) -> dict:
         return {"layout_id": layout_id, "element_id": None, "zone": None, "zone_type": None,
-                "geometry": None, "connects": None, "x": None, "y": None, **kw}
+                "geometry": None, "connects": None, "x": None, "y": None,
+                "ref_device_id": None, **kw}
 
     # 세 종류는 서로 다른 개념이다 — 존은 주행 공간, 게이트는 존 사이 통로,
     # 지점은 작업 대상. 지점은 존 안에 있으므로 zone 이 소속을 가리키고,
@@ -168,7 +169,8 @@ async def _handle_layout(conn, msg: Layout, received_at: datetime) -> None:
              geometry=[list(p) for p in g.segment])
         for g in msg.gates
     ] + [
-        _row(element_type=p.point_type, element_id=p.id, x=p.x, y=p.y, zone=p.zone)
+        _row(element_type=p.point_type, element_id=p.id, x=p.x, y=p.y, zone=p.zone,
+             ref_device_id=p.device_id)
         for p in msg.points
     ]
     if rows:

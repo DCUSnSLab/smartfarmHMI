@@ -8,9 +8,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { CONN_STYLE, SEV_RANK } from "@/lib/severity";
 import { useVisiblePolling } from "@/lib/poll";
 import { apiFetch } from "@/lib/api";
-import { sensorLiveness, type ConnState, type RobotValue, type SensorValue, type StopState } from "@/lib/monitor";
+import { deviceGroups, inputFromSnapshot, type Ranges } from "@/lib/deviceStatus";
+import { type ConnState, type RobotValue, type SensorValue, type StopState } from "@/lib/monitor";
 
 export interface TankInfo {
   device_id: string;
@@ -27,6 +29,8 @@ export interface StationInfo {
   station_id: string;
   station_type: string;
   state: string;
+  /** 장비 등록의 표시 이름 — 사유 문구가 station_id 를 그대로 쓰면 못 알아본다 */
+  name?: string | null;
 }
 
 export interface FarmSnapshot {
@@ -37,14 +41,17 @@ export interface FarmSnapshot {
   tanks: TankInfo[];
   stations: StationInfo[];
   rack: { slots?: number; pallets?: number; stored?: number; moving?: number; at_station?: number };
-}
-
-/** 한 줄에 들어가야 한다 — 셋까지 이름을 적고 나머지는 「외 N」.
- *  쉼표는 이 목록에서만 쓴다 — 사유 문구에 넣으면 장치 이름 구분과 섞여 읽힌다. */
-function nameList(names: string[]): string {
-  return names.length <= 3
-    ? names.join(", ")
-    : `${names.slice(0, 3).join(", ")} 외 ${names.length - 3}`;
+  /**
+   * 적정 범위 — 설정의 알림 규칙(threshold) 상·하한. 스냅샷에 실어야 farmStatus 가
+   * 값 축을 볼 수 있다. 화면에서만 판정하면 농장 헤더의 「외 N건」과 상태 요약의
+   * 칩 개수가 갈린다 (근거가 둘이 되므로).
+   */
+  ranges?: Ranges;
+  /**
+   * 대장에 등록된 로봇 — 값이 한 번도 오지 않은 로봇도 목록과 판정에 남긴다.
+   * 이게 없으면 화면(대장 기준)과 농장 상태(스냅샷 기준)의 대수가 갈린다.
+   */
+  robot_ids?: string[];
 }
 
 /** 사유 한 건 — 화면은 이걸 칩 하나로 그린다 (색은 sev) */
@@ -64,18 +71,18 @@ export interface FarmStatus {
 /**
  * 농장 상태 파생 — 점 색과 배지의 유일한 근거.
  *
- * 세 축만 본다: **정지 · 장치 통신 · 센서 신선도**. 미확인 알림은 넣지 않는다 —
- * 읽었는지 여부는 사람의 처리 상태이지 농장의 상태가 아니고, 확인만 눌러도
- * 색이 바뀌어 현장이 나아진 것처럼 보인다 (미확인 건수는 KPI 타일이 따로 센다).
+ * 축은 **정지 · 장치 상태**다. 장치 상태는 deviceStatus.deviceGroups 가 만든다 —
+ * 상태 화면의 설비 현황·하드웨어·배치도가 쓰는 것과 같은 함수다. 그래서 농장 헤더의
+ * 「경고 · … 외 3건」과 상태 요약 카드의 칩 개수가 항상 맞는다. 예전에는 여기서
+ * 통신만 따로 세고 값·잔량·작업 상태는 보지 않아, 상한을 넘은 CO₂ 나 바닥난 탱크가
+ * 대시보드에서 초록으로 남았다.
  *
- * 센서를 함께 보는 이유: 엣지가 살아 있어도 센서 값이 멎으면 화면의 수치가 과거에
- * 멈춘 채로 정상처럼 보인다. 임계는 장치 목록과 같다 (monitor.sensorLiveness).
+ * 미확인 알림은 넣지 않는다 — 읽었는지 여부는 사람의 처리 상태이지 농장의 상태가
+ * 아니고, 확인만 눌러도 색이 바뀌어 현장이 나아진 것처럼 보인다.
  */
 export function farmStatus(snap: FarmSnapshot, stops: StopState): FarmStatus {
   const farmId = snap.farm.farm_id;
   const reasons: FarmReason[] = [];
-  let warn = false;
-  let caution = false;
 
   // ── 정지 ──
   if (stops.remote) reasons.push({ sev: "warning", text: "원격 전체정지 발동 중" });
@@ -86,34 +93,42 @@ export function farmStatus(snap: FarmSnapshot, stops: StopState): FarmStatus {
   }
   const stopped = reasons.length > 0;
 
-  // ── 통신 ──
-  // 장치와 센서를 한 목록으로 합친다. 상태 이름은 하드웨어 목록과 같은 말을 쓴다
-  // (정상 · 응답 지연 · 오프라인) — 같은 장치가 화면마다 다른 말로 불리면 안 된다.
-  // 엣지를 맨 앞에 두어 원인이 먼저 읽히게 한다 (뒤의 장치는 대개 그 결과다).
-  const isEdge = (c: { device_type?: string | null; device_id: string }) =>
-    c.device_type === "edge" || c.device_id.startsWith("edge");
-  const byEdgeFirst = [...snap.connections].sort(
-    (a, b) => Number(isEdge(b)) - Number(isEdge(a)),
+  // ── 엣지·생육기 ──
+  // 하드웨어 목록의 네 종류(로봇·센서·탱크·워크스테이션)에는 없지만 원인은 대개
+  // 이쪽이다. 먼저 적어 헤더 한 줄에 결과가 아니라 원인이 오게 한다.
+  const groups = deviceGroups(inputFromSnapshot(snap));
+  const inGroups = new Set(groups.flatMap((g) => g.items.map((d) => d.id)));
+  const upstream = snap.connections.filter(
+    (c) => !inGroups.has(c.device_id) && c.state !== "online",
   );
+  for (const c of upstream) {
+    const style = CONN_STYLE[c.state] ?? CONN_STYLE.unknown;
+    reasons.push({
+      sev: style.sev === "warning" ? "warning" : "caution",
+      text: `${c.name || c.device_id} ${style.label}`,
+    });
+  }
 
-  // 탱크는 빼둔다 — 발행 주체가 아니라 수위계 센서가 값의 출처이고, 그 센서는
-  // 아래 목록에 이미 들어 있다. 둘 다 세면 같은 고장이 두 번 잡힌다
-  // (하드웨어 목록의 탱크 행도 통신이 아니라 잔량을 보여준다).
-  const pick = (want: "offline" | "degraded") => [
-    ...byEdgeFirst.filter((c) => c.state === want).map((c) => c.name || c.device_id),
-    ...snap.sensors.filter((s) => sensorLiveness(s.ts) === want).map((s) => s.name || s.sensor_id),
-  ];
-  const offline = pick("offline");
-  const degraded = pick("degraded");
-  if (offline.length) { reasons.push({ sev: "warning", text: `오프라인: ${nameList(offline)}` }); warn = true; }
-  if (degraded.length) { reasons.push({ sev: "caution", text: `응답 지연: ${nameList(degraded)}` }); caution = true; }
+  // ── 장치 ──
+  // 엣지·생육기가 끊긴 동안에는 그 아래 장치의 「수신」 사유를 적지 않는다. 원인은
+  // 위에 이미 한 줄로 있고, 여기에 또 적으면 센서 아홉 개가 같은 고장을 아홉 번
+  // 반복한다 (헤더가 「외 12건」이 되어 정작 무엇이 문제인지 가려진다).
+  const cascade = upstream.length > 0;
+  const bad = groups
+    .flatMap((g) => g.items)
+    .filter((d) => d.sev === "warning" || d.sev === "caution")
+    .filter((d) => !(cascade && d.worstAxis === "수신"));
+
+  for (const d of [...bad].sort((a, b) => (SEV_RANK[b.sev] ?? 0) - (SEV_RANK[a.sev] ?? 0))) {
+    reasons.push({ sev: d.sev === "warning" ? "warning" : "caution", text: `${d.name} ${d.label}` });
+  }
 
   // 색은 가장 높은 단계를 따르되, 사유는 지금 걸린 것을 모두 남긴다. 정지는 제어·작업을
   // 멈출 뿐 통신을 끊지 않는다 — 센서를 손보려고 정지시킨 사람은 정지 중에도 그 센서가
   // 붙었는지 봐야 하고, 정지를 풀어야 비로소 알 수 있게 되면 안 된다.
   if (stopped) return { sev: "warning", label: "정지 중", reasons };
-  if (warn) return { sev: "warning", label: "경고", reasons };
-  if (caution) return { sev: "caution", label: "주의", reasons };
+  if (reasons.some((r) => r.sev === "warning")) return { sev: "warning", label: "경고", reasons };
+  if (reasons.length) return { sev: "caution", label: "주의", reasons };
   return { sev: "ok", label: "정상", reasons: [] };
 }
 

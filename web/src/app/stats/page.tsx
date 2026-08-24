@@ -8,7 +8,8 @@
 
 import { useEffect, useState } from "react";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
-import { Card, LineChart, NavItemData, ScopeBar, SectionTitle, SENSOR_META } from "@/components/ui";
+import { Card, LineChart, NavItemData, ScopeBar, SectionTitle } from "@/components/ui";
+import { SENSOR_META } from "@/lib/severity";
 import { apiFetch } from "@/lib/api";
 import { useFarmData, useScope } from "@/lib/farmData";
 import { HistoryPoint, fetchHistory } from "@/lib/farmDetail";

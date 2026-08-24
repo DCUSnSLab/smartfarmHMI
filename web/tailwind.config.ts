@@ -41,6 +41,10 @@ const config: Config = {
           warningDark: "#E01F35",
           info: "#3182F6",
           infoDark: "#1B64DA",
+          // 「대기」 — 정보(파랑)와 다른 축이다. 일이 없는 상태는 눈에 띄지 않아야
+          // 하고, 파랑을 쓰면 「작업 중」(infoDark)과 같은 뜻으로 읽힌다.
+          idle: "#B0B8C1",
+          idleDark: "#6B7684",
         },
         surface: "#F2F4F6",
         body: "#191F28",

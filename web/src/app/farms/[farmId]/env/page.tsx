@@ -12,17 +12,20 @@ import { useParams } from "next/navigation";
 import { ControlPanel } from "@/components/ControlPanel";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import { SensorModal } from "@/components/SensorModal";
-import { Card, CONN_STYLE, SectionTitle, SENSOR_META, StatusDot } from "@/components/ui";
+import { Card, SectionTitle, StatusDot } from "@/components/ui";
+import { CONN_STYLE, SENSOR_META } from "@/lib/severity";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import { useRanges } from "@/lib/farmDetail";
+import { useFarmSnapshot } from "@/lib/farmDetail";
 import { SensorValue, controlBlocked, timeAgo } from "@/lib/monitor";
 
 export default function EnvTab() {
   const { farmId } = useParams<{ farmId: string }>();
   const user = useUser();
   const { sensors, conns, commands, stops } = useFarmData();
-  const ranges = useRanges(farmId);
+  // 적정 범위는 스냅샷이 싣고 온다 — 알림 규칙을 따로 부르면 요청이 하나 늘고,
+  // 무엇보다 근거가 둘이 된다 (스냅샷은 enabled 인 규칙만 싣는다).
+  const ranges = useFarmSnapshot(farmId)?.ranges ?? {};
   const [selected, setSelected] = useState<SensorValue | null>(null);
 
   const list = Object.values(sensors);

@@ -224,12 +224,22 @@ async def _snapshots(conn, farm_ids: list[str]) -> dict[str, dict]:
     # 「co2-a 값 두절」처럼 사람이 못 알아보는 문구가 된다 (목록은 「CO₂센서」로 부른다).
     # 조인 대신 map 을 쓰는 이유: not_soft_deleted 가 device_meta 를 참조하는
     # 상관 서브쿼리라, 같은 표를 FROM 에 넣으면 자동 상관으로 서브쿼리가 비어 버린다.
+    #
+    # 같은 조회에서 로봇 명단도 뽑는다 — 등록만 되고 한 번도 발행하지 않은 로봇은
+    # robot_status 에도 device_connection_state 에도 없어, 이것 없이는 화면에서
+    # 아예 사라진다. 「없는 로봇」과 「말이 없는 로봇」은 다른 상태다.
     names: dict[str, dict[str, str]] = {i: {} for i in ids}
+    robot_ids: dict[str, list[str]] = {i: [] for i in ids}
     for r in (await conn.execute(
-        select(m.device_meta.c.farm_id, m.device_meta.c.device_id, m.device_meta.c.name)
+        select(m.device_meta.c.farm_id, m.device_meta.c.device_id, m.device_meta.c.name,
+               m.device_meta.c.device_type)
         .where(m.device_meta.c.farm_id.in_(ids))
+        .where(m.device_meta.c.deleted_at.is_(None))
+        .order_by(m.device_meta.c.farm_id, m.device_meta.c.device_id)
     )).mappings().all():
         names.setdefault(r["farm_id"], {})[r["device_id"]] = r["name"]
+        if r["device_type"] == "robot":
+            robot_ids.setdefault(r["farm_id"], []).append(r["device_id"])
 
     sensors = _group((await conn.execute(
         select(m.sensor).where(m.sensor.c.farm_id.in_(ids))
@@ -287,6 +297,19 @@ async def _snapshots(conn, farm_ids: list[str]) -> dict[str, dict]:
         .order_by(m.work_station.c.farm_id, m.work_station.c.station_id)
     )).mappings().all())
 
+    # 적정 범위 — 설정의 알림 규칙(threshold) 상·하한. 화면의 게이지와 농장 상태
+    # 판정(web fleet.farmStatus)이 **같은 기준**을 써야 하므로 상태와 함께 싣는다.
+    # 따로 받아 가면 「CO₂ 적정 초과」를 화면은 경고로 그리는데 농장 점은 초록으로
+    # 남는다 — 같은 순간의 같은 농장인데 근거가 둘이 된다.
+    ranges = _group((await conn.execute(
+        select(m.alert_rule)
+        .where(m.alert_rule.c.farm_id.in_(ids))
+        .where(m.alert_rule.c.alert_kind == "threshold")
+        .where(m.alert_rule.c.enabled.is_(True))
+        .where(m.alert_rule.c.sensor_type.isnot(None))
+        .order_by(m.alert_rule.c.farm_id, m.alert_rule.c.id)
+    )).mappings().all())
+
     slots = {
         r["farm_id"]: r["slots"]
         for r in (await conn.execute(
@@ -322,7 +345,11 @@ async def _snapshots(conn, farm_ids: list[str]) -> dict[str, dict]:
                  "sensor_type": s["sensor_type"], "unit": s["unit"],
                  "location": s["location"], "value": s["last_value"],
                  "ts": s["last_ts"].isoformat() if s["last_ts"] else None,
-                 "sensor_state": s["sensor_state"]}
+                 "sensor_state": s["sensor_state"],
+                 # 통신 판정(FR-37)이 부모를 먼저 본다 — 생육기가 끊기면 그 아래 센서의
+                 # 마지막 수신 시각은 멀쩡해도 값은 과거다. 화면과 농장 상태 판정이
+                 # 같은 부모를 봐야 같은 색이 나온다.
+                 "parent_device_id": s["parent_device_id"]}
                 for s in sensors[fid]
             ],
             "robots": [
@@ -342,9 +369,14 @@ async def _snapshots(conn, farm_ids: list[str]) -> dict[str, dict]:
             "tanks": _tank_view(tanks[fid], sensors[fid]),
             "stations": [
                 {"station_id": s["station_id"], "station_type": s["station_type"],
-                 "state": s["state"]}
+                 "state": s["state"], "name": name_of.get(s["station_id"])}
                 for s in stations[fid]
             ],
+            "ranges": {
+                r["sensor_type"]: {"min": r["min_value"], "max": r["max_value"]}
+                for r in ranges[fid]
+            },
+            "robot_ids": robot_ids.get(fid, []),
             "rack": {
                 "slots": slots.get(fid, 0),
                 "pallets": pallet["pallets"] if pallet else 0,

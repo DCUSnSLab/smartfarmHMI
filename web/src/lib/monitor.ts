@@ -323,6 +323,9 @@ export function useMonitor(scope: string) {
     let pingAt = 0;   // 생존 확인 ping 을 보낸 시각 (0 = 보내지 않음)
     let pongAt = 0;   // 그 응답이 도착한 시각 — 감독자가 소켓 생존을 판정한다
     let openAt = 0;   // 소켓을 만든 시각 — CONNECTING 에서 멈추는 것도 감독 대상이다
+    // 예약된 재연결 시각 (0 = 예약 없음). 타이머 핸들이 아니라 시각으로 든다 —
+    // 핸들의 존재만 보면 그 타이머가 사라졌을 때 영영 기다리게 된다 (아래 check).
+    let reconnectAt = 0;
 
     const onMessage = (ev: MessageEvent) => {
       rxAt.current = Date.now();   // 무엇이든 받았다 = 소켓은 살아 있다
@@ -420,6 +423,7 @@ export function useMonitor(scope: string) {
     const connect = () => {
       clearTimeout(timer);
       timer = undefined;
+      reconnectAt = 0;
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
       ws = sock;
@@ -477,8 +481,9 @@ export function useMonitor(scope: string) {
     // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
     const reconnect = () => {
       clearTimeout(timer);
-      const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++);
-      timer = setTimeout(connect, wait * (0.75 + Math.random() * 0.5));
+      const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++) * (0.75 + Math.random() * 0.5);
+      reconnectAt = Date.now() + wait;
+      timer = setTimeout(connect, wait);
     };
 
     /**
@@ -494,9 +499,20 @@ export function useMonitor(scope: string) {
      */
     const check = () => {
       if (closed || document.visibilityState !== "visible") return;
-      // 재연결이 이미 예약돼 있으면 관여하지 않는다. onclose 가 잡아 준 백오프를
-      // 여기서 덮어쓰면 서버가 내려간 동안 간격이 늘지 않아 5초마다 두드리게 된다.
-      if (timer !== undefined) return;
+      // 재연결 예약은 핸들이 아니라 시각으로 판단한다.
+      //
+      // 예약 시각 전이면 기다린다 — 백오프를 여기서 덮어쓰면 서버가 내려간 동안 간격이
+      // 늘지 않아 5초마다 두드리게 된다.
+      //
+      // 예약 시각이 지났는데도 connect 가 돌지 않았다면 그 타이머는 사라진 것이다. 탭이
+      // 정지·폐기되면 브라우저가 대기 중인 일회성 setTimeout 을 버린다 (setInterval 인
+      // 이 감독자는 깨어나면 다시 돈다). 「예약이 있으니 기다린다」로 두면 그 순간부터
+      // 영영 재연결하지 않는다 — 감독자를 둔 이유가 사라진다.
+      if (reconnectAt) {
+        if (Date.now() < reconnectAt) return;
+        connect();
+        return;
+      }
 
       // 연결 중인 소켓도 감독한다 — CONNECTING 에서 멈추면 콜백이 오지 않는다
       if (ws?.readyState === WebSocket.CONNECTING) {

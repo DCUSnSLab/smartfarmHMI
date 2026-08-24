@@ -2,7 +2,7 @@
 
 사내 온프레미스 Kubernetes 클러스터 배포용 매니페스트 (AIBootcamp `deploy/k8s` 패턴 미러).
 
-> **상태: dev 운영 중** (2026-08-06 개통, GEN-1264). `http://<노드IP>:30480`
+> **상태: dev 운영 중** (2026-08-06 개통, GEN-1264). `http://203.250.33.77`
 > develop 머지 후 Jenkins로 배포된다.
 > main(운영) overlay 는 아직 미개통.
 
@@ -30,7 +30,7 @@ deploy/k8s/
 │   ├── nginx.yaml + nginx.conf # 단일 진입점
 │   └── kustomization.yaml
 └── overlays/
-    ├── dev/                    # namespace smartfarmhmi-dev · NodePort 30480
+    ├── dev/                    # namespace smartfarmhmi-dev · LoadBalancer 203.250.33.77:80
     └── main/                   # namespace smartfarmhmi · NodePort 30481 (TLS·HPA TODO)
 ```
 
@@ -115,7 +115,13 @@ kubectl rollout status deploy/smartfarmhmi-middleware -n $NS --timeout=5m
 kubectl rollout status deploy/smartfarmhmi-web        -n $NS --timeout=5m
 kubectl rollout status deploy/smartfarmhmi-nginx      -n $NS --timeout=5m
 
-echo "접속: http://<node-ip>:$(kubectl get svc smartfarmhmi-nginx -n $NS -o jsonpath='{.spec.ports[0].nodePort}')"
+# dev 는 LoadBalancer(203.250.33.77 의 80), main 은 아직 NodePort — 둘 다 대응
+GW_IP=$(kubectl get svc smartfarmhmi-nginx -n $NS -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -n "$GW_IP" ]; then
+  echo "접속: http://$GW_IP"
+else
+  echo "접속: http://<node-ip>:$(kubectl get svc smartfarmhmi-nginx -n $NS -o jsonpath='{.spec.ports[0].nodePort}')"
+fi
 ```
 
 ### 4. 배포 후 1회성 — 시드 데이터

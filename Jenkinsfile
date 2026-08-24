@@ -182,7 +182,13 @@ pipeline {
                         kubectl rollout status deploy/smartfarmhmi-web        -n ${NAMESPACE} --timeout=5m
                         kubectl rollout status deploy/smartfarmhmi-nginx      -n ${NAMESPACE} --timeout=5m
 
-                        echo "Gateway NodePort: \$(kubectl get svc smartfarmhmi-nginx -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')"
+                        # dev 는 LoadBalancer(고정 IP), main 은 아직 NodePort — 둘 다 대응한다.
+                        GW_IP=\$(kubectl get svc smartfarmhmi-nginx -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                        if [ -n "\$GW_IP" ]; then
+                            echo "Gateway: http://\$GW_IP"
+                        else
+                            echo "Gateway NodePort: \$(kubectl get svc smartfarmhmi-nginx -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}')"
+                        fi
                     """
                 }
             }

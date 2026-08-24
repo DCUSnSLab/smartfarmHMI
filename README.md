@@ -148,7 +148,7 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 
 | 브랜치 | 네임스페이스 | 환경 | 노출 | 상태 |
 |---|---|---|---|---|
-| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 | **운영 중** |
+| `develop` | `smartfarmhmi-dev` | dev | LoadBalancer 203.250.33.77:80 | **운영 중** |
 | `main` | `smartfarmhmi` | 운영 | NodePort 30481 | 미개통 (TLS·도메인·Harbor 프로젝트 TODO) |
 
 - 매니페스트: `deploy/k8s/` (base + overlays/{dev,main}) — 렌더 확인: `kubectl kustomize deploy/k8s/overlays/dev`
@@ -250,3 +250,4 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 - 2026-07-29 · 개발 착수 — DB 스키마 정의(db-schema.md, OPN-09·15 해소), 개발 증분 계획(dev-increments.md), 개발 스캐폴딩(모노레포·compose·k8s 스켈레톤), develop 브랜치 신설
 - 2026-07-30 · 증분 0~7 구현 완료 반영 — 프로젝트 소개·Getting Started 튜토리얼·배포 안내로 README 개편, 개발 현황 표 신설(dev-increments.md), 증분 8 보류·검토 논점 기록
 - 2026-08-06 · **dev 서버 개통** (GEN-1264) — k8s 매니페스트 누락분 보강, Jenkins Harbor push·배포 연결. 배포 절이 스켈레톤 안내에서 실제 접속 정보·시드 계정으로 바뀜
+- 2026-08-24 · dev 게이트웨이 노출 전환 (GEN-1383) — NodePort 30480 → **LoadBalancer 203.250.33.77:80**

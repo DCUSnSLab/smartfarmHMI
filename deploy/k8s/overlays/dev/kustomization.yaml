@@ -27,7 +27,7 @@ images:
   - name: harbor.cu.ac.kr/smartfarmhmi-dev/web
     newTag: latest
 
-# nginx 만 외부 노출 (NodePort 30480)
+# nginx 만 외부 노출 (LoadBalancer 203.250.33.77:80)
 patches:
-  - path: nginx-nodeport.yaml
+  - path: nginx-loadbalancer.yaml
     target: { kind: Service, name: smartfarmhmi-nginx }

@@ -7,7 +7,8 @@
 
 import { useParams } from "next/navigation";
 import { PlannedBox } from "@/components/Planned";
-import { Card, Gauge, SectionTitle, StatusDot, STATION_STATE, TANK_LABEL, TANK_LOW_PCT } from "@/components/ui";
+import { Card, Gauge, SectionTitle, StatusDot } from "@/components/ui";
+import { STATION_STATE, TANK_LABEL, TANK_LOW_PCT } from "@/lib/severity";
 import { useFarmSnapshot } from "@/lib/farmDetail";
 
 export default function SupplyTab() {

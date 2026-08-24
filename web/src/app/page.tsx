@@ -11,8 +11,8 @@ import { useRouter } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
 import {
   Card, Gauge, GO_LINK, KpiTile, SectionTitle, StatusDot, StatusMark,
-  SENSOR_META, SEV_STYLE, TANK_LABEL,
 } from "@/components/ui";
+import { SENSOR_META, SEV_STYLE, TANK_LABEL } from "@/lib/severity";
 import { useFarmData, useScope } from "@/lib/farmData";
 import { FarmSnapshot, farmStatus, sensorOf } from "@/lib/fleet";
 import { timeAgo, type StopState } from "@/lib/monitor";

@@ -8,9 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { PlannedBox, PlannedChip } from "@/components/Planned";
-import {
-  Card, CONN_STYLE, Modal, SectionTitle, StatusDot, PHASE_LABEL,
-} from "@/components/ui";
+import { Card, Modal, SectionTitle, StatusDot } from "@/components/ui";
+import { CONN_STYLE, PHASE_LABEL } from "@/lib/severity";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
 import {

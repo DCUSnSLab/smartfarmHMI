@@ -3,9 +3,15 @@
 /**
  * 공용 UI 프리미티브 — 디자인 전달본 토큰 기반 (docs/design/README.md 디자인 토큰).
  * 상태는 색 + 도형·문자 병기 (비기능 §5 접근성: 색 단독 구분 금지).
+ *
+ * **그리는 것만** 여기 둔다. 등급·문구·색과 등급을 정하는 규칙은 lib/severity 에 있다 —
+ * 판정 로직(lib/deviceStatus·lib/fleet)이 그 어휘를 쓰는데, 어휘가 이 파일에 있으면
+ * 순수 로직이 React·next/link 까지 끌고 들어와 단독으로 시험할 수 없다.
  */
 
 import { CSSProperties, RefObject, useCallback, useEffect, useRef, useState } from "react";
+// 등급·문구·색은 lib/severity 가 갖는다 — 여기는 그리는 쪽이다.
+import { SEV_STYLE, sevHex, TANK_LOW_PCT } from "@/lib/severity";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -93,58 +99,6 @@ export function useLightDismiss(
     };
   }, [open, ref, onClose]);
 }
-
-export const SEV_STYLE: Record<string, { dot: string; text: string; bg: string; label: string }> = {
-  ok: { dot: "bg-status-ok", text: "text-primary-dark", bg: "bg-primary-bg", label: "정상" },
-  caution: { dot: "bg-status-caution", text: "text-status-cautionDark", bg: "bg-status-caution/10", label: "주의" },
-  warning: { dot: "bg-status-warning", text: "text-status-warningDark", bg: "bg-status-warning/10", label: "경고" },
-  info: { dot: "bg-status-info", text: "text-status-infoDark", bg: "bg-status-info/10", label: "정보" },
-};
-
-export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
-  online: { label: "정상", sev: "ok" },
-  degraded: { label: "응답 지연", sev: "caution" },
-  offline: { label: "오프라인", sev: "warning" },
-  // 통신 상태 행이 없는 장치 — 배지를 지우면 정상처럼 보인다.
-  unknown: { label: "통신 상태 미확인", sev: "caution" },
-};
-
-/**
- * 탱크 표시 — 통신 상태(CONN_STYLE)와 **다른 축**이다.
- *
- * 탱크는 발행 주체가 아니다. 값의 출처는 수위계 센서(`{탱크}-lv`)이고, 탱크 자체는
- * birth·하트비트·LWT 가 없다. 그래서 「탱크 오프라인」은 실제로 수위계 이야기이고,
- * 같은 고장이 목록에 두 줄로 나온다 (워크스테이션을 통신 축에서 뺀 것과 같은 이유).
- * 대신 탱크가 실제로 말해 줄 수 있는 것 — 잔량 — 을 보여준다.
- *
- * 20% 기준과 「잔량 부족」 문구는 작업·공급 화면과 같은 값을 쓴다.
- */
-export const TANK_LOW_PCT = 20;
-
-export function tankBadge(
-  levelPct: number | null | undefined,
-  sensorState: "online" | "degraded" | "offline",
-): { label: string; sev: string } {
-  if (sensorState === "offline" || levelPct == null) {
-    return { label: "수위 확인 불가", sev: "warning" };
-  }
-  if (sensorState === "degraded") return { label: "수위 갱신 지연", sev: "caution" };
-  return levelPct < TANK_LOW_PCT
-    ? { label: "잔량 부족", sev: "caution" }
-    : { label: "적정", sev: "ok" };
-}
-
-/**
- * 워크스테이션 작업 상태 — 통신 상태(CONN_STYLE)와 **다른 축**이다.
- * 워크스테이션은 자기 통신 경로가 없어(FR-37 대상은 엣지·센서·로봇) 이 상태로 표시한다.
- * 상태·작업공급 두 화면이 같은 문구를 쓰도록 여기 둔다 — 각자 적으면 갈라진다.
- */
-export const STATION_STATE: Record<string, { label: string; sev: string }> = {
-  idle: { label: "대기", sev: "info" },
-  busy: { label: "작업 중", sev: "ok" },
-  // 「이상」은 통신 이상과 섞여 읽힌다 — 조작이 아니라 현장 점검이 필요한 상태다
-  fault: { label: "점검 필요", sev: "warning" },
-};
 
 export function Card({
   children, className = "", onClick,
@@ -276,6 +230,241 @@ export function Gauge({
           <span className={inRange ? "" : "text-status-cautionDark"}>
             {inRange ? "적정" : "범위 밖"}
           </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 반원 아크 게이지 — 환경 상태 카드 (디자인 "농장 상세: 상태").
+ *
+ * 적정 범위(알림 규칙의 상·하한)를 연한 띠로 깔고 그 위에 현재값을 그린다.
+ * 축 끝값은 적정 범위를 기준으로 넓혀 잡는다 — 상한에 딱 붙은 값도 눈에 보이게.
+ *
+ * 가운데 숫자는 SVG `<text>` 가 아니라 HTML 로 얹는다. SVG 글자는 viewBox 배율을
+ * 따라가므로 큰글씨 3단계(root font-size)에 반응하지 않는다 (비기능 §5).
+ */
+const ARC_D = "M17 58 A42 42 0 0 1 101 58";
+const ARC_LEN = Math.PI * 42;  // 반원 길이 (반지름 42) ≈ 131.95
+
+/** 축 끝값 표시 — 정수는 소수점을 붙이지 않는다 (「16」 vs 「16.0」) */
+export function trimNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+export function ArcGauge({
+  label, unit, value, min, max, okMin, okMax, sev = "ok", sub, badge, digits = 1,
+}: {
+  label: string;
+  unit?: string;
+  value: number | null;
+  min: number; max: number;
+  okMin?: number | null; okMax?: number | null;
+  /** 값 축과 수신 축 중 나쁜 쪽 — 호출부가 정한다 (지연이면 값이 적정이어도 주황) */
+  sev?: string;
+  sub?: React.ReactNode;
+  /** 게이지 위에 얹는 칩 (예: 「4분 전」) */
+  badge?: React.ReactNode;
+  digits?: number;
+}) {
+  const span = max - min || 1;
+  const at = (v: number) => Math.max(0, Math.min(1, (v - min) / span)) * ARC_LEN;
+  const filled = value == null ? 0 : at(value);
+  const hex = value == null ? SEV_STYLE.idle.hex : sevHex(sev);
+
+  // 적정 범위 띠 — 상·하한이 다 있을 때만. 한쪽만 있으면 「어디까지가 적정」이
+  // 그림에서 거짓이 된다 (열린 구간을 띠로 그리면 닫힌 것처럼 보인다).
+  const band = okMin != null && okMax != null
+    ? { start: at(okMin), len: Math.max(0, at(okMax) - at(okMin)) }
+    : null;
+
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-0.5">
+      <div className="relative w-full max-w-[196px]">
+        <svg viewBox="0 0 118 62" className="block h-auto w-full" aria-hidden="true">
+          <path d={ARC_D} fill="none" stroke="#F2F4F6" strokeWidth={11} strokeLinecap="round" />
+          {band && (
+            <path
+              d={ARC_D} fill="none" stroke="#E7F7EF" strokeWidth={11}
+              strokeDasharray={`${band.len.toFixed(1)} ${ARC_LEN.toFixed(1)}`}
+              strokeDashoffset={-band.start}
+            />
+          )}
+          {value != null && (
+            <path
+              d={ARC_D} fill="none" stroke={hex} strokeWidth={11} strokeLinecap="round"
+              strokeDasharray={`${filled.toFixed(1)} ${ARC_LEN.toFixed(1)}`}
+            />
+          )}
+          {/* 축을 넘어선 값 — 호를 꽉 채우고 끝에 점을 얹어 「여기서 멈춘 게 아니다」를 남긴다 */}
+          {value != null && value >= max && (
+            <circle cx={101} cy={58} r={4.4} fill="#fff" stroke={hex} strokeWidth={2.4} />
+          )}
+        </svg>
+        <div className="pointer-events-none absolute inset-x-0 bottom-[4%] flex justify-center">
+          <span
+            className={`text-17 font-extrabold leading-none ${
+              value == null ? "text-muted"
+              : sev === "ok" || sev === "busy" ? ""
+              : SEV_STYLE[sev]?.text ?? ""
+            }`}
+          >
+            {value == null ? "—" : value.toFixed(digits)}
+          </span>
+        </div>
+        {badge}
+      </div>
+      <div className="flex w-full max-w-[172px] justify-between text-11 font-bold text-status-idle">
+        <span>{trimNum(min)}</span>
+        <span>{trimNum(max)}</span>
+      </div>
+      <div className="text-13 font-extrabold">
+        {label}
+        {unit && <span className="ml-1 text-11 font-bold text-muted">{unit}</span>}
+      </div>
+      {sub && <div className="text-center text-11 font-semibold text-muted">{sub}</div>}
+    </div>
+  );
+}
+
+/**
+ * 수직 탱크 — 탱크 카드 (디자인 "농장 상세: 상태").
+ * 개수는 농장마다 다르므로 폭을 나눠 갖는다 (flex-1) — 3기면 3기 폭으로 넓어진다.
+ */
+export function TankColumn({
+  label, pct, sev, amount, note,
+}: {
+  label: string;
+  pct: number | null;
+  sev: string;
+  /** 첫 줄 — 잔량 (「약 409.6L」) */
+  amount: string;
+  /** 둘째 줄 — 남은 기간이나 이유 (「4.1일분」·「잔량 부족」). 없어도 줄은 남긴다 */
+  note?: string;
+}) {
+  const s = SEV_STYLE[sev] ?? SEV_STYLE.idle;
+  const bad = sev === "caution" || sev === "warning";
+  return (
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+      <span className={`text-17 font-extrabold ${bad ? s.text : ""}`}>
+        {pct == null ? "—" : Math.round(pct)}
+        <span className="text-11 font-bold text-muted">%</span>
+      </span>
+      <div
+        className={`relative min-h-[104px] w-full max-w-[74px] flex-1 overflow-hidden rounded-xl border-[1.5px] bg-[#F7F8FA] ${
+          bad ? "border-status-caution/40" : "border-[#DDE2E7]"
+        }`}
+      >
+        {pct != null && (
+          <div
+            className={`absolute inset-x-0 bottom-0 ${s.dot}`}
+            style={{ height: `${Math.max(0, Math.min(100, pct))}%` }}
+          />
+        )}
+        {/* 잔량 부족 기준선 — 「얼마나 남았나」를 숫자 없이 읽게 한다 */}
+        <div
+          className="absolute inset-x-0 border-t-[1.5px] border-dashed border-status-idle"
+          style={{ bottom: `${TANK_LOW_PCT}%` }}
+        />
+      </div>
+      <div className="flex items-center gap-1.5 text-12 font-extrabold">
+        {bad && <StatusMark sev={sev} />}
+        <span className="truncate">{label}</span>
+      </div>
+      {/*
+        잔량과 남은 기간을 **줄로 나눠** 적는다. 한 줄에 「약 409.6L · 4.1일분」으로
+        붙여 놓으면 큰글씨에서 긴 탱크만 두 줄로 접히고, 그 한 줄 때문에 그 칸의
+        수위 막대(flex-1)가 남은 높이를 잃어 옆 칸보다 짧아진다 — 잔량을 비교하는
+        그림인데 막대 길이가 글자 길이에 좌우된다.
+        줄 수를 모든 칸에 똑같이 두 줄로 박아 두면 접힘도 높이 차이도 생기지 않는다.
+      */}
+      <div className={`w-full text-center text-10.5 ${bad ? `font-bold ${s.text}` : "font-semibold text-muted"}`}>
+        <div className="truncate" title={amount}>{amount}</div>
+        <div className="truncate" title={note || undefined}>{note || "\u00A0"}</div>
+      </div>
+    </div>
+  );
+}
+
+export interface RingSlice {
+  key: string;
+  label: string;
+  /** 이 등급에 속한 항목 이름 — 겹쳐 띄우는 설명에 적는다 */
+  names: string[];
+}
+
+/**
+ * 상태 고리 — 설비 현황 카드 (디자인 "농장 상세: 상태").
+ *
+ * 등급별 구성비를 한 고리에 담는다. 조각에 손을 올리면 그 등급에 속한 장치 이름을
+ * 띄운다 — 「주의 2」가 어느 2대인지 목록을 훑지 않고 알 수 있어야 한다.
+ * 선택 상태는 이 카드 안에서만 쓴다 (배치도·하드웨어와 공유하지 않는다).
+ */
+export function StatusRing({ slices, total, caption }: {
+  slices: RingSlice[]; total: number; caption: string;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const [pin, setPin] = useState<string | null>(null);
+  const active = pin ?? hover;
+  const shown = slices.filter((sl) => sl.names.length > 0);
+  const hit = shown.find((sl) => sl.key === active);
+
+  let acc = 0;
+  const segs = shown.map((sl) => {
+    const pct = total ? (sl.names.length / total) * 100 : 0;
+    const seg = { ...sl, pct, offset: acc, on: active === sl.key };
+    acc += pct;
+    return seg;
+  });
+
+  return (
+    <div className="relative h-[168px] w-[168px] flex-none">
+      <svg
+        viewBox="0 0 42 42" className="h-full w-full -rotate-90" role="img"
+        aria-label={`${caption} ${total} — ${shown.map((sl) => `${sl.label} ${sl.names.length}`).join(", ")}`}
+      >
+        <circle cx={21} cy={21} r={15.9155} fill="none" stroke="#F2F4F6" strokeWidth={8.4} />
+        {segs.map((seg) => (
+          <circle
+            key={seg.key}
+            cx={21} cy={21} r={15.9155} pathLength={100} fill="none"
+            stroke={sevHex(seg.key)}
+            strokeWidth={seg.on ? 10.2 : 8.4}
+            strokeDasharray={`${seg.pct.toFixed(1)} ${(100 - seg.pct).toFixed(1)}`}
+            strokeDashoffset={-seg.offset}
+            opacity={active == null || seg.on ? 1 : 0.3}
+            className="cursor-pointer transition-[opacity,stroke-width] duration-100"
+            onMouseEnter={() => setHover(seg.key)}
+            onMouseLeave={() => setHover(null)}
+            onClick={() => setPin((p) => (p === seg.key ? null : seg.key))}
+          />
+        ))}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-34 font-extrabold leading-none">{total}</span>
+        <span className="text-11.5 font-bold text-muted">{caption}</span>
+      </div>
+      {hit && (
+        // 배치도의 설명과 같은 폭 규칙 — 검은 상자가 화면에서 두 종류로 보이면 안 된다.
+        // 고리 오른쪽에 붙이되, 좁은 화면에서는 고리 아래로 내린다 (고리 폭이 168px
+        // 이라 오른쪽에 남는 자리가 카드를 넘어간다).
+        <div className="pointer-events-none absolute left-0 top-full z-10 mt-2 w-48 max-w-[calc(100vw-4rem)] rounded-xl bg-body px-3 py-2.5 shadow-lg md:left-[calc(100%-14px)] md:top-2 md:mt-0">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 flex-none rounded-full" style={{ background: sevHex(hit.key) }} />
+            <span className="text-12.5 font-extrabold text-white">{hit.label}</span>
+            <span className="ml-auto text-12 font-extrabold text-gray-300">{hit.names.length}대</span>
+          </div>
+          <div className="mt-1.5 flex flex-col gap-0.5 border-t border-gray-600 pt-1.5">
+            {hit.names.slice(0, 6).map((n) => (
+              <span key={n} className="break-words text-11.5 font-semibold text-gray-200">{n}</span>
+            ))}
+            {hit.names.length > 6 && (
+              <span className="text-11.5 font-semibold text-gray-400">
+                그 외 {hit.names.length - 6}대
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -445,25 +634,6 @@ export function Modal({
     </div>
   );
 }
-
-export const SENSOR_META: Record<string, { name: string; unit: string; color: string }> = {
-  temperature: { name: "온도", unit: "℃", color: "#F04452" },
-  humidity: { name: "습도", unit: "%", color: "#3182F6" },
-  ec: { name: "양분(EC)", unit: "", color: "#00A05A" },
-  co2: { name: "CO₂", unit: "ppm", color: "#8B95A1" },
-  illuminance: { name: "조도", unit: "klx", color: "#F5A623" },
-  power: { name: "소모전력", unit: "kW", color: "#1B64DA" },
-  water_level: { name: "탱크 수위", unit: "%", color: "#0E9AA0" },
-};
-
-export const TANK_LABEL: Record<string, string> = {
-  nutrient: "양액", water: "급수", pesticide: "방재액", cleaning: "세정액",
-};
-
-/** 임무 진행 단계 (§4.2 `phase`). 오류는 축이 달라 `robot.error` 로 따로 그린다 */
-export const PHASE_LABEL: Record<string, string> = {
-  idle: "대기", moving: "이동 중", working: "작업 중", charging: "충전 중",
-};
 
 export interface NavItemData {
   key: string;

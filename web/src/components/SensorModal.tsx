@@ -7,7 +7,8 @@
 
 import { useEffect, useState } from "react";
 import { PlannedChip } from "@/components/Planned";
-import { CONN_STYLE, LineChart, Modal, SENSOR_META, StatusDot } from "@/components/ui";
+import { LineChart, Modal, StatusDot } from "@/components/ui";
+import { CONN_STYLE, SENSOR_META } from "@/lib/severity";
 import { HistoryPoint, fetchHistory } from "@/lib/farmDetail";
 import { SensorValue, timeAgo } from "@/lib/monitor";
 

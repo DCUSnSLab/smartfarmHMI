@@ -2,25 +2,44 @@
 
 /**
  * 농장 상세 · 상태 (디자인 "농장 상세: 상태").
- * 상태 요약 · 지역 날씨 · 실시간 배치도 · 하드웨어 리스트 · 환경 상태 게이지
+ * 상태 요약 · 지역 날씨 · 설비 현황 · 실시간 배치도 · 하드웨어 · 환경 상태 · 탱크
+ *
+ * 이 화면의 모든 카드는 **한 판정**을 나눠 본다 (lib/deviceStatus.deviceGroups).
+ * 고리·배치도 표식·타일·요약 칩이 각자 색을 정하면 같은 장치가 카드마다 다른
+ * 상태로 보인다 — 어느 쪽이 맞는지 사람이 대조해야 한다.
+ *
+ * 개수는 농장마다 다르다. 탱크 3기면 3기가 폭을 나눠 갖고, 없는 종류는 아예
+ * 그리지 않는다 — 디자인의 「4기·19대」는 성주 농장의 한 순간일 뿐이다.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  Card, CONN_STYLE, Gauge, GO_LINK, SectionTitle, StatusDot, StatusMark,
-  SENSOR_META, SEV_STYLE, STATION_STATE, TANK_LABEL, TANK_LOW_PCT, tankBadge,
+  ArcGauge, Card, GO_LINK, SectionTitle, StatusMark, StatusRing, TankColumn,
+  trimNum, type RingSlice,
 } from "@/components/ui";
+import { SENSOR_META, SEV_STYLE, TANK_LABEL } from "@/lib/severity";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
-import { useDevices, useFarmSnapshot, useRanges } from "@/lib/farmDetail";
+import {
+  deviceGroups, RING_ORDER,
+  type DeviceStatus, type Ranges, type StatusInput,
+} from "@/lib/deviceStatus";
+import { fetchHistory, useDevices, useFarmSnapshot } from "@/lib/farmDetail";
 import { farmStatus } from "@/lib/fleet";
-import { controlBlocked, deviceLiveness, sensorLiveness, timeAgo, type SensorValue } from "@/lib/monitor";
+import { controlBlocked, sensorLiveness, timeAgo, type SensorValue } from "@/lib/monitor";
 import {
   isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
   uvIndexLabel, weatherConditionLabel, weatherIcon,
 } from "@/lib/weather";
+
+/**
+ * 환경 상태에 고정으로 보여줄 항목 — 이 여섯이 화면의 뼈대다. 센서가 늘어도
+ * 카드가 늘어나지 않게 목록을 못 박는다 (수위계는 탱크 카드가 따로 말한다).
+ */
+const ENV_TYPES = ["temperature", "humidity", "co2", "ec", "illuminance", "power"];
+const ENV_SLOTS = ENV_TYPES.length;
 
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
@@ -57,6 +76,72 @@ function useSummary(farmId: string): { text: string; ready: boolean } {
   };
 }
 
+/**
+ * 적정 범위가 없는 항목의 비교 기준 — 24시간 평균. 상·하한이 설정되지 않은 센서는
+ * 게이지에 띠를 못 그려 「지금 값이 평소와 다른가」를 말할 수 없다.
+ *
+ * 표시 중인 항목만, 많아도 둘까지 받는다 — 게이지마다 이력을 받으면 화면 진입이
+ * 그만큼 느려지고, 이건 어디까지나 기준이 없을 때의 대타다.
+ */
+function useDailyAvg(farmId: string, types: string[], ready: boolean) {
+  // 범위가 도착하기 전에는 부르지 않는다. 스냅샷이 오기 전엔 모든 항목이 「범위 없음」
+  // 으로 보여, 그 상태로 부르면 범위가 온 뒤 대상이 바뀌어 같은 화면에서 두 번 받는다.
+  const key = ready ? types.slice(0, 2).join(",") : "";
+  const [avg, setAvg] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setAvg({});
+    if (!key) return;
+    let alive = true;
+    void (async () => {
+      const out: Record<string, number> = {};
+      try {
+        for (const t of key.split(",")) {
+          const pts = await fetchHistory(farmId, t, 24, 60);
+          if (pts.length) out[t] = pts.reduce((a, p) => a + p.avg, 0) / pts.length;
+        }
+      } catch {
+        // 비교 기준이 없는 것뿐이다 — 게이지는 「적정 범위 미설정」으로 그려진다
+      }
+      if (alive) setAvg(out);
+    })();
+    return () => { alive = false; };
+  }, [farmId, key]);
+  return avg;
+}
+
+/**
+ * 게이지 축 끝값 — 적정 범위를 양쪽으로 절반씩 넓힌다. 축을 적정 범위에 딱 맞추면
+ * 상한을 넘은 값이 전부 「꽉 찬 게이지」로 같아 보여, 살짝 넘었는지 두 배로 넘었는지
+ * 구분되지 않는다.
+ */
+function axisRange(
+  type: string, lo: number | null, hi: number | null, value: number | null,
+): { min: number; max: number } {
+  if (lo == null && hi == null) {
+    // 기준이 없으면 현재값에서 축을 만드는데, 그 축이 값에 딱 붙으면 값이 조금 흔들릴
+    // 때마다 끝값이 7↔8 로 오가며 게이지가 다시 그려진다 — 값은 그대로인데 눈금이
+    // 움직여 늘었는지 줄었는지 못 읽는다. 1·2·5 단위로 올려 붙잡아 둔다.
+    return { min: 0, max: niceCeil(Math.abs(value ?? 1) * 1.6) };
+  }
+  const l = lo ?? (hi as number) * 0.5;
+  const h = hi ?? (lo as number) * 1.5;
+  const pad = Math.abs(h - l) * 0.5 || Math.abs(h) * 0.2 || 1;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  // 음수가 없는 양(습도·조도·ppm·전력)은 0에서 시작한다. 온도만 영하가 있다.
+  const min = l - pad < 0 && type !== "temperature" ? 0 : round1(l - pad);
+  return { min, max: round1(h + pad) };
+}
+
+/** 1 · 2 · 5 × 10ⁿ 중 가장 가까운 위쪽 값 — 눈금이 값에 따라 흔들리지 않게 */
+function niceCeil(n: number): number {
+  if (!(n > 0)) return 1;
+  const pow = 10 ** Math.floor(Math.log10(n));
+  for (const step of [1, 2, 5, 10]) {
+    if (n <= step * pow) return step * pow;
+  }
+  return 10 * pow;
+}
+
 function FarmWeather({ farmId }: { farmId: string }) {
   // 컨텍스트에서 받는다 — 화면마다 훅을 부르면 이동할 때마다 「로딩중」이 되살아난다.
   // 수동 새로고침은 같은 소유자의 reload 를 쓴다 (따로 부르면 폴링이 이중이 된다)
@@ -81,33 +166,28 @@ function FarmWeather({ farmId }: { farmId: string }) {
         panel: "border-[#E5E8EB] bg-white",
         heading: "text-[#191F28]", badge: "bg-[#F2F4F6] text-[#6B7684]",
         primary: "text-[#191F28]", secondary: "text-[#6B7684]",
-        metric: "bg-[#F7F8FA]", advisory: "bg-[#F2F4F6] text-[#4E5968]",
+        metric: "bg-[#F7F8FA]",
       }
     : conditionCodes?.sky === 4
       ? {
           panel: "border-[#C7CDD4] bg-gradient-to-br from-[#D9DDE2] to-[#EEF0F2]",
           heading: "text-[#303841]", badge: "bg-white/80 text-[#56616D]",
           primary: "text-[#252B31]", secondary: "text-[#5D6873]",
-          metric: "bg-white/90", advisory: "bg-[#59636E] text-white",
+          metric: "bg-white/90",
         }
       : isNight
         ? {
             panel: "border-black bg-gradient-to-br from-[#090D16] to-[#182235]",
             heading: "text-white", badge: "bg-white/15 text-[#E7F0FF]",
             primary: "text-white", secondary: "text-[#D8E5F7]",
-            metric: "bg-white/95", advisory: "bg-black/70 text-white",
+            metric: "bg-white/95",
           }
         : {
             panel: "border-[#B9D5F8] bg-gradient-to-br from-[#D2E6FF] to-[#EAF4FF]",
             heading: "text-[#0B3D91]", badge: "bg-white text-[#1B64DA]",
             primary: "text-[#0B3D91]", secondary: "text-[#3A5A86]",
-            metric: "bg-white", advisory: "bg-[#1B64DA] text-white",
+            metric: "bg-white",
           };
-  const advisory = weather?.temperature_c != null && weather.temperature_c >= 30
-    ? `외기 ${Math.round(weather.temperature_c)}℃ · 고온 상태 → 차광·환기 상태 확인 · 참고 정보 (제어는 현장에서)`
-    : (weather?.precipitation_mm ?? 0) > 0
-      ? `강수 ${weather?.precipitation_mm}mm → 개방 시설과 배수 상태 확인 · 참고 정보 (제어는 현장에서)`
-      : "외부 기상 상태를 확인하세요 · 참고 정보 (제어는 현장에서)";
 
   return (
     <Card className={`border shadow-none transition-colors duration-500 ${weatherTheme.panel}`}>
@@ -155,10 +235,6 @@ function FarmWeather({ farmId }: { farmId: string }) {
               </div>
             </div>
           </div>
-
-          <div className={`mt-3 rounded-xl px-3 py-2.5 text-12.5 font-extrabold leading-relaxed ${weatherTheme.advisory}`}>
-            {advisory}
-          </div>
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
@@ -181,22 +257,110 @@ function FarmWeather({ farmId }: { farmId: string }) {
   );
 }
 
+/** 등급 개수 배지 — 「경고 2」. 0 이면 아예 그리지 않는다 (0 을 적으면 눈이 먼저 간다) */
+function SevCount({ sev, n }: { sev: string; n: number }) {
+  if (!n) return null;
+  const s = SEV_STYLE[sev];
+  return (
+    <span className={`inline-flex items-center gap-1 text-12 font-extrabold ${s.text}`}>
+      <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+      {s.label} {n}
+    </span>
+  );
+}
+
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
   const { sensors, conns, robots, stops } = useFarmData();
   const snap = useFarmSnapshot(farmId);
   const status = snap ? farmStatus(snap, stops) : null;
-  const ranges = useRanges(farmId);
+  // 적정 범위는 **스냅샷에서** 받는다. 따로 알림 규칙을 부르면 요청이 하나 늘고,
+  // 무엇보다 근거가 둘이 된다 — farmStatus 는 스냅샷의 범위로 「경고」를 세는데
+  // 게이지는 다른 응답의 범위로 색을 칠하면 같은 센서가 카드마다 다르게 보인다.
+  // (스냅샷은 enabled 인 규칙만 싣는다 — 꺼 둔 규칙으로 경고를 내지 않으려고)
+  const ranges: Ranges = snap?.ranges ?? {};
   const devices = useDevices(farmId);
   const summary = useSummary(farmId);
 
-  const envSensors = Object.values(sensors).filter((s) => s.sensor_type !== "water_level");
-  const byType = (t: string) => devices.filter((d) => d.device_type === t);
+  // 배치도·하드웨어가 함께 쓰는 지목 상태. hover 는 스쳐 지나가는 것, pin 은 눌러
+  // 고정한 것 — 손을 떼도 남아야 다른 카드에서 대조할 수 있다.
+  //
+  // hover 가 pin 보다 앞선다. 고정해 둔 채로도 다른 장치를 훑어볼 수 있어야 하고,
+  // 손을 떼면 고정한 것으로 돌아온다 (pin 을 앞세우면 고정한 순간 hover 가 죽는다).
+  const [hover, setHover] = useState<string | null>(null);
+  const [pin, setPin] = useState<string | null>(null);
+  const active = hover ?? pin;
+  const select = (id: string) => setPin((p) => (p === id ? null : id));
+
+  // 아무 곳이나 다시 누르면 지목이 풀린다 — 지목은 「지금 보고 있는 것」이지 화면의
+  // 설정이 아니다. 고를 수 있는 것(표식·타일)은 여러 카드에 흩어져 있어 한 컨테이너로
+  // 묶을 수 없으므로, 그쪽에 표를 달아 두고 그 밖을 눌렀는지로 판정한다.
+  useEffect(() => {
+    if (!pin) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest?.("[data-device-pick]")) setPin(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPin(null); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pin]);
+
+  // 판정은 실시간 값으로 한다 — 스냅샷(15초 주기)보다 앞선다. 탱크·워크스테이션은
+  // WS 가 커버하지 않아 스냅샷에서 받는다 (그쪽은 원래 주기 갱신이다).
+  const input: StatusInput = {
+    sensors: Object.values(sensors),
+    conns,
+    robots: Object.values(robots),
+    robotIds: devices.filter((d) => d.device_type === "robot").map((d) => d.device_id),
+    tanks: snap?.tanks ?? [],
+    stations: snap?.stations ?? [],
+    ranges,
+    names: Object.fromEntries(devices.map((d) => [d.device_id, d.name])),
+    parents: Object.fromEntries(devices.map((d) => [d.device_id, d.detail?.parent_device_id ?? null])),
+  };
+  const groups = deviceGroups(input);
+  const all = groups.flatMap((g) => g.items);
+  const byId: Record<string, DeviceStatus> = Object.fromEntries(all.map((d) => [d.id, d]));
+  const warnCount = all.filter((d) => d.sev === "warning").length;
+  const cautionCount = all.filter((d) => d.sev === "caution").length;
+
+  const slices: RingSlice[] = RING_ORDER.map((sev) => ({
+    key: sev,
+    label: SEV_STYLE[sev].label,
+    names: all.filter((d) => d.sev === sev).map((d) => `${d.name} · ${d.label}`),
+  }));
+
+  const deviceLink = `/settings?farm=${farmId}&section=devices`;
+
+  // ── 환경 상태에 세울 여섯 칸 ──
+  // 주요 항목을 순서대로 채우고, 없는 항목이 있으면 남은 센서로 메운다. 빈 칸을
+  // 두면 「센서가 없다」와 「자리가 비었다」가 구분되지 않는다.
+  const pool = Object.values(sensors).filter((s) => s.sensor_type !== "water_level");
+  const envSensors: SensorValue[] = [];
+  for (const t of ENV_TYPES) {
+    const found = pool.find((s) => s.sensor_type === t);
+    if (found) envSensors.push(found);
+  }
+  for (const s of pool) {
+    if (envSensors.length >= ENV_SLOTS) break;
+    if (!envSensors.includes(s)) envSensors.push(s);
+  }
+  const noRange = envSensors
+    .filter((s) => ranges[s.sensor_type]?.min == null && ranges[s.sensor_type]?.max == null)
+    .map((s) => s.sensor_type);
+  const dailyAvg = useDailyAvg(farmId, noRange, snap != null);
+
+  const tanks = groups.find((g) => g.kind === "tank")?.items ?? [];
 
   return (
     <>
       {/* 상태 요약 + 날씨 */}
-      <section className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <SectionTitle
             title="상태 요약"
@@ -228,9 +392,9 @@ export default function StatusTab() {
                       {SEV_STYLE[sev].label}
                     </span>
                     <div className="flex min-w-0 flex-wrap gap-1.5">
-                      {hit.map((reason) => (
+                      {hit.map((reason, i) => (
                         <span
-                          key={reason.text}
+                          key={`${reason.text}-${i}`}
                           className={`rounded-lg px-2.5 py-1 text-12 font-bold ${SEV_STYLE[sev].bg} ${SEV_STYLE[sev].text}`}
                         >
                           {reason.text}
@@ -243,14 +407,12 @@ export default function StatusTab() {
               {status && status.reasons.length === 0 && (
                 <div className="flex items-center gap-1.5 text-12 font-bold text-primary-dark">
                   <StatusMark sev="ok" />
-                  정상 · 정지·통신·센서 모두 이상 없음
+                  정상 · 정지·통신·값·잔량 모두 이상 없음
                 </div>
               )}
               {!status && (
                 <div className="flex items-center gap-1.5 text-12 font-bold text-muted">
-                  <span aria-hidden="true" className="inline-flex h-3 w-3 flex-none items-center justify-center">
-                    <span className="h-2 w-2 rounded-full bg-gray-300" />
-                  </span>
+                  <StatusMark sev="idle" label="확인 중" />
                   확인 중 · 농장 상태를 아직 받지 못했습니다
                 </div>
               )}
@@ -263,80 +425,119 @@ export default function StatusTab() {
         <FarmWeather farmId={farmId} />
       </section>
 
-      {/* 배치도 + 하드웨어 */}
-      <section className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2"><FarmMap farmId={farmId} robots={Object.values(robots)} /></div>
-        <Card>
+      {/* 설비 현황 + 배치도 | 하드웨어 */}
+      <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <Card>
+            <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h3 className="text-15 font-extrabold">설비 현황</h3>
+              <SevCount sev="warning" n={warnCount} />
+              <SevCount sev="caution" n={cautionCount} />
+              <Link href={deviceLink} scroll={false} className={`${GO_LINK} ml-auto`}>
+                장치 관리
+              </Link>
+            </div>
+            {all.length === 0 ? (
+              <p className="py-8 text-center text-13 text-muted">
+                등록된 장비가 없어요. 설정에서 추가하세요.
+              </p>
+            ) : (
+              <div className="flex items-center gap-5">
+                <StatusRing slices={slices} total={all.length} caption="대 등록" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                  {groups.map((g) => (
+                    <div key={g.kind}>
+                      <div className="mb-1 flex items-baseline gap-1.5">
+                        <span className="text-12 font-extrabold">{g.label}</span>
+                        <span className={`ml-auto text-11.5 font-bold ${SEV_STYLE[g.tone].text}`}>
+                          {g.ratio}
+                        </span>
+                      </div>
+                      {/* 대수만큼 칸을 나눈다 — 어느 한 대가 나쁜지 위치로 짚을 수 있다 */}
+                      <div className="flex h-2 gap-[3px]">
+                        {g.items.map((d) => (
+                          <span
+                            key={d.id}
+                            title={`${d.name} · ${d.label}`}
+                            className={`flex-1 rounded-sm ${SEV_STYLE[d.sev].dot}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <FarmMap
+            farmId={farmId}
+            robots={Object.values(robots)}
+            statuses={byId}
+            active={active}
+            onHover={setHover}
+            onSelect={select}
+          />
+        </div>
+
+        <Card className="flex flex-col">
           <SectionTitle
-            title="하드웨어" sub={`${devices.length}대`}
+            title="하드웨어" sub={`${all.length}대`}
             right={
               // 이 농장의 장치 관리로 바로 — 설정 화면은 농장이 여럿이면 접혀 있다.
               // scroll={false} — Next 가 맨 위로 올리면 설정 화면의 정렬을 덮어쓴다
-              <Link
-                href={`/settings?farm=${farmId}&section=devices`}
-                scroll={false}
-                className={GO_LINK}
-              >
+              <Link href={deviceLink} scroll={false} className={GO_LINK}>
                 장치 관리
               </Link>
             }
           />
-          {/* 전부 보여주고 넘치면 카드 안에서 스크롤한다 */}
-          <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
-            {[
-              { type: "robot", label: "로봇", tab: "robot" },
-              { type: "sensor", label: "센서", tab: "env" },
-              { type: "tank", label: "탱크", tab: "supply" },
-              { type: "station", label: "워크스테이션", tab: "supply" },
-            ].map(({ type, label, tab }) => {
-              const list = byType(type);
-              if (list.length === 0) return null;
-              return (
-                <div key={type}>
-                  <div className="mb-1 text-12 font-extrabold text-gray-500">
-                    {label} {list.length}
-                  </div>
-                  <div className="space-y-1">
-                    {list.map((d) => {
-                      // 통신 상태는 FR-37 판정(deviceLiveness), 워크스테이션만 다른 축이라
-                      // 작업 상태를 보여준다. 경과 시간은 붙이지 않는다 — 여기서 볼 것은
-                      // 정상 여부뿐이고, 초 단위 숫자가 매 초 바뀌면 목록이 어수선해진다
-                      const station = type === "station"
-                        ? snap?.stations.find((s) => s.station_id === d.device_id)
-                        : undefined;
-                      const tank = type === "tank"
-                        ? snap?.tanks.find((t) => t.device_id === d.device_id)
-                        : undefined;
-                      const live = deviceLiveness(
-                        d.device_id, d.device_type, conns, sensors,
-                        d.detail?.parent_device_id,
-                      );
-                      const badge = station
-                        ? STATION_STATE[station.state] ?? STATION_STATE.idle
-                        // 탱크는 발행 주체가 아니라 통신 축이 아니다 — 잔량을 보여준다
-                        : type === "tank"
-                          ? tankBadge(tank?.level_pct, live.state === "unmonitored" ? "offline" : live.state)
-                        // 등록은 됐는데 한 번도 값이 오지 않은 장치
-                        : live.state === "unmonitored"
-                          ? { label: "데이터 없음", sev: "warning" }
-                          : CONN_STYLE[live.state];
-                      return (
-                        <Link
-                          key={d.device_id}
-                          href={`/farms/${farmId}/${tab}`}
-                          className="flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left text-12.5 hover:bg-surface"
-                        >
-                          <span className="min-w-0 flex-1 truncate font-bold">{d.name}</span>
-                          {/* 상태는 줄이지 않는다 — 좁아지면 이름만 말줄임으로 양보한다 */}
-                          <StatusDot sev={badge?.sev ?? "info"} label={badge?.label ?? "—"} />
-                        </Link>
-                      );
-                    })}
-                  </div>
+          <div className="flex flex-1 flex-col justify-between gap-4">
+            {groups.map((g) => (
+              <div key={g.kind}>
+                {/* 대수 바로 옆에 등급 요약을 붙인다 — 「센서 9」와 「경고 1」이 한 문장으로
+                    읽혀야 한다. 오른쪽 끝으로 밀면 눈이 줄을 한 번 더 건너야 한다.
+                    누를 것이 아니므로 링크로 감싸지 않는다 (탭으로 가는 길은 카드 머리) */}
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="text-12 font-extrabold text-gray-600">{g.label}</span>
+                  <span className="text-12 font-bold text-muted">{g.count}</span>
+                  <span className={`text-11.5 font-extrabold ${SEV_STYLE[g.tone].text}`}>
+                    {g.summary}
+                  </span>
                 </div>
-              );
-            })}
-            {devices.length === 0 && (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {g.items.map((d) => {
+                    const on = active === d.id;
+                    const s = SEV_STYLE[d.sev];
+                    return (
+                      // 눌러 고정하면 배치도의 같은 장치가 함께 강조된다 — 목록에서 고른
+                      // 장치가 농장 어디에 있는지 눈으로 잇는 것이 이 카드의 일이다.
+                      // 탭으로 넘어가는 길은 그룹 제목 옆 요약과 카드 머리의 링크가 맡는다.
+                      <button
+                        key={d.id}
+                        type="button"
+                        title={`${d.name} · ${d.label}`}
+                        aria-pressed={on}
+                        onMouseEnter={() => setHover(d.id)}
+                        onMouseLeave={() => setHover(null)}
+                        onFocus={() => setHover(d.id)}
+                        onBlur={() => setHover(null)}
+                        onClick={() => select(d.id)}
+                        data-device-pick=""
+                        className={`flex items-center gap-1.5 rounded-lg border px-1.5 py-1.5 text-left transition-colors ${
+                          on ? "border-body bg-[#EDEFF2]" : `${s.border} ${s.bg}`
+                        }`}
+                      >
+                        <StatusMark sev={d.sev} label={d.label} />
+                        <span className={`min-w-0 flex-1 truncate text-11.5 ${on ? "font-extrabold" : "font-bold"}`}>
+                          {d.short}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {all.length === 0 && (
               <div className="text-12.5 font-semibold text-muted">
                 등록된 장비가 없어요. 설정에서 추가하세요.
               </div>
@@ -345,71 +546,120 @@ export default function StatusTab() {
         </Card>
       </section>
 
-      {/* 환경 상태 게이지 (적정범위 = 알림 규칙) */}
-      <section className="mb-5">
-        <SectionTitle title="환경 상태" sub="적정 범위 대비 현재값 — 범위는 알림 규칙 기준" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {envSensors.map((s) => {
-            const meta = SENSOR_META[s.sensor_type] ?? { name: s.sensor_type, unit: s.unit };
-            const r = ranges[s.sensor_type];
-            const lo = r?.min ?? null;
-            const hi = r?.max ?? null;
-            return (
-              <Card key={s.sensor_id}>
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-13 font-bold text-gray-600">{meta.name}</span>
-                  <span className="text-22 font-extrabold">
-                    {s.value != null ? s.value.toFixed(1) : "—"}
-                    <span className="ml-0.5 text-12 font-bold text-muted">{meta.unit}</span>
-                  </span>
-                </div>
-                <Gauge
-                  value={s.value}
-                  min={lo != null ? lo - (hi != null ? (hi - lo) * 0.5 : 10) : 0}
-                  max={hi != null ? hi + (lo != null ? (hi - lo) * 0.5 : 10) : 100}
-                  okMin={lo} okMax={hi} unit={meta.unit}
-                />
-                <div className="mt-1 text-11.5 font-semibold text-muted">{timeAgo(s.ts)}</div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
+      {/* 환경 상태 + 탱크 */}
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <div className="mb-2 flex flex-wrap items-center gap-x-3.5 gap-y-2">
+            <h3 className="text-15 font-extrabold">환경 상태</h3>
+            {/* 게이지 색이 무슨 뜻인지 — 값이 나쁜 것과 값이 낡은 것은 다른 문제다 */}
+            {[["ok", "정상"], ["caution", "갱신 지연"], ["warning", "적정 범위 밖"]].map(
+              ([sev, label]) => (
+                <span key={sev} className="inline-flex items-center gap-1.5 text-11.5 font-bold text-gray-500">
+                  <span className={`h-2 w-2 rounded-full ${SEV_STYLE[sev].dot}`} />
+                  {label}
+                </span>
+              ),
+            )}
+            <Link href={`/farms/${farmId}/env`} className={`${GO_LINK} ml-auto`}>
+              생육기·센서
+            </Link>
+          </div>
+          {envSensors.length === 0 ? (
+            <p className="py-8 text-center text-13 text-muted">등록된 환경 센서가 없습니다.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 sm:grid-cols-3">
+              {envSensors.map((s) => {
+                const meta = SENSOR_META[s.sensor_type] ?? { name: s.sensor_type, unit: s.unit };
+                const r = ranges[s.sensor_type];
+                const lo = r?.min ?? null;
+                const hi = r?.max ?? null;
+                const axis = axisRange(s.sensor_type, lo, hi, s.value);
+                const st = byId[s.sensor_id];
+                // 값 축과 수신 축 중 나쁜 쪽이 게이지 색이다 — 적정 범위 안이라도
+                // 4분 전 값이면 지금 적정이라고 말할 수 없다.
+                const sev = st?.sev ?? "idle";
+                // 배지도 **같은 수신 축**을 본다. 여기서 sensorLiveness 로 다시 재면
+                // 생육기가 끊긴 경우가 빠진다 (그때는 센서 자기 시각은 멀쩡하다) —
+                // 게이지는 주황인데 배지는 없는 상태가 된다.
+                const stale = st?.axes.some((a) => a.axis === "수신" && a.sev !== "ok") ?? false;
+                const over = s.value != null && hi != null && s.value > hi;
+                const under = s.value != null && lo != null && s.value < lo;
+                const avg = dailyAvg[s.sensor_type];
+                return (
+                  <ArcGauge
+                    key={s.sensor_id}
+                    label={meta.name} unit={meta.unit}
+                    value={s.value} min={axis.min} max={axis.max}
+                    okMin={lo} okMax={hi}
+                    sev={sev === "busy" ? "ok" : sev}
+                    digits={meta.unit === "ppm" ? 0 : 1}
+                    sub={
+                      over ? <span className="font-bold text-status-warningDark">적정 초과 · 상한 {trimNum(hi as number)}</span>
+                      : under ? <span className="font-bold text-status-warningDark">적정 미달 · 하한 {trimNum(lo as number)}</span>
+                      : lo != null && hi != null ? `적정 ${trimNum(lo)}~${trimNum(hi)}`
+                      : avg != null ? `24시간 평균 ${avg.toFixed(1)}`
+                      : "적정 범위 미설정"
+                    }
+                    badge={
+                      stale ? (
+                        <span className="absolute right-1 top-0.5 inline-flex items-center gap-1 rounded-full border border-[#F7DFB0] bg-status-caution/10 px-1.5 py-0.5">
+                          <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" aria-hidden="true">
+                            <path
+                              d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M12 7.5V12l3 2"
+                              fill="none" stroke="#E07800" strokeWidth={2.2}
+                              strokeLinecap="round" strokeLinejoin="round"
+                            />
+                          </svg>
+                          <span className="text-10.5 font-extrabold text-status-cautionDark">
+                            {timeAgo(s.ts)}
+                          </span>
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
+        </Card>
 
-      {/* 탱크 요약 (상세는 작업·공급 탭) */}
-      {snap && snap.tanks.length > 0 && (
-        <section>
+        <Card className="flex flex-col">
           <SectionTitle
-            title="탱크" sub="상세는 작업·공급 탭"
+            title="탱크"
             right={
               <Link href={`/farms/${farmId}/supply`} className={GO_LINK}>
                 작업·공급
               </Link>
             }
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {snap.tanks.map((t) => (
-              <Card key={t.device_id}>
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-13 font-bold text-gray-600">
-                    {TANK_LABEL[t.tank_type] ?? t.tank_type}
-                  </span>
-                  <span className="text-20 font-extrabold">
-                    {t.level_pct != null ? Math.round(t.level_pct) : "—"}
-                    <span className="text-12 font-bold text-muted">%</span>
-                  </span>
-                </div>
-                <Gauge value={t.level_pct} okMin={TANK_LOW_PCT} okMax={100} compact />
-                <div className="mt-1.5 text-11.5 font-semibold text-muted">
-                  {t.remain_l != null ? `약 ${t.remain_l}L` : "—"}
-                  {t.days_left != null && ` · ${t.days_left}일분`}
-                  {t.uses_left != null && ` · ${t.uses_left}회분`}
-                </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
+          {tanks.length === 0 ? (
+            <p className="py-8 text-center text-13 text-muted">등록된 탱크가 없습니다.</p>
+          ) : (
+            // 기수만큼 폭을 나눠 갖는다 — 3기면 3기 폭으로 넓어진다
+            <div className="flex flex-1 items-stretch gap-2.5">
+              {tanks.map((d) => {
+                const t = snap?.tanks.find((x) => x.device_id === d.id);
+                const bad = d.sev === "caution" || d.sev === "warning";
+                const amount = t?.remain_l != null ? `약 ${t.remain_l}L` : "—";
+                const left = t?.days_left != null ? `${t.days_left}일분`
+                  : t?.uses_left != null ? `${t.uses_left}회분` : "";
+                return (
+                  <TankColumn
+                    key={d.id}
+                    label={t ? TANK_LABEL[t.tank_type] ?? d.short : d.short}
+                    pct={d.levelPct ?? null}
+                    sev={d.sev}
+                    amount={amount}
+                    // 나쁠 때는 남은 기간 대신 이유를 적는다 — 「3회분」과 「잔량 부족」
+                    // 중 사람이 움직여야 하는 쪽이 눈에 걸려야 한다
+                    note={bad ? d.label.replace(/^\d+%\s*/, "") : left}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </section>
     </>
   );
 }

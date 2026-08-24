@@ -7,7 +7,8 @@
 
 import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { SEV_STYLE, StatusMark } from "@/components/ui";
+import { StatusMark } from "@/components/ui";
+import { SEV_STYLE } from "@/lib/severity";
 import { useFarmData, useScope } from "@/lib/farmData";
 import { useFarmSnapshot } from "@/lib/farmDetail";
 import { farmStatus } from "@/lib/fleet";

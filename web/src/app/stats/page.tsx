@@ -39,16 +39,28 @@ export default function StatsPage() {
 
   useEffect(() => {
     if (!farmId) return;
+    // 농장·기간을 빠르게 바꾸면 먼저 보낸 요청이 나중에 도착할 수 있다. 그대로 반영하면
+    // 지금 고른 기간이 아닌 그래프가 남는다 — 도착한 응답이 아직 유효한지 보고 넣는다.
+    let alive = true;
     setLoading(true);
-    void Promise.all([
-      fetchHistory(farmId, "temperature", period.hours, period.bucket),
-      fetchHistory(farmId, "humidity", period.hours, period.bucket),
-      apiFetch(`/api/farms/${farmId}/environment/summary?hours=${period.hours}`).then((r) =>
-        r.ok ? r.json() : [],
-      ),
-    ]).then(([t, h, s]) => {
-      setTemp(t); setHum(h); setSummary(s); setLoading(false);
-    });
+    void (async () => {
+      try {
+        const [t, h, sum] = await Promise.all([
+          fetchHistory(farmId, "temperature", period.hours, period.bucket),
+          fetchHistory(farmId, "humidity", period.hours, period.bucket),
+          apiFetch(`/api/farms/${farmId}/environment/summary?hours=${period.hours}`)
+            .then((r) => (r.ok ? r.json() : [])),
+        ]);
+        if (alive) { setTemp(t); setHum(h); setSummary(sum); }
+      } catch {
+        // 한 건이라도 실패하면 예전에는 setLoading(false) 까지 못 가 「로딩중」에 갇혔다.
+        // 빈 값으로 두면 화면이 「데이터 없음」을 말한다 — 기다리라는 거짓말보다 낫다.
+        if (alive) { setTemp([]); setHum([]); setSummary([]); }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
   }, [farmId, period]);
 
   const stat = (type: string) => summary.find((s) => s.sensor_type === type);

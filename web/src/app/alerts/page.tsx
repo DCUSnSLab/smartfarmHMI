@@ -7,29 +7,33 @@
 
 import Link from "next/link";
 import { AlertList } from "@/components/AlertPanel";
-import { useFarmData, useScope } from "@/lib/farmData";
+import { GO_LINK } from "@/components/ui";
+import { useAlertPage } from "@/lib/alerts";
+import { useScope } from "@/lib/farmData";
 
 export default function AlertsPage() {
   useScope("all");
-  const { alerts } = useFarmData();
-  const list = Object.values(alerts);
-  const unacked = list.filter((a) => !a.acked_at).length;
+  // 목록은 공유 맵이 아니라 자기 조회로 받는다 — 공유 맵은 최신 창이라 과거 알림이
+  // 잘린다 (헤더 벨·대시보드 KPI 는 그 창을 계속 쓴다). lib/alerts.ts 참고.
+  const page = useAlertPage("all");
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">알림</h1>
-        <span className="text-[13.5px] font-bold text-status-warningDark">미확인 {unacked}건</span>
-        <span className="text-[13px] font-semibold text-muted">
+        <h1 className="text-22 font-extrabold">알림</h1>
+        <span className="text-13.5 font-bold text-status-warningDark">
+          미확인 {page.unacked}건
+        </span>
+        <span className="text-13 font-semibold text-muted">
           전 농장 대상 · 각 알림을 누르면 관련 화면으로 이동해요
         </span>
-        <Link href="/settings" className="ml-auto text-[12.5px] font-bold text-primary-dark">
-          알림 규칙 설정 →
+        <Link href="/settings?section=rules" scroll={false} className={`ml-auto ${GO_LINK}`}>
+          알림 규칙 설정
         </Link>
       </div>
 
       {/* 전체 스코프에서는 농장별 일괄 읽음이 불가 — 농장 알림 탭에서 수행 */}
-      <AlertList alerts={list} showFarm />
+      <AlertList page={page} showFarm />
     </main>
   );
 }

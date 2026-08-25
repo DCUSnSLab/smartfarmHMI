@@ -44,7 +44,11 @@
 | name | TEXT | NOT NULL |
 | farm_type | TEXT | NOT NULL, CHECK (`greenhouse`\|`plant_factory`\|`open_field`) |
 | crop | TEXT | NULL |
-| region_code | TEXT | NULL — 기상 조회용 지역 식별 (OPN-17 확정 시 형식 구체화) |
+| region_code | TEXT | NULL — 10자리 행정구역코드 |
+| address | TEXT | NULL — 농장 주소 |
+| zipcode | TEXT | NULL — 우편번호 |
+| latitude | DOUBLE PRECISION | NULL — WGS84 위도 |
+| longitude | DOUBLE PRECISION | NULL — WGS84 경도 |
 | is_active | BOOLEAN | NOT NULL DEFAULT true |
 | created_at / updated_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |
 
@@ -127,6 +131,9 @@
 ### 3.2 로봇·작업
 
 **robot_status** — 로봇 상태 실시간 스냅샷 (FR-04·06) — **하이퍼테이블**
+
+> **0.3 개정 (GEN-1280, 마이그레이션 0006)** — `mission_state` → `phase`(4값, `error` 제거).
+> [../03-architecture/contract-amendments/0.3-state-axis-split.md](../03-architecture/contract-amendments/0.3-state-axis-split.md) §4.
 
 | 컬럼 | 타입 | 제약 |
 |---|---|---|
@@ -280,10 +287,12 @@
 | received_at | TIMESTAMPTZ | NOT NULL |
 | farm_id | TEXT | NOT NULL |
 | temperature_c / humidity_pct / precipitation_mm / wind_ms | DOUBLE PRECISION | NULL |
-| condition | TEXT | NULL — 맑음·구름많음 등 |
-| solar_level | TEXT | NULL — 일사량 수준 |
+| condition | TEXT | NULL — 기상청 코드 조합 `SKY{SKY}-PTY{PTY}` |
+| solar_level | TEXT | NULL — 기상청 자외선지수 |
 | provider | TEXT | NOT NULL — 공급자 식별 (OPN-17) |
 | raw | JSONB | NOT NULL DEFAULT '{}' — 공급자 응답 원문 |
+
+`condition`은 `^SKY(1|3|4)-PTY[0-7]$` 형식만 허용한다. 예: `SKY1-PTY0`, `SKY4-PTY6`. SKY는 하늘상태(1 맑음·3 구름많음·4 흐림), PTY는 강수형태(0 없음·1 비·2 비/눈·3 눈·4 소나기·5 빗방울·6 빗방울눈날림·7 눈날림)이다.
 
 ### 3.4 데이터 관리
 
@@ -353,7 +362,21 @@ UNIQUE(farm_id, report_type, period_start).
 | rule_id | BIGINT | NULL, FK→alert_rule |
 | extra | JSONB | NOT NULL DEFAULT '{}' |
 
-인덱스: `(farm_id, occurred_at DESC)`, 부분 인덱스 `WHERE acked_at IS NULL` (미확인 카운트).
+인덱스: `(farm_id, occurred_at DESC)`, 부분 인덱스 `WHERE acked_at IS NULL` (미확인 카운트),
+`(occurred_at, id)` — 전 농장 목록의 페이지네이션(GEN-1303, 마이그레이션 0007).
+
+목록은 `ORDER BY occurred_at DESC, id DESC` 로 읽는다. 화면이 페이지 번호를 직접 고르므로
+`OFFSET` 을 쓰지만, 실시간 목록이라 그대로 쓰면 새 알림 한 건에 전체가 밀려 방금 본 항목이
+다음 페이지에 다시 나온다. 그래서 목록을 여는 시점의 최신 항목을 **기준선**으로 잡고
+`(occurred_at, id) <= 기준선` 안에서만 세어 페이지 집합을 고정한다. 기준선보다 새로 도착한
+알림은 화면이 「새 알림 N건」으로 알리고, 새로고침 시 새 기준선으로 편입된다.
+
+기준선에 `id` 를 함께 넣는 이유는 `occurred_at` 이 유일하지 않아서다 — 같은 시각에 발생한
+알림들의 경계를 시각만으로는 그을 수 없다. btree 는 역방향 스캔이 가능하므로 인덱스에
+DESC 를 박지 않는다.
+
+보존 기간은 정해져 있지 않다 — OPN-06 은 하이퍼테이블(§5)만 다루고 있어 이 테이블은
+현재 무한 누적이다. 장기 운영·알림 통계를 하려면 OPN-06 범위에 알림을 포함해야 한다.
 
 **alert_rule** (FR-34)
 
@@ -373,6 +396,9 @@ UNIQUE(farm_id, alert_kind, sensor_type).
 ### 3.6 안전
 
 **stop_event** (FR-35·36)
+
+> **0.3 개정 (GEN-1280, 마이그레이션 0006)** — `detail JSONB` 신설.
+> [../03-architecture/contract-amendments/0.3-state-axis-split.md](../03-architecture/contract-amendments/0.3-state-axis-split.md) §4.
 
 | 컬럼 | 타입 | 제약 |
 |---|---|---|
@@ -526,4 +552,5 @@ UNIQUE(farm_id, alert_kind, sensor_type).
 - data_statistics의 continuous aggregate 전환 — 증분 9+에서 실측 후
 
 ## 변경 이력
+- 2026-08-10 · 스키마 0.3 반영 (GEN-1280, 마이그레이션 0006). 본문은 `../03-architecture/contract-amendments/0.3-state-axis-split.md`
 - 2026-07-29 · 최초 작성 (OPN-09 해소). app/mw 스키마 분리·소유권 규칙, 테이블 31개 정의(mw 27 + app 4), 하이퍼테이블 3종, MQTT 0.2 매핑, FarmLog 분리(farm_report/farm_memo), command_log 신설

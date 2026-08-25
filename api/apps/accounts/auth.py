@@ -8,6 +8,7 @@
 
 from dataclasses import dataclass
 
+from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -36,22 +37,29 @@ def issue_tokens(user) -> tuple[str, str]:
     return str(refresh.access_token), str(refresh)
 
 
+def _max_age(claim: str) -> int:
+    """쿠키 수명은 토큰 수명에서 파생 — 둘이 어긋나면 조용한 로그아웃이 된다."""
+    return int(settings.SIMPLE_JWT[claim].total_seconds())
+
+
 def set_auth_cookies(response, access: str, refresh: str | None = None) -> None:
     response.set_cookie(
         ACCESS_COOKIE, access, httponly=True, samesite="Lax",
-        max_age=60 * 60 * 12,  # 12h — 데모 편의. 운영 수치는 OPN-07 과 함께
+        max_age=_max_age("ACCESS_TOKEN_LIFETIME"),
         secure=False,  # TODO(운영): TLS 도입 시 True (k8s main overlay)
     )
     if refresh:
+        # path="/" — 라우트 가드가 액세스 만료 시 리프레시 보유 여부로 통과를 판단한다
         response.set_cookie(
             REFRESH_COOKIE, refresh, httponly=True, samesite="Lax",
-            max_age=60 * 60 * 24 * 7, path="/api/auth", secure=False,
+            max_age=_max_age("REFRESH_TOKEN_LIFETIME"), secure=False,
         )
 
 
 def clear_auth_cookies(response) -> None:
     response.delete_cookie(ACCESS_COOKIE)
-    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")
+    response.delete_cookie(REFRESH_COOKIE)
+    response.delete_cookie(REFRESH_COOKIE, path="/api/auth")  # 이전 경로 정리
 
 
 def user_from_token(raw: str) -> AuthUser | None:

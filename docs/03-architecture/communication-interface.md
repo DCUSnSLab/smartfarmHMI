@@ -75,6 +75,20 @@ farmon-internal/v1/{farm_id}/{stream}
 
 모든 메시지는 `type`, `version`, `timestamp`를 포함하고, 확장 항목은 `payload`·`params`에 자유 형식 JSON으로 담아 필드 추가에 열려 있게 둔다. `timestamp`는 **발생 시각**이며, 미들웨어 서버는 수신 시각을 별도로 보존한다 (FR-16).
 
+#### 4.0 버전·미지 필드 취급 (수신 측 규칙)
+
+IDL·코드 생성이 없는 JSON 계약이라, 필드명 오타는 스키마 검증을 그냥 통과한다 (선언 필드는 기본값으로 남고 오타 필드는 확장으로 흡수된다). 미들웨어는 수신 경계에서 다음을 적용한다 — 구현은 `middleware/app/conformance.py`.
+
+| 상황 | 처리 |
+|---|---|
+| `version` 이 현재 계약과 동일 | 정상 수용 |
+| `version` 의 **minor** 만 다름 (예: `0.3`) | **수용** + 경고 로그. 필드 추가·삭제는 확장 허용과 기본값으로 흡수된다 |
+| `version` 의 **major** 가 다름 (예: `1.0`) | **거부**(적재 안 함) + 에러 로그. 구조가 달라졌다고 본다 |
+| 선언되지 않은 필드가 선언 필드와 이름이 유사 | **수용** + 오타 의심 경고 (해당 선언 필드가 기본값 그대로일 때만) |
+| 선언되지 않은 필드가 유사하지 않음 | **수용** + 확장 필드로 정보 로그 |
+
+경고·정보 로그는 (농장, 장치, 항목) 단위로 최초 1회만 남긴다. 즉 **엣지 구현이 새 필드를 보내기 시작하거나 필드명을 잘못 쓰면 서버 로그에 정확히 한 번 나타난다.** 계약 위반을 침묵으로 넘기지 않는 것이 목적이며, 데이터를 버리는 것은 major 불일치 한 경우뿐이다.
+
 ### 4.1 엣지 → 미들웨어: 센서 데이터 (FR-08, FR-39)
 
 ```json
@@ -96,6 +110,9 @@ farmon-internal/v1/{farm_id}/{stream}
 `sensor_id`가 핵심 추가 항목이다. 하나의 생육기(재배공간)에 같은 유형의 센서가 여러 대 분산 배치되므로 `device_id`+`sensor_type` 조합만으로는 개별 센서를 식별할 수 없다. `sensor_state`는 `ok` \| `degraded` \| `fault`이며, 통신 기반 판정(FR-37)과는 별개로 센서 자체가 보고하는 상태다.
 
 ### 4.2 엣지 → 미들웨어: 로봇 상태 (FR-04, FR-06)
+
+> **0.3 개정 (GEN-1280) — 아래 본문은 0.2 다.** `mission_state` 는 `phase` + `error` 로 갈렸다.
+> 현행 계약은 [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §1 을 따른다.
 
 ```json
 {
@@ -189,9 +206,38 @@ farmon-internal/v1/{farm_id}/{stream}
 
 해제는 `"type": "remote_stop_release"`로 동일 구조를 쓴다. `scope`는 `all` \| `farm`. 발행 토픽은 대상 농장의 **엣지 컨트롤러 command 토픽**(`farmon/v1/{farm}/edge/{edge_id}/command`)이다 — 전 장치 정지의 실행 주체가 엣지이기 때문이다 (증분 7 확정).
 
+명령 토픽은 retain 하지 않으므로(§3) **이 메시지만으로는 재접속한 엣지가 정지 중임을 알 수 없다.** 지속되는 사실은 아래 `remote_stop_state`가 나른다.
+
+#### 4.6.1 미들웨어 → 엣지: 원격 정지 상태 (retained)
+
+```json
+{
+  "type": "remote_stop_state",
+  "version": "0.2",
+  "farm_id": "seongju",
+  "device_id": "edge-01",
+  "engaged": true,
+  "scope": "farm",
+  "reason": "관리자 요청",
+  "timestamp": "2026-07-21T10:00:00+09:00"
+}
+```
+
+토픽 `farmon/v1/{farm}/edge/{edge_id}/stop_state`, **QoS 1 · retained**.
+
+§4.6이 "지금 정지하라"는 **행위**라면, 이것은 "이 농장은 정지 상태다"라는 **사실**이다. 발동·해제 시마다 발행하며 엣지는 ack 하지 않는다 — 명령이 아니라 상태이기 때문이다.
+
+retained 이므로 엣지가 재부팅해 구독하는 순간 브로커가 현재 상태를 즉시 준다. 이것이 없으면 정지 발동 중에 엣지를 재기동했을 때 **정지가 조용히 풀린다.** `estop_state`(§4.7)와 대칭이다 — 물리 비상정지는 엣지→서버 방향의 retained 상태, 원격 정지는 서버→엣지 방향의 retained 상태.
+
+낡음 검사(§4.0)를 적용하지 않는다. 오래된 정지도 해제되지 않았으면 여전히 유효하고, 만료시키면 안전 반대 방향으로 실패한다.
+
 > **이 메시지는 안전 기능이 아니다.** IEC 60204-1 Stop Category 2(제어된 정지, 전원 유지)에 해당하는 운전 정지이며, MQTT가 안전등급 통신이 아니므로 안전 기능을 이 경로에 의존시키지 않는다. 실제 비상정지는 현장 물리 장치가 담당한다 (`../01-requirements/non-functional.md` §2).
 
 ### 4.7 엣지 → 미들웨어: 물리 비상정지 상태 (FR-36)
+
+> **0.3 개정 (GEN-1280) — 아래 본문은 0.2 다.** `engaged: bool` 은 `estop` 3값
+> (`engaged`\|`released`\|`unknown`)이 됐다. 현행 계약은
+> [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §2 를 따른다.
 
 ```json
 {
@@ -238,11 +284,20 @@ farmon-internal/v1/{farm_id}/{stream}
     { "sensor_id": "hum-a",   "sensor_type": "humidity",    "unit": "percent", "initial": 58 }
   ],
   "publish_interval_sec": 10,
+  "instance_id": "a3f9c1d2",
   "timestamp": "2026-07-21T09:59:50+09:00"
 }
 ```
 
 **장치가 자신의 데이터 항목을 스스로 선언한다.** 미들웨어 서버는 birth의 `metrics`를 근거로 수집 대상을 구성하므로, 항목이 늘어도 서버 코드나 설정 파일을 고치지 않는다. "데이터 타입·크기·주기가 확정되지 않았다"는 전제를 이 방식으로 흡수한다 (`../01-requirements/non-functional.md` §1).
+
+**`instance_id`** — 발행자 프로세스를 식별한다. **프로세스가 뜰 때마다 새로 만들고**, 같은 프로세스가 사는 동안에는 재접속·재발행에도 바꾸지 않는다. 형식은 정하지 않는다(문자열이면 된다).
+
+같은 `farm_id`로 엣지가 둘 이상 붙으면 토픽이 겹쳐 두 현장의 데이터가 한 농장으로 섞이고, 한쪽이 끊길 때 LWT 가 다른 쪽까지 offline 으로 만든다. 브로커는 client id 가 같을 때만, 그것도 조용히 끊어 주므로 이 사고는 밖에서 보이지 않는다. 미들웨어는 **death 없이 `instance_id` 만 바뀐 birth**를 중복 발행자로 의심하고 경고를 남긴다.
+
+- 선택 필드다. 싣지 않는 장치는 판정 대상에서 제외될 뿐 다른 동작은 같다.
+- 보관본(retained) birth 는 판정에서 제외한다 — 마지막으로 실린 값일 뿐 발행자 생존의 증거가 아니다.
+- 판정은 경고까지다. 강제 종료 직후 재접속은 브로커의 LWT 판정(keep-alive 의 최대 1.5배)이 늦어 오탐이 될 수 있으므로, 자동 차단의 근거로 쓰지 않는다.
 
 `death`는 LWT로 등록해 두고, 브로커가 keep-alive 만료를 감지하면 대신 발행한다.
 
@@ -269,6 +324,50 @@ farmon-internal/v1/{farm_id}/{stream}
 }
 ```
 
+### 4.9.1 엣지 → 미들웨어: 농장 배치도 (FR-41, retained)
+
+```json
+{
+  "type": "layout",
+  "version": "0.2",
+  "farm_id": "gyeongsan1",
+  "device_id": "edge-01",
+  "frame": "map",
+  "zones": [
+    { "id": "z0", "zone_type": "charging", "speed": 0.4,
+      "polygon": [[3.9, 1.2], [6.8, 1.2], [6.8, 3.2], [3.9, 3.2]] }
+  ],
+  "points": [
+    { "id": "slot-01", "point_type": "rack", "x": 2.45, "y": 0.0 },
+    { "id": "station-01", "point_type": "station", "x": -1.05, "y": 9.2 },
+    { "id": "home", "point_type": "charging", "x": 5.35, "y": 2.2 }
+  ],
+  "timestamp": "2026-08-10T09:00:00+09:00"
+}
+```
+
+토픽 `farmon/v1/{farm_id}/edge/{edge_id}/layout`, **QoS 1 · retained**, 접속 시 1회.
+
+birth(§4.9)가 "내가 어떤 데이터를 내는지"를 자기기술하듯, 이것은 **"내 농장이 어떻게 생겼는지"를 자기기술한다.** 엣지가 진실의 원천이므로 현장 도면이 바뀌면 서버가 따라간다.
+
+`frame`은 좌표계 식별자이며 `robot_status.position.frame`과 **반드시 같아야 한다** — 다르면 배치도 위에 로봇을 겹쳐 그릴 수 없다. 단위는 m, 축은 ROS 표준(REP-103).
+
+**미들웨어는 이 메시지를 반드시 DB에 적재한다.** retained 는 브로커가 살아 있을 때의 이야기이고, 배치도는 엣지가 꺼져 있어도 화면에 떠야 한다 (§5 오프라인 표시).
+
+#### 좌표계 (OPN-21 해소)
+
+실내 농장이므로 위경도는 쓰지 않는다. `farm.latitude/longitude`는 **농장의 소재지**(기상 조회·농장 목록)이고, 배치도와 로봇 위치는 **농장 내부 미터 좌표**다. 두 층위는 섞이지 않는다.
+
+| 항목 | 값 |
+|---|---|
+| 원점 | 엣지 지도(SD map) 작성 기준점 — 서버는 변환하지 않는다 |
+| 축 | ROS 표준 REP-103 (x 전방, y 좌측) |
+| 단위 | m |
+| 스케일 | 1:1. 화면 맞춤은 렌더러가 viewBox 로만 처리한다 |
+| 프레임 식별자 | `frame` 필드 (현재 `map`) |
+
+렌더러는 y축만 뒤집으면 된다 (ROS 는 y 위쪽 양수, SVG 는 아래쪽 양수).
+
 ### 4.10 애플리케이션 서버 → 웹앱: 실시간 푸시 (FR-04, FR-08, FR-32 등)
 
 ```json
@@ -284,6 +383,9 @@ farmon-internal/v1/{farm_id}/{stream}
 `connection_state`·`last_received_at`을 함께 내려, 데이터가 최신이 아닐 때 웹앱이 이를 표시할 수 있게 한다 (페일세이프 ③계층).
 
 ## 5. 통신 상태 판정 (FR-37)
+
+> **0.3 개정 (GEN-1280)** — 배수에 하한이 붙었다 (`degraded` 20초, `offline` 60초).
+> [contract-amendments/0.3-state-axis-split.md](./contract-amendments/0.3-state-axis-split.md) §3.
 
 | 상태 | 판정 근거 |
 |---|---|
@@ -332,6 +434,8 @@ farmon-internal/v1/{farm_id}/{stream}
 - Eclipse Sparkplug 규격 — 토픽 네임스페이스 계층과 birth/death certificate 방식을 참고했다. 본 규격은 Sparkplug를 그대로 채택하지 않고(페이로드는 protobuf가 아닌 JSON) 구조만 차용한다.
 
 ## 변경 이력
+- 2026-08-11 · birth 에 `instance_id` 선택 필드 신설(GEN-1296) — 같은 farm_id 로 붙은 중복 발행자 탐지. §4.9 반영. 외부 엣지가 MQTT over WebSocket 으로 붙으면서 farm_id 오설정이 실제 위험이 됐다
+- 2026-08-10 · 스키마 0.2→0.3 (GEN-1280) — §4.2·§4.7·§5 개정. 본문은 `contract-amendments/0.3-state-axis-split.md`
 - 2026-07-07 · 최초 작성
 - 2026-07-31 · `heartbeat` 메시지 신설(GEN-1225) — 주기 발행이 없는 엣지 컨트롤러의 생존 신호. §2 message_type·§3 정책·§4.9·§5 판정 반영. birth 유실 시 online 자가 복구, LWT 와 이중 방어
 - 2026-07-30 · 구현(증분 2~7)에서 확정된 계약 반영 — LWT death 정리 계약(§3), remote_stop·estop_state 발행 토픽 명시(§4.6·4.7)

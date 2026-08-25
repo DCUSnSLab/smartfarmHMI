@@ -7,14 +7,9 @@
 
 import { useParams } from "next/navigation";
 import { PlannedBox } from "@/components/Planned";
-import { Card, Gauge, SectionTitle, StatusDot, TANK_LABEL } from "@/components/ui";
+import { Card, Gauge, SectionTitle, StatusDot } from "@/components/ui";
+import { STATION_STATE, TANK_LABEL, TANK_LOW_PCT } from "@/lib/severity";
 import { useFarmSnapshot } from "@/lib/farmDetail";
-
-const STATION_STATE: Record<string, { label: string; sev: string }> = {
-  idle: { label: "대기", sev: "info" },
-  busy: { label: "작업 중", sev: "ok" },
-  fault: { label: "이상", sev: "warning" },
-};
 
 export default function SupplyTab() {
   const { farmId } = useParams<{ farmId: string }>();
@@ -31,27 +26,27 @@ export default function SupplyTab() {
         <SectionTitle title="탱크 수위" sub="농장 공용 · 잔량은 용량·소비율 기준 환산" />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {tanks.map((t) => {
-            const low = (t.level_pct ?? 100) < 20;
+            const low = (t.level_pct ?? 100) < TANK_LOW_PCT;
             return (
               <Card key={t.device_id}>
                 <div className="mb-2 flex items-baseline justify-between">
-                  <span className="text-[13.5px] font-bold text-gray-600">
+                  <span className="text-13.5 font-bold text-gray-600">
                     {TANK_LABEL[t.tank_type] ?? t.tank_type} 탱크
                   </span>
-                  <span className={`text-[24px] font-extrabold ${low ? "text-status-warningDark" : ""}`}>
+                  <span className={`text-24 font-extrabold ${low ? "text-status-warningDark" : ""}`}>
                     {t.level_pct != null ? Math.round(t.level_pct) : "—"}
-                    <span className="text-[12px] font-bold text-muted">%</span>
+                    <span className="text-12 font-bold text-muted">%</span>
                   </span>
                 </div>
-                <Gauge value={t.level_pct} okMin={20} okMax={100} unit="%" />
-                <div className="mt-2 text-[12.5px] font-semibold text-muted">
+                <Gauge value={t.level_pct} okMin={TANK_LOW_PCT} okMax={100} unit="%" />
+                <div className="mt-2 text-12.5 font-semibold text-muted">
                   {t.remain_l != null ? `약 ${t.remain_l}L` : "—"}
                   {t.days_left != null && ` · ${t.days_left}일분`}
                   {t.uses_left != null && ` · ${t.uses_left}회분`}
-                  <span className="ml-1 text-[11.5px]">(용량 {t.capacity_l}L)</span>
+                  <span className="ml-1 text-11.5">(용량 {t.capacity_l}L)</span>
                 </div>
                 {low && (
-                  <div className="mt-2 rounded-lg bg-status-warning/10 px-2.5 py-1.5 text-[12px] font-bold text-status-warningDark">
+                  <div className="mt-2 rounded-lg bg-status-warning/10 px-2.5 py-1.5 text-12 font-bold text-status-warningDark">
                     잔량 부족 — 보충이 필요해요
                   </div>
                 )}
@@ -60,7 +55,7 @@ export default function SupplyTab() {
           })}
           {tanks.length === 0 && (
             <Card className="sm:col-span-3">
-              <div className="text-[13px] font-semibold text-muted">
+              <div className="text-13 font-semibold text-muted">
                 등록된 탱크가 없어요. 설정에서 탱크를 추가하면 수위·잔량이 표시됩니다.
               </div>
             </Card>
@@ -76,28 +71,28 @@ export default function SupplyTab() {
             {stations.map((s) => {
               const st = STATION_STATE[s.state] ?? STATION_STATE.idle;
               return (
-                <div key={s.station_id} className="flex items-center gap-3 rounded-xl bg-surface px-3.5 py-2.5">
-                  <span className="text-[13.5px] font-extrabold">{s.station_id}</span>
-                  <span className="text-[12.5px] font-semibold text-muted">
+                <div key={s.station_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-surface px-3.5 py-2.5">
+                  <span className="text-13.5 font-extrabold">{s.station_id}</span>
+                  <span className="whitespace-nowrap text-12.5 font-semibold text-muted">
                     {TANK_LABEL[s.station_type] ?? s.station_type} 스테이션
                   </span>
-                  <span className="ml-auto"><StatusDot sev={st.sev} label={st.label} /></span>
+                  <span className="ml-auto shrink-0"><StatusDot sev={st.sev} label={st.label} /></span>
                 </div>
               );
             })}
             {stations.length === 0 && (
-              <div className="text-[13px] font-semibold text-muted">등록된 워크스테이션이 없어요</div>
+              <div className="text-13 font-semibold text-muted">등록된 워크스테이션이 없어요</div>
             )}
           </div>
         </Card>
 
         <Card>
           <SectionTitle title="랙 슬롯" sub="파레트 보관 현황" />
-          <div className="mb-3 text-[26px] font-extrabold">
+          <div className="mb-3 text-26 font-extrabold">
             {rack.slots ?? 0}
-            <span className="ml-1 text-[13px] font-bold text-muted">칸</span>
+            <span className="ml-1 text-13 font-bold text-muted">칸</span>
           </div>
-          <div className="space-y-1.5 text-[12.5px] font-semibold text-gray-600">
+          <div className="space-y-1.5 text-12.5 font-semibold text-gray-600">
             <div className="flex justify-between">
               <span>파레트</span><b>{rack.pallets ?? 0}개</b>
             </div>

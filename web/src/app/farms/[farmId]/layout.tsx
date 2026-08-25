@@ -1,91 +1,54 @@
 "use client";
 
 /**
- * 농장 상세 셸 — 스코프 스위처 + 농장 탭 바 (디자인 "스코프 페이지" 구조).
- * 탭: 상태 / 생육기·센서 / 로봇 / 작업·공급 / 알림
+ * 농장 상세 셸 — 농장명·통신 상태만 둔다.
+ * 스코프 스위처와 탭 바는 전역 셸(AppShell)의 FarmScopeNav·FarmDetailNav 로 이관했다.
  */
 
-import Link from "next/link";
+import { useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { StatusDot } from "@/components/ui";
+import { StatusMark } from "@/components/ui";
+import { SEV_STYLE } from "@/lib/severity";
 import { useFarmData, useScope } from "@/lib/farmData";
-
-const TABS = [
-  { seg: "status", label: "상태" },
-  { seg: "env", label: "생육기·센서" },
-  { seg: "robot", label: "로봇" },
-  { seg: "supply", label: "작업·공급" },
-  { seg: "alerts", label: "알림" },
-];
+import { useFarmSnapshot } from "@/lib/farmDetail";
+import { farmStatus } from "@/lib/fleet";
 
 export default function FarmLayout({ children }: { children: React.ReactNode }) {
   const { farmId } = useParams<{ farmId: string }>();
-  const pathname = usePathname();
   useScope(farmId);
-  const { farms, farmName, conns, alerts } = useFarmData();
 
-  const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
-  const unacked = Object.values(alerts).filter((a) => !a.acked_at).length;
-  const current = TABS.find((t) => pathname.endsWith(`/${t.seg}`))?.seg ?? "status";
+  // 탭·농장을 바꾸면 화면 맨 위에서 시작한다 — 내려서 보던 자리가 남으면 새 화면의
+  // 첫 카드를 지나친 채 열린다. 이 레이아웃은 밖으로 나가는 동안에도 잠시 살아 있어
+  // 농장 상세 경로일 때만 적용한다 (아니면 떠나는 화면이 맨 위로 끌려간다).
+  const pathname = usePathname();
+  useEffect(() => {
+    if (!pathname.startsWith("/farms/")) return;
+    window.scrollTo({ top: 0 });
+  }, [pathname]);
+  const { farmName, stops } = useFarmData();
+
+  // 스코프 스위처·대시보드 카드와 **같은 함수·같은 스냅샷**을 쓴다. 예전에는 여기만
+  // 엣지 연결 상태로 따로 판정해, 같은 농장인데 화면마다 점 색이 달랐다.
+  const snap = useFarmSnapshot(farmId);
+  const status = snap ? farmStatus(snap, stops) : null;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-5">
-      {/* 스코프 스위처 */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Link
-          href="/"
-          className="rounded-xl border border-gray-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-gray-600"
-        >
-          전체 현황
-        </Link>
-        {farms.map((f) => (
-          <Link
-            key={f.farm_id}
-            href={`/farms/${f.farm_id}/${current}`}
-            className={`rounded-xl border px-3.5 py-1.5 text-[13px] ${
-              f.farm_id === farmId
-                ? "border-primary bg-primary font-extrabold text-white"
-                : "border-gray-200 bg-white font-bold text-gray-600"
-            }`}
-          >
-            {f.name}
-          </Link>
-        ))}
-      </div>
-
       {/* 농장 헤더 */}
-      <div className="mb-3 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[20px] font-extrabold">{farmName || farmId}</h1>
-        <StatusDot
-          sev={edge?.state === "online" ? "ok" : edge?.state === "degraded" ? "caution" : "warning"}
-          label={edge?.state === "online" ? "정상 가동" : edge?.state === "degraded" ? "응답 지연" : "통신 단절"}
-        />
+      <div className="mb-5 flex flex-wrap items-baseline gap-3">
+        <h1 className="text-20 font-extrabold">{farmName || farmId}</h1>
+        {status && (
+          <span className="inline-flex items-center gap-1.5 text-12.5 font-bold">
+            <StatusMark sev={status.sev} label={status.label} />
+            <span className={SEV_STYLE[status.sev].text}>{status.label}</span>
+            {/* 헤더는 한 줄이라 첫 사유만 — 전체는 상태 탭의 요약 카드가 보여준다 */}
+            <span className="font-semibold text-muted">
+              {status.reasons[0]?.text}
+              {status.reasons.length > 1 && ` 외 ${status.reasons.length - 1}건`}
+            </span>
+          </span>
+        )}
       </div>
-
-      {/* 탭 바 */}
-      <nav className="mb-5 flex flex-wrap gap-1 border-b border-gray-200">
-        {TABS.map((t) => {
-          const active = t.seg === current;
-          return (
-            <Link
-              key={t.seg}
-              href={`/farms/${farmId}/${t.seg}`}
-              className={`-mb-px border-b-[3px] px-3.5 py-2 text-[13.5px] ${
-                active
-                  ? "border-primary font-extrabold text-primary-dark"
-                  : "border-transparent font-semibold text-gray-500"
-              }`}
-            >
-              {t.label}
-              {t.seg === "alerts" && unacked > 0 && (
-                <span className="ml-1.5 rounded-full bg-status-warning px-1.5 text-[11px] font-extrabold text-white">
-                  {unacked}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
 
       {children}
     </div>

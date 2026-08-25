@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from middleware.app.config import settings
 from middleware.app import models as m
+from middleware.app.weather import collect_farm_weather
 
 # 임계 기본값 — **잠정** (OPN-20 확정 시 교체). 시뮬레이터 패턴 기준 정상 범위 밖만 발생
 ALERT_RULES = [
@@ -26,7 +27,10 @@ ALERT_RULES = [
 FARMS = [
     {
         "farm": {"farm_id": "seongju", "name": "성주 참외 온실",
-                 "farm_type": "greenhouse", "crop": "참외", "region_code": None},
+                 "farm_type": "greenhouse", "crop": "참외",
+                 "region_code": "4784025000",
+                 "address": "경상북도 성주군 대가면 참별로 2479", "zipcode": "40056",
+                 "latitude": 35.915958312827335, "longitude": 128.2534148622604},
         # 디자인 전달본 farm-status 화면의 하드웨어 구성 참조
         "devices": [
             # (device_id, device_type, name, location)
@@ -76,7 +80,10 @@ FARMS = [
     {
         # 둘째 팜 — 기본 스택 멀티팜 (virtual-edge-jinju 서비스, configs/jinju.yaml)
         "farm": {"farm_id": "jinju", "name": "진주 토마토 온실",
-                 "farm_type": "greenhouse", "crop": "토마토", "region_code": None},
+                 "farm_type": "greenhouse", "crop": "토마토",
+                 "region_code": "4817040000",
+                 "address": "경상남도 진주시 대곡면 덕곡길 147", "zipcode": "52608",
+                 "latitude": 35.225161797400375, "longitude": 128.1845296134792},
         "devices": [
             ("edge-01", "edge", "엣지 컨트롤러", "기계실"),
             ("growbed-01", "growbed", "재배동", "온실 중앙"),
@@ -178,9 +185,34 @@ async def seed_farm(conn, spec: dict) -> None:
 
 async def seed() -> None:
     engine = create_async_engine(settings.database_url)
+    pending_weather = []
     async with engine.begin() as conn:
         for spec in FARMS:
             await seed_farm(conn, spec)
+        weathered = set(
+            (await conn.execute(select(m.weather_reading.c.farm_id).distinct())).scalars()
+        )
+        farm_ids = [spec["farm"]["farm_id"] for spec in FARMS]
+        rows = (
+            await conn.execute(
+                select(
+                    m.farm.c.farm_id, m.farm.c.region_code,
+                    m.farm.c.latitude, m.farm.c.longitude,
+                ).where(m.farm.c.farm_id.in_(farm_ids))
+            )
+        ).mappings().all()
+        pending_weather = [
+            row for row in rows
+            if row["farm_id"] not in weathered
+            and row["region_code"] is not None
+            and row["latitude"] is not None
+            and row["longitude"] is not None
+        ]
+    for farm in pending_weather:
+        await collect_farm_weather(
+            engine, farm["farm_id"], farm["region_code"],
+            farm["latitude"], farm["longitude"],
+        )
     await engine.dispose()
     for spec in FARMS:
         print(f"✓ seed: {spec['farm']['farm_id']} — devices={len(spec['devices'])}, "

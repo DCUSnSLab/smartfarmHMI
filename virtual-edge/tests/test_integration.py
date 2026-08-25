@@ -156,17 +156,43 @@ async def test_5_duplicate_command_idempotent(mw, db, registered_farms):
 
 
 async def test_5b_robot_status_ingested(db, registered_farms):
-    """로봇 상태 적재 (§4.2) — hwaseong robot-01, mission_state 유효값."""
+    """로봇 상태 적재 (§4.2) — hwaseong robot-01, phase 유효값.
+
+    0.3 부터 phase 에 'error' 가 없다. 오류는 별도 error 컬럼이 전담하므로,
+    진행 단계 칸에 오류가 섞여 들어오면 계약 위반이다.
+    """
     async def robot_rows():
         rows = await db.fetch(
-            "SELECT DISTINCT mission_state FROM mw.robot_status "
+            "SELECT DISTINCT phase FROM mw.robot_status "
             "WHERE farm_id=$1 AND device_id='robot-01' "
             "AND ts > now() - interval '1 minute'", HW)
         return rows or None
 
     rows = await wait_until(robot_rows, timeout=60, desc="robot-01 상태 적재")
-    valid = {"idle", "moving", "working", "charging", "error"}
-    assert {r["mission_state"] for r in rows} <= valid
+    valid = {"idle", "moving", "working", "charging"}
+    assert {r["phase"] for r in rows} <= valid
+
+
+async def test_5c_estop_released_is_confirmed(mw, db, registered_farms):
+    """물리 비상정지 — 확인된 해제는 정지로 잡히지 않는다 (§4.7).
+
+    hwaseong 은 estop=released(장치를 읽어 확인) 로 발행한다. 이 값이
+    unknown 과 구분되지 않으면 정상 팜이 영구 정지 상태로 보인다.
+    """
+    async def estop_row():
+        return await db.fetchrow(
+            "SELECT detail, released_at FROM mw.stop_event "
+            "WHERE stop_kind='physical_estop' AND farm_id=$1 "
+            "ORDER BY engaged_at DESC LIMIT 1", HW)
+
+    # 활성 물리 정지가 없어야 한다 (released 는 정지를 만들지 않는다)
+    state = (await mw.get(f"/internal/farms/{HW}/stop-state")).json()
+    assert state["physical_estop"] is None, \
+        f"확인된 해제가 정지로 잡혔다: {state['physical_estop']}"
+
+    row = await estop_row()
+    if row and row["released_at"] is None:  # 이전 실행이 남긴 미해제 정지
+        pytest.fail(f"미해제 물리 정지가 남아 있음: {dict(row)}")
 
 
 # ── phase 2: 멀티팜 (farm-gimje 추가 기동 상태) ────────────────
@@ -212,9 +238,9 @@ async def test_6b_farm_scope_stop_isolation(mw, db, registered_farms):
         # hwaseong 로봇 정지 전이
         async def robot_stopped():
             row = await db.fetchrow(
-                "SELECT mission_state, speed FROM mw.robot_status "
+                "SELECT phase, speed FROM mw.robot_status "
                 "WHERE farm_id=$1 AND device_id='robot-01' ORDER BY ts DESC LIMIT 1", HW)
-            return row if row and row["mission_state"] == "idle" and row["speed"] == 0 else None
+            return row if row and row["phase"] == "idle" and row["speed"] == 0 else None
         await wait_until(robot_stopped, timeout=30, desc="hwaseong 로봇 정지")
 
         # 기본 스택(seongju)은 무영향 — farm_id 미구분 버그가 있으면 여기가 깨진다

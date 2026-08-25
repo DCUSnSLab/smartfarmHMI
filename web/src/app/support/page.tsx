@@ -57,33 +57,33 @@ export default function SupportPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-6">
       <div className="mb-5 flex flex-wrap items-baseline gap-3">
-        <h1 className="text-[22px] font-extrabold">지원</h1>
-        <span className="text-[13px] font-semibold text-muted">도움말 · 문의 · 대화형 도움</span>
+        <h1 className="text-22 font-extrabold">지원</h1>
+        <span className="text-13 font-semibold text-muted">도움말 · 문의 · 대화형 도움</span>
       </div>
 
       <section className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-[14.5px] font-extrabold">대화형 도움말</span>
+            <span className="text-14.5 font-extrabold">대화형 도움말</span>
             <PlannedChip basis="FR-30 LLM 미연동" />
           </div>
-          <p className="text-[12.5px] font-semibold leading-relaxed text-muted">
+          <p className="text-12.5 font-semibold leading-relaxed text-muted">
             우하단의 💬 버튼으로 어시스턴트를 열 수 있어요. 음성 엔진·LLM 이 연결되지 않아
             현재는 텍스트 입력과 정적 안내로 동작합니다.
           </p>
         </Card>
         <Card>
-          <div className="mb-1 text-[14.5px] font-extrabold">사용 가이드</div>
-          <p className="text-[12.5px] font-semibold leading-relaxed text-muted">
+          <div className="mb-1 text-14.5 font-extrabold">사용 가이드</div>
+          <p className="text-12.5 font-semibold leading-relaxed text-muted">
             대시보드·제어·알림·정지 사용법을 아래에서 단계별로 안내합니다.
           </p>
         </Card>
         <Card>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-[14.5px] font-extrabold">1:1 문의</span>
+            <span className="text-14.5 font-extrabold">1:1 문의</span>
             <PlannedChip basis="문의 채널 미정" />
           </div>
-          <p className="text-[12.5px] font-semibold leading-relaxed text-muted">
+          <p className="text-12.5 font-semibold leading-relaxed text-muted">
             기술 지원팀 문의 채널은 준비 중입니다. 당장은 연구실 담당자에게 연락해 주세요.
           </p>
         </Card>
@@ -94,8 +94,8 @@ export default function SupportPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {GUIDES.map((g) => (
             <Card key={g.title}>
-              <div className="mb-1.5 text-[14px] font-extrabold">{g.title}</div>
-              <p className="text-[12.5px] font-semibold leading-relaxed text-gray-600">{g.body}</p>
+              <div className="mb-1.5 text-14 font-extrabold">{g.title}</div>
+              <p className="text-12.5 font-semibold leading-relaxed text-gray-600">{g.body}</p>
             </Card>
           ))}
         </div>
@@ -110,11 +110,11 @@ export default function SupportPage() {
                 onClick={() => setOpen(open === i ? null : i)}
                 className="flex w-full items-center gap-3 px-3 py-3.5 text-left"
               >
-                <span className="flex-1 text-[13.5px] font-bold">{f.q}</span>
-                <span className="text-[13px] text-gray-400">{open === i ? "−" : "+"}</span>
+                <span className="flex-1 text-13.5 font-bold">{f.q}</span>
+                <span className="text-13 text-gray-400">{open === i ? "−" : "+"}</span>
               </button>
               {open === i && (
-                <p className="px-3 pb-4 text-[13px] font-semibold leading-relaxed text-gray-600">{f.a}</p>
+                <p className="px-3 pb-4 text-13 font-semibold leading-relaxed text-gray-600">{f.a}</p>
               )}
             </div>
           ))}

@@ -7,9 +7,18 @@
 ④ 푸시 포맷 — 통신 규격 §4.10 형태 유지
 """
 
+import logging
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.accounts.auth import ACCESS_COOKIE, user_from_token
+
+logger = logging.getLogger(__name__)
+
+SYSTEM_GROUP = "system"
+# 알림도 스코프와 무관하다 — 헤더 벨은 어느 농장 화면에서든 전 농장 알림을 보여준다.
+# 스코프 그룹에 실으면 농장을 옮길 때마다 다른 농장 알림을 놓친다.
+ALERTS_GROUP = "alerts"
 
 
 def _cookie(scope, name: str) -> str | None:
@@ -34,9 +43,17 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
             return
         # 농장별 접근 권한 분리는 OPN-07 확정 시 여기서 검사
         await self.accept()
+        # 서버 생존 신호와 알림은 스코프와 무관하다 — 전환해도 유지되도록 따로 가입한다.
+        await self.channel_layer.group_add(SYSTEM_GROUP, self.channel_name)
+        await self.channel_layer.group_add(ALERTS_GROUP, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
-        """{"action":"subscribe","scope":"all"|"<farm_id>"} — 스코프 전환 (FR-38)."""
+        """{"action":"subscribe","scope":...} 스코프 전환 (FR-38), {"action":"ping"} 생존 확인."""
+        # 화면이 「맥박이 끊겼다」를 감지했을 때, 소켓 자체가 죽은 것인지 서버 쪽
+        # 파이프라인이 끊긴 것인지 구분하려고 보낸다. 소켓이 살아 있으면 pong 이 온다.
+        if content.get("action") == "ping":
+            await self.send_json({"type": "pong"})
+            return
         if content.get("action") != "subscribe":
             return
         scope = content.get("scope") or "all"
@@ -61,3 +78,25 @@ class MonitorConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, code):
         if getattr(self, "_group", None):
             await self.channel_layer.group_discard(self._group, self.channel_name)
+        if getattr(self, "user", None) is not None:
+            await self.channel_layer.group_discard(SYSTEM_GROUP, self.channel_name)
+            await self.channel_layer.group_discard(ALERTS_GROUP, self.channel_name)
+
+    async def __call__(self, scope, receive, send):
+        """예외로 끝나도 그룹 등록을 정리한다.
+
+        Channels 의 `AsyncConsumer.__call__` 은 `StopConsumer` 만 삼키고 나머지 예외는
+        ASGI 앱 밖으로 흘린다. 그 경로에서는 `disconnect()` 가 불리지 않아 그룹 등록이
+        group_expiry(24시간) 동안 남는다 (GEN-1323).
+        """
+        try:
+            await super().__call__(scope, receive, send)
+        except Exception:
+            # 정상 종료는 이미 disconnect() 를 지났으므로 이중 호출이 되지 않는다
+            if getattr(self, "channel_name", None):
+                try:
+                    await self.disconnect(1011)   # 1011 = 내부 오류
+                except Exception:
+                    # 정리 실패가 원래 예외를 가리면 안 된다. 남은 잔재는 group_expiry 가 걷는다
+                    logger.exception("컨슈머 예외 종료 후 그룹 정리 실패")
+            raise

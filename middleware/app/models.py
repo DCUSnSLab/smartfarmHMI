@@ -34,7 +34,11 @@ farm = sa.Table(
     sa.Column("name", sa.Text, nullable=False),
     sa.Column("farm_type", sa.Text, nullable=False),
     sa.Column("crop", sa.Text),
-    sa.Column("region_code", sa.Text),  # 기상 조회용 (OPN-17)
+    sa.Column("region_code", sa.Text),  # 10자리 행정구역코드
+    sa.Column("address", sa.Text),
+    sa.Column("zipcode", sa.Text),
+    sa.Column("latitude", sa.Double),
+    sa.Column("longitude", sa.Double),
     sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
     *_created_updated(),
     sa.CheckConstraint(
@@ -62,6 +66,27 @@ device_meta = sa.Table(
         name="device_type_check",
     ),
 )
+
+
+def registered(farm_col, device_col):
+    """대장에 오른 장치인가 — (farm_id, device_id) 를 가진 이력·상태 표에 건다.
+
+    운영 화면의 장치 목록은 이 조건으로만 만든다. 이력에서 device_id 를 뽑아
+    목록을 만들면 「한 번이라도 발행했음」이 곧 「이 농장의 장비임」이 되어,
+    잠깐 켰다 끈 장치가 영원히 남는다. 무엇이 이 농장의 장비인지는 사람이
+    정한다 — 그 자리가 device_meta 다.
+
+    등록되지 않은 장치는 사라지는 게 아니라 설정 화면의 「미등록」 칸에 모인다
+    (settings_api._unregistered_devices). 거기서 등록하거나 그대로 둔다.
+
+    조건을 여기 한 번만 둔다 — 목록마다 따로 적으면 한쪽만 고쳐져 결과가 갈린다.
+    """
+    return sa.exists().where(
+        device_meta.c.farm_id == farm_col,
+        device_meta.c.device_id == device_col,
+        device_meta.c.deleted_at.is_(None),
+    )
+
 
 sensor = sa.Table(
     "sensor",
@@ -196,7 +221,9 @@ robot_status = sa.Table(
     sa.Column("speed", sa.Double),
     sa.Column("battery_pct", sa.SmallInteger),
     sa.Column("charging", sa.Boolean, nullable=False, server_default=sa.false()),
-    sa.Column("mission_state", sa.Text, nullable=False, server_default=sa.text("'idle'")),
+    # phase 는 "어디까지 갔나"(상태), error 는 "무엇이 틀어졌나"(사건).
+    # 0.2 의 mission_state 는 둘을 한 칸에 담아 사건이 상태를 덮었다 (§4.2).
+    sa.Column("phase", sa.Text, nullable=False, server_default=sa.text("'idle'")),
     sa.Column("current_task_id", sa.Text),
     sa.Column("error", JSONB),
     sa.Column("extra", JSONB, nullable=False, server_default=_JSONB_EMPTY),
@@ -205,8 +232,8 @@ robot_status = sa.Table(
         "battery_pct IS NULL OR (battery_pct BETWEEN 0 AND 100)", name="robot_battery_check"
     ),
     sa.CheckConstraint(
-        "mission_state IN ('idle','moving','working','charging','error')",
-        name="robot_mission_state_check",
+        "phase IN ('idle','moving','working','charging')",
+        name="robot_phase_check",
     ),
 )
 
@@ -216,7 +243,7 @@ rack_slot = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
     sa.Column("farm_id", sa.Text, sa.ForeignKey("farm.farm_id"), nullable=False),
     sa.Column("slot_id", sa.Text, nullable=False),  # 예: rack-a-03
-    sa.Column("zone", sa.Text),
+    sa.Column("zone", sa.Text),  # 소속 존 (슬롯 → 자기를 담은 존)
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
     sa.UniqueConstraint("farm_id", "slot_id", name="uq_rack_slot_farm_slot"),
 )
@@ -553,6 +580,10 @@ alert = sa.Table(
     sa.Index("ix_alert_farm_occurred", "farm_id", "occurred_at"),
     # 미확인 카운트용 부분 인덱스
     sa.Index("ix_alert_unacked", "farm_id", postgresql_where=sa.text("acked_at IS NULL")),
+    # 전 농장 목록의 키셋 페이지네이션용 — (occurred_at, id) 순서가 정렬 키이자 커서다.
+    # DESC 로 만들지 않는 이유: btree 는 역방향 스캔이 가능해 ORDER BY ... DESC 에도
+    # 같은 인덱스가 쓰인다 (혼합 정렬이 아니라면 방향을 박을 이유가 없다).
+    sa.Index("ix_alert_occurred_id", "occurred_at", "id"),
 )
 
 # ── 3.6 안전 ─────────────────────────────────────────────────
@@ -569,6 +600,10 @@ stop_event = sa.Table(
     sa.Column("engaged_by", sa.Text),  # physical_estop 은 현장 조작 — NULL 허용
     sa.Column("released_by", sa.Text),
     sa.Column("reason", sa.Text),
+    # 물리 비상정지의 원 보고 {estop, reason} — engaged|released|unknown (§4.7).
+    # unknown 도 정지로 판정하되(안전측) 화면은 "현장 확인 필요"로 구분해야 하므로,
+    # 판정 결과와 별개로 엣지가 뭐라고 보고했는지를 남긴다.
+    sa.Column("detail", JSONB),
     sa.Column("command_id", sa.Text, sa.ForeignKey("command_log.command_id")),
     sa.CheckConstraint("stop_kind IN ('remote','physical_estop')", name="stop_kind_check"),
     sa.CheckConstraint("scope IN ('all','farm')", name="stop_scope_check"),
@@ -594,6 +629,9 @@ farm_layout = sa.Table(
     sa.Column("origin_desc", sa.Text),
     sa.Column("scale", JSONB),
     sa.Column("background", JSONB),
+    # 배치도 출처 — 엣지 자기기술(edge)과 설정 화면 수기 등록을 구분한다
+    sa.Column("source", sa.Text),
+    sa.Column("source_device_id", sa.Text),
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=_NOW),
 )
 
@@ -603,12 +641,16 @@ layout_element = sa.Table(
     sa.Column("id", sa.BigInteger, sa.Identity(always=True), primary_key=True),
     sa.Column("layout_id", sa.BigInteger, sa.ForeignKey("farm_layout.id"), nullable=False),
     sa.Column("element_type", sa.Text, nullable=False),
+    sa.Column("element_id", sa.Text),  # 엣지 재발행 시 교체 키 (zone id, slot id 등)
     sa.Column("ref_device_id", sa.Text),  # 딥링크 대상
     sa.Column("x", sa.Double),  # 좌표 확정 전엔 NULL + zone 논리 배치
     sa.Column("y", sa.Double),
-    sa.Column("zone", sa.Text),
+    sa.Column("zone", sa.Text),       # 소속 존 (지점 → 자기를 담은 존)
+    sa.Column("zone_type", sa.Text),  # 존 자신의 종류 (corridor/charging/...)
+    sa.Column("geometry", JSONB),  # 구역 폴리곤·게이트 선분 [[x,y], ...] — 점 요소는 NULL
+    sa.Column("connects", ARRAY(sa.Text)),  # gate 가 잇는 두 존
     sa.CheckConstraint(
-        "element_type IN ('rack','station','tank','sensor','entrance','zone')",
+        "element_type IN ('rack','station','tank','sensor','entrance','zone','gate','charging')",
         name="layout_element_type_check",
     ),
 )

@@ -1,4 +1,4 @@
-"""MQTT 메시지 스키마 (통신 규격 0.2) — 서비스 간 유일한 공유 코드.
+"""MQTT 메시지 스키마 (통신 규격 0.3) — 서비스 간 유일한 공유 코드.
 
 **middleware 만** import 한다. virtual-edge 는 통신 규격 문서만으로 독립
 구현하고(계약 검증 목적), api·web 은 내부 토픽/REST 계약으로만 통신한다
@@ -10,6 +10,7 @@ from typing import Annotated, Union
 from pydantic import Field, TypeAdapter
 
 from shared.schemas.messages import (
+    CONTRACT_VERSION,
     Ack,
     Birth,
     BirthMetric,
@@ -18,10 +19,17 @@ from shared.schemas.messages import (
     Death,
     EstopState,
     Heartbeat,
+    Layout,
+    LayoutGate,
+    LayoutPoint,
+    LayoutZone,
     PalletTaskMsg,
     Position,
     RemoteStop,
     RemoteStopRelease,
+    RemoteStopState,
+    RobotError,
+    RobotJog,
     RobotStatusMsg,
 )
 from shared.schemas.sensor import SensorReading
@@ -32,14 +40,17 @@ AnyMessage = Annotated[
         RobotStatusMsg,
         PalletTaskMsg,
         ControlCommand,
+        RobotJog,
         Calibrate,
         RemoteStop,
         RemoteStopRelease,
+        RemoteStopState,
         EstopState,
         Ack,
         Birth,
         Death,
         Heartbeat,
+        Layout,
     ],
     Field(discriminator="type"),
 ]
@@ -53,7 +64,9 @@ def parse_message(raw: bytes | str):
 
 
 __all__ = [
+    "CONTRACT_VERSION",
     "Ack", "AnyMessage", "Birth", "BirthMetric", "Calibrate", "ControlCommand",
-    "Death", "EstopState", "Heartbeat", "PalletTaskMsg", "Position", "RemoteStop",
-    "RemoteStopRelease", "RobotStatusMsg", "SensorReading", "parse_message",
+    "Death", "EstopState", "Heartbeat", "Layout", "LayoutGate", "LayoutPoint", "LayoutZone",
+    "PalletTaskMsg", "Position", "RemoteStop", "RobotJog",
+    "RemoteStopRelease", "RemoteStopState", "RobotError", "RobotStatusMsg", "SensorReading", "parse_message",
 ]

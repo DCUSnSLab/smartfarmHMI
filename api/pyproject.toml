@@ -21,6 +21,9 @@ dependencies = [
   # WebSocket (Channels) + ASGI
   "channels>=4.1,<4.3",
   "channels-redis>=4.2,<4.4",
+  # channels-redis 의 전이 의존성이지만 직접 선언한다 — 8.x 가 socket_timeout 기본값을
+  # 바꿔 컨슈머가 죽은 적이 있어 상한을 둔다 (settings/base.py 의 CHANNEL_LAYERS 참고)
+  "redis>=8.1,<9",
   "uvicorn[standard]>=0.30,<0.36",
 
   # DB / crypto
@@ -32,6 +35,9 @@ dependencies = [
 
   # 미들웨어 내부 REST 클라이언트
   "httpx>=0.27,<0.29",
+
+  # 농업일지 사진 첨부 저장소
+  "minio>=7.2,<8",
 
   "django-redis>=5.4,<5.5",
 ]

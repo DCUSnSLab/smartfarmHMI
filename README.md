@@ -89,11 +89,16 @@ docker compose up -d virtual-edge         # 복구: online 복귀
 
 # 알림: 임계 초과 값 직접 발행 → 벨에 경고 도착
 docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/growbed/growbed-01/telemetry' -q 1 \
-  -m '{"type":"sensor_reading","version":"0.2","farm_id":"seongju","device_id":"growbed-01","sensor_id":"temp-a","sensor_type":"temperature","value":40,"unit":"celsius","sensor_state":"ok","timestamp":"2026-07-30T12:00:00+09:00"}'
+  -m '{"type":"sensor_reading","version":"0.3","farm_id":"seongju","device_id":"growbed-01","sensor_id":"temp-a","sensor_type":"temperature","value":40,"unit":"celsius","sensor_state":"ok","timestamp":"2026-07-30T12:00:00+09:00"}'
 
 # 물리 비상정지 표시(FR-36): 엣지 상태 발행 모사 → 빨간 배너 (웹 해제 불가)
 docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/status' -q 1 \
-  -m '{"type":"estop_state","version":"0.2","farm_id":"seongju","device_id":"edge-01","engaged":true,"source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
+  -m '{"type":"estop_state","version":"0.3","farm_id":"seongju","device_id":"edge-01","estop":"engaged","source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
+
+# 같은 토픽에 estop:"unknown" 을 보내면 "확인 필요" 배너가 뜬다 — 엣지가 장치를
+# 못 읽은 상태다. 정지로는 똑같이 잡히지만(안전측) 문구와 사유가 다르다 (§4.7)
+docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/status' -q 1 \
+  -m '{"type":"estop_state","version":"0.3","farm_id":"seongju","device_id":"edge-01","estop":"unknown","reason":"read_failed","source":"field_device","timestamp":"2026-07-30T12:00:00+09:00"}'
 ```
 
 ### 주요 명령 (Makefile)
@@ -122,7 +127,7 @@ docker compose exec mosquitto mosquitto_pub -t 'farmon/v1/seongju/edge/edge-01/s
 
 api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 즉시 반영**된다. 예외:
 - `virtual-edge` — 리로드 없음: `docker compose restart virtual-edge` (소스는 마운트됨, 의존성 변경 시 `--build`)
-- 파이썬 **의존성 추가**(pyproject.toml) — 이미지 재빌드: `make build SVC=api && docker compose up -d api`
+- 파이썬 **의존성 추가**(pyproject.toml) — 이미지 재빌드: `make build SVC="api api-bridge" && docker compose up -d api api-bridge` (두 서비스가 같은 `./api` 컨텍스트에서 이미지를 각각 만든다 — 한쪽만 빌드하면 나머지가 옛 이미지로 남는다)
 - `shared/schemas` 수정 — middleware 재시작 (virtual-edge 는 shared 미사용 — 독립 계약 구현)
 - **api·web 컨테이너를 재생성(`up -d --build` 등)한 뒤 502 가 나면** — nginx 가 이전 IP 를 캐시한 것: `docker compose restart nginx`
 
@@ -139,17 +144,19 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 
 ## 배포 (K8s)
 
-배포는 Kustomize + Jenkins 파이프라인 구조다 (AIBootcamp 패턴 미러, **현재 스켈레톤 — 클러스터 적용 전**).
+배포는 Kustomize + Jenkins 파이프라인 구조다.
 
-| 브랜치 | 네임스페이스 | 환경 | 노출 |
-|---|---|---|---|
-| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 |
-| `main` | `smartfarmhmi` | 운영 | NodePort 30481 (TLS·도메인 TODO) |
+| 브랜치 | 네임스페이스 | 환경 | 노출 | 상태 |
+|---|---|---|---|---|
+| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 | **운영 중** |
+| `main` | `smartfarmhmi` | 운영 | LoadBalancer 203.250.33.77:80 | **운영 중** (TLS·도메인 TODO) |
 
 - 매니페스트: `deploy/k8s/` (base + overlays/{dev,main}) — 렌더 확인: `kubectl kustomize deploy/k8s/overlays/dev`
-- **최초 1회 사전 작업**(네임스페이스·Secret 수동 생성 절차): [deploy/k8s/README.md](./deploy/k8s/README.md)
-- 파이프라인: `Jenkinsfile` — 브랜치별 환경 결정 → 이미지 빌드(`BUILD_NUMBER-GIT_SHA` 불변 태그) → Harbor push → `kubectl apply -k`. **Harbor 프로젝트·Jenkins 자격증명 등록 후 활성화** (파일 내 TODO)
-- 운영 전 필수: Mosquitto 인증·TLS·ACL (OPN-22), 쿠키 `secure` 전환
+- **최초 1회 사전 작업**(네임스페이스·Secret 4종·시드): [deploy/k8s/README.md](./deploy/k8s/README.md)
+- 파이프라인: `Jenkinsfile` — 브랜치별 환경 결정 → 이미지 빌드(`BUILD_NUMBER-GIT_SHA` 불변 태그) → Harbor push → 인프라·마이그레이션 Job·워크로드 순차 적용. develop 머지 후 Jenkins 주기 스캔으로 배포된다 (Jenkins 가 내부망이라 webhook 불가 — 즉시 배포하려면 잡에서 수동 실행)
+- 설정값 배치: 비밀값은 Secret, 환경별 값은 ConfigMap(`overlays/*/config.env` — **git 커밋됨**). 기준은 [deploy/k8s/README.md](./deploy/k8s/README.md) 참고
+- 고정 IP(`203.250.33.77`)는 풀에 하나뿐이다 — 두 환경이 동시에 요구하면 뒤쪽이 `<pending>` 으로 멈춘다. 노출 방식을 바꿀 땐 쥐고 있던 쪽을 먼저 놓게 할 것
+- 운영 전 필수: Mosquitto 인증·TLS·ACL (OPN-22), 쿠키 `secure` 전환, main overlay TLS·도메인
 
 ---
 
@@ -243,3 +250,6 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 - 2026-07-29 · 기술 스택 확정(tech-stack.md 신설, AIBootcamp 정합). OPN-03(DB)·OPN-19(물리 비상정지 상태 취득)·OPN-07 중 인증 방식 확정
 - 2026-07-29 · 개발 착수 — DB 스키마 정의(db-schema.md, OPN-09·15 해소), 개발 증분 계획(dev-increments.md), 개발 스캐폴딩(모노레포·compose·k8s 스켈레톤), develop 브랜치 신설
 - 2026-07-30 · 증분 0~7 구현 완료 반영 — 프로젝트 소개·Getting Started 튜토리얼·배포 안내로 README 개편, 개발 현황 표 신설(dev-increments.md), 증분 8 보류·검토 논점 기록
+- 2026-08-06 · **dev 서버 개통** (GEN-1264) — k8s 매니페스트 누락분 보강, Jenkins Harbor push·배포 연결. 배포 절이 스켈레톤 안내에서 실제 접속 정보·시드 계정으로 바뀜
+- 2026-08-24 · dev 게이트웨이 노출 전환 (GEN-1383) — NodePort 30480 → **LoadBalancer 203.250.33.77:80**
+- 2026-08-25 · **main(운영) 서버 개통** (GEN-1389) — 고정 IP `203.250.33.77` 를 dev 에서 운영으로 이관, dev 는 NodePort 30480 으로 환원. develop 의 첫 운영 릴리스

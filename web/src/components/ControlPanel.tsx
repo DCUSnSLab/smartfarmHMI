@@ -60,7 +60,7 @@ export function ControlPanel({
 
   return (
     <section id="control" className="mb-6">
-      <h3 className="mb-3 text-[15px] font-extrabold">
+      <h3 className="mb-3 text-15 font-extrabold">
         환경 제어 <span className="font-semibold text-muted">· 수동 · 온도·습도·양분·LED</span>
       </h3>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -69,10 +69,10 @@ export function ControlPanel({
           {CONTROLS.map((c) => (
             <div key={c.command} className="mb-4 last:mb-0">
               <div className="mb-1 flex items-baseline justify-between">
-                <span className="text-[13px] font-bold text-gray-600">{c.label}</span>
-                <span className="text-[17px] font-extrabold">
-                  {values[c.command]}<span className="text-[12px] text-muted">{c.unit}</span>
-                  {dirty.has(c.command) && <span className="ml-1 text-[11px] font-bold text-status-cautionDark">변경됨</span>}
+                <span className="text-13 font-bold text-gray-600">{c.label}</span>
+                <span className="text-17 font-extrabold">
+                  {values[c.command]}<span className="text-12 text-muted">{c.unit}</span>
+                  {dirty.has(c.command) && <span className="ml-1 text-11 font-bold text-status-cautionDark">변경됨</span>}
                 </span>
               </div>
               <input
@@ -89,12 +89,12 @@ export function ControlPanel({
           <button
             onClick={apply}
             disabled={disabled || sending || dirty.size === 0}
-            className="mt-2 w-full rounded-xl bg-primary py-3 text-[15px] font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
+            className="mt-2 w-full rounded-xl bg-primary py-3 text-15 font-extrabold text-white disabled:bg-gray-200 disabled:text-gray-400"
           >
             {sending ? "전송 중…" : `설정 적용${dirty.size ? ` (${dirty.size}건)` : ""}`}
           </button>
           {disabled && disabledReason && (
-            <p className="mt-2 text-center text-[12px] font-semibold text-status-warningDark">
+            <p className="mt-2 text-center text-12 font-semibold text-status-warningDark">
               {disabledReason}
             </p>
           )}
@@ -102,19 +102,19 @@ export function ControlPanel({
 
         {/* ── 명령 이력 (접수/완료 구분) ── */}
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <div className="mb-2 text-[13px] font-bold text-gray-600">최근 명령</div>
+          <div className="mb-2 text-13 font-bold text-gray-600">최근 명령</div>
           {recent.length === 0 && (
-            <div className="py-6 text-center text-[13px] font-semibold text-muted">아직 보낸 명령이 없어요</div>
+            <div className="py-6 text-center text-13 font-semibold text-muted">아직 보낸 명령이 없어요</div>
           )}
           {recent.map((c) => (
-            <div key={c.command_id} className="flex items-center justify-between border-b border-gray-100 py-2.5 text-[13.5px] last:border-0">
+            <div key={c.command_id} className="flex items-center justify-between border-b border-gray-100 py-2.5 text-13.5 last:border-0">
               <span className="font-bold">
                 {CMD_LABEL[c.command ?? ""] ?? c.command}
                 {c.params?.target != null && <span className="text-muted"> → {String(c.params.target)}</span>}
               </span>
               <span className="flex items-center gap-2">
-                <span className="text-[11.5px] font-semibold text-muted">{timeAgo(c.issued_at ?? null)}</span>
-                <span className={`rounded-lg px-2 py-0.5 text-[12px] font-extrabold ${STATUS_LABEL[c.status]?.cls ?? ""}`}>
+                <span className="text-11.5 font-semibold text-muted">{timeAgo(c.issued_at ?? null, { withTime: true })}</span>
+                <span className={`rounded-lg px-2 py-0.5 text-12 font-extrabold ${STATUS_LABEL[c.status]?.cls ?? ""}`}>
                   {STATUS_LABEL[c.status]?.text ?? c.status}
                 </span>
               </span>

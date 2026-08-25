@@ -1,0 +1,36 @@
+# MinIO 버킷 생성 Job (compose 의 minio-init 대응) — `mc mb --ignore-existing` 이라 멱등.
+# 매 배포마다 재실행돼도 안전하며, 버킷이 없으면 첨부·영상 업로드가 전부 실패한다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smartfarmhmi-minio-init
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-minio-init }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          envFrom:
+            - configMapRef: { name: smartfarmhmi-config }
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: MINIO_ACCESS_KEY } }
+            - name: MINIO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: MINIO_SECRET_KEY } }
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              until mc alias set local http://minio:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"; do
+                echo "minio 대기 중..."; sleep 3
+              done
+              mc mb --ignore-existing "local/$MINIO_BUCKET_ATTACHMENTS"
+              mc mb --ignore-existing "local/$MINIO_BUCKET_VIDEOS"
+              mc anonymous set none "local/$MINIO_BUCKET_ATTACHMENTS"
+              mc anonymous set none "local/$MINIO_BUCKET_VIDEOS"
+              echo "MinIO buckets initialized"

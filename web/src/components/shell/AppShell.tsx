@@ -7,22 +7,38 @@
 
 import { usePathname } from "next/navigation";
 import { Assistant } from "@/components/shell/Assistant";
+import { FarmDetailNav } from "@/components/shell/FarmDetailNav";
+import { FarmScopeNav } from "@/components/shell/FarmScopeNav";
 import { Header } from "@/components/shell/Header";
+import { LinkBanner } from "@/components/shell/LinkBanner";
 import { StopBanners } from "@/components/StopControls";
-import { canControl, useUser } from "@/lib/auth";
+import { UserProvider } from "@/lib/auth";
 import { FarmDataProvider, useFarmData } from "@/lib/farmData";
 import { PrefsProvider } from "@/lib/prefs";
 
 const BARE_PATHS = ["/login", "/forbidden"];
 
 function Chrome({ children }: { children: React.ReactNode }) {
-  const { stops } = useFarmData();
-  const user = useUser();
+  const { stops, farms } = useFarmData();
   return (
     <>
-      <Header />
-      <StopBanners stops={stops} canRelease={canControl(user)} />
-      {children}
+      {/* 배너와 헤더를 한 sticky 컨테이너에 둔다. 각각 sticky top-0 이면 스크롤 시
+          배너가 헤더를 덮어 네비를 가린다 — 정지 중에는 네비를 쓸 수 없게 된다.
+          순서는 전달본과 같이 배너가 위 (design-change-spec §1) */}
+      {/* data-app-chrome — 화면 안 특정 위치로 스크롤할 때 이 높이만큼 비켜야 한다
+          (고정 영역에 가려짐). 배너 유무·글자 크기로 높이가 변해 상수로 둘 수 없다 */}
+      <div data-app-chrome className="sticky top-0 z-50">
+        <StopBanners stops={stops} farms={farms} />
+        <LinkBanner />
+        <Header />
+      </div>
+
+      {/* 스코프 스위처·탭 바는 고정하지 않는다 — 정지 배너까지 고정되는 상황에서
+          함께 묶으면 좁은 화면의 본문이 거의 남지 않는다 (GEN-1231) */}
+      <FarmScopeNav />
+      <FarmDetailNav />
+      {/* Keep the final content clear of the fixed assistant button. */}
+      <div className="pb-24">{children}</div>
       <Assistant />
     </>
   );
@@ -32,11 +48,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   if (BARE_PATHS.some((p) => pathname.startsWith(p))) return <>{children}</>;
 
+  // 사용자 조회가 제일 밖 — 만료(401) 판정은 팜 데이터와 무관하게 먼저 돌아야 한다
   return (
     <PrefsProvider>
-      <FarmDataProvider>
-        <Chrome>{children}</Chrome>
-      </FarmDataProvider>
+      <UserProvider>
+        <FarmDataProvider>
+          <Chrome>{children}</Chrome>
+        </FarmDataProvider>
+      </UserProvider>
     </PrefsProvider>
   );
 }

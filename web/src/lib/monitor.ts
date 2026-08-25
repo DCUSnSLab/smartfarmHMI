@@ -7,15 +7,20 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch, refreshToken } from "@/lib/api";
 
 export interface SensorValue {
   sensor_id: string;
+  /** 장비 등록의 표시 이름 (미등록이면 없음) */
+  name?: string | null;
   sensor_type: string;
   unit: string;
   location?: string | null;
   value: number | null;
   ts: string | null;
   sensor_state: string;
+  /** 이 센서를 묶어 발행하는 생육기 — 통신 판정이 부모를 먼저 본다 (FR-37) */
+  parent_device_id?: string | null;
 }
 
 export interface RobotValue {
@@ -23,10 +28,23 @@ export interface RobotValue {
   ts: string;
   pos_x: number | null;
   pos_y: number | null;
+  pos_frame?: string | null;
+  /** 엣지 확장 필드 — 배치도에서 로봇 방향 표시에 쓴다 (통신 규격 §4.2) */
+  heading_rad?: number | null;
   speed: number | null;
   battery_pct: number | null;
   charging: boolean;
-  mission_state: string;
+  /** 임무가 어디까지 갔나 — 상태 (통신 규격 §4.2) */
+  phase: string;
+  /** 무엇이 틀어졌나 — 사건. phase 를 덮지 않고 나란히 온다 */
+  error: RobotError | null;
+}
+
+export interface RobotError {
+  code: string;
+  message?: string | null;
+  severity?: "warning" | "caution";
+  since?: string | null;
 }
 
 export interface ConnState {
@@ -40,6 +58,11 @@ export interface FarmSummary {
   name: string;
   farm_type: string;
   crop: string | null;
+  region_code?: string | null;
+  address?: string | null;
+  zipcode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   devices_total: number;
   devices_online: number;
 }
@@ -49,11 +72,105 @@ export interface StopInfo {
   engaged_at: string;
   by?: string | null;
   reason?: string | null;
+  farm_ids?: string[];   // 물리 비상정지 — 걸린 농장 전체 (농장별로 독립 성립)
+  /** 물리 비상정지 원 보고 (§4.7). `unknown` 도 정지로 판정되지만 문구는
+   *  "작동됨"이 아니라 "확인 필요"다. */
+  detail?: EstopDetail | null;
+}
+
+export interface EstopDetail {
+  estop: "engaged" | "released" | "unknown";
+  reason?: string | null;   // unknown 일 때: not_read_yet | read_failed | no_source
+  source?: string | null;
 }
 
 export interface StopState {
   remote: StopInfo | null;
   physical_estop: StopInfo | null;
+}
+
+/**
+ * 이 농장의 제어를 막아야 하는가 — 제어 UI 잠금 판정.
+ *
+ * 물리 비상정지는 **표시 목적상 전 농장을 모아 온다** (FR-36). 그래서 값이 있다는
+ * 이유만으로 잠그면, 다른 현장에서 눌린 것으로 이 농장 제어까지 잠긴다. 걸린 농장
+ * 목록에 이 농장이 있는지를 따져야 한다.
+ * 원격 정지는 서버가 이미 스코프로 좁혀 주므로 존재 여부만 본다.
+ */
+export function controlBlocked(stops: StopState, farmId: string): boolean {
+  const estop = stops.physical_estop;
+  // farm_ids 가 없으면 어느 현장인지 알 수 없다 — 안전 쪽으로 잠근다 (계약상 항상 온다)
+  const estopHere = estop != null && (estop.farm_ids?.includes(farmId) ?? true);
+  return stops.remote != null || estopHere;
+}
+
+/**
+ * 장치별 통신 상태 (FR-37) — 온라인 / 응답 지연 / 오프라인 3단계.
+ *
+ * 판정 근거가 장치 유형마다 다르다.
+ * - 엣지·로봇·생육기: 서버가 LWT·birth/death 로 판정한 `device_connection_state`
+ * - 센서: 자기 연결 레코드가 없다 (생육기가 묶어 발행한다). 마지막 수신 시각으로 본다
+ * - 탱크: 수위계 센서(`{탱크}-lv`)가 값의 출처이므로 그 센서의 수신 시각을 따른다
+ * - 그 외(워크스테이션): FR-37 대상이 아니다 — 발행 경로 자체가 없다
+ *
+ * 센서 임계값이 서버의 3배·10배 규칙과 다른 이유: 센서별 발행 주기가 스냅샷에 없다
+ * (생육기가 묶어 보내고 센서마다 간격이 3~30초). 정상 동작에서 걸리지 않고 멈춘
+ * 센서는 몇 분 안에 잡히는 값으로 둔다. 부모가 끊기면 그쪽 판정이 우선한다.
+ */
+const SENSOR_DEGRADED_SEC = 120;
+const SENSOR_OFFLINE_SEC = 600;
+
+export type LiveState = "online" | "degraded" | "offline" | "unmonitored";
+
+/**
+ * 센서 값의 신선도 — 마지막 수신 시각만으로 보는 판정.
+ * 장치 목록(deviceLiveness)과 농장 상태(farmStatus)가 같은 임계를 쓰도록 여기 둔다.
+ */
+export function sensorLiveness(ts: string | null): "online" | "degraded" | "offline" {
+  if (!ts) return "offline";
+  const age = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (age > SENSOR_OFFLINE_SEC) return "offline";
+  if (age > SENSOR_DEGRADED_SEC) return "degraded";
+  return "online";
+}
+
+/**
+ * 이 농장의 엣지 컨트롤러 연결 상태 — 「농장이 붙어 있나」의 근거.
+ *
+ * device_type 을 먼저 보고 없으면 id 접두사로 찾는다. 실시간 스트림의 연결 기록은
+ * 수신 때마다 새로 만들어져 device_type 이 남지 않기 때문이다 (스냅샷 쪽에는 있다).
+ * 화면마다 따로 찾으면 한쪽은 접두사만 보고 다른 쪽은 종류만 보게 된다.
+ */
+export function edgeConn(
+  conns: Record<string, ConnState & { device_type?: string | null }>,
+): ConnState | undefined {
+  const list = Object.values(conns);
+  return list.find((c) => c.device_type === "edge")
+    ?? list.find((c) => c.device_id.startsWith("edge"));
+}
+
+export function deviceLiveness(
+  deviceId: string,
+  deviceType: string,
+  conns: Record<string, ConnState>,
+  sensors: Record<string, SensorValue>,
+  /** 이 장치를 묶어 발행하는 생육기 (장비 등록의 parent_device_id) */
+  parentId?: string | null,
+): { state: LiveState; ts: string | null } {
+  const own = conns[deviceId];
+  if (own) return { state: own.state, ts: own.last_received_at };
+
+  // 탱크는 수위계 센서가 값의 출처 — 탱크 자체는 발행하지 않는다
+  const sensor = sensors[deviceType === "tank" ? `${deviceId}-lv` : deviceId];
+  if (!sensor) return { state: "unmonitored", ts: null };
+
+  // 등록값(parent_device_id)이 있으면 그것을, 없으면(탱크 등) 접두사로 찾는다
+  const parent = parentId
+    ? conns[parentId]
+    : Object.values(conns).find((c) => c.device_id.startsWith("growbed"));
+  if (parent && parent.state !== "online") return { state: parent.state, ts: sensor.ts };
+
+  return { state: sensorLiveness(sensor.ts), ts: sensor.ts };
 }
 
 export interface AlertItem {
@@ -67,6 +184,27 @@ export interface AlertItem {
   deeplink: string | null;
   occurred_at: string;
   acked_at: string | null;
+}
+
+/**
+ * 알림 목록 응답 — 기준선 고정 페이지네이션 (서버: middleware/app/alerts.py).
+ *
+ * anchor 는 "목록을 연 시점의 최신 항목"이고, 서버는 그 이하만 센다. 페이지를
+ * 넘기는 동안 새 알림이 도착해도 집합이 변하지 않게 하는 장치로, 화면은 받은
+ * anchor 를 다음 요청에 되돌려 보낸다 (내용은 해석하지 않는다).
+ *
+ * 여기서 이 타입을 선언하는 이유는 계층 순서다 — lib/alerts.ts 가 이 파일을
+ * 참조하고, 그 반대는 순환이 된다.
+ */
+export interface AlertPageResponse {
+  items: AlertItem[];
+  page: number;
+  /** counts=false 로 조회하면 집계가 빠진다 — 총계를 쓰지 않는 폴링(헤더 벨·KPI)이
+   *  15초마다 COUNT 를 두 번 돌리지 않게 하기 위한 것 */
+  pages: number | null;
+  total: number | null;
+  unacked_total: number | null;
+  anchor: string | null;
 }
 
 export interface CommandState {
@@ -86,61 +224,177 @@ export function useMonitor(scope: string) {
   const [commands, setCommands] = useState<Record<string, CommandState>>({});
   const [alerts, setAlerts] = useState<Record<number, AlertItem>>({});
   const [stops, setStops] = useState<StopState>({ remote: null, physical_estop: null });
-  const [farmName, setFarmName] = useState("");
   const [wsOpen, setWsOpen] = useState(false);
+  // 소켓이 붙어 있어도 미들웨어·브리지가 멈추면 데이터만 조용히 끊긴다.
+  // 서버 맥박(_system/health)의 나이로 그 상태를 본다.
+  const [serverBeat, setServerBeat] = useState<{ at: number; up: boolean } | null>(null);
+
+  // 통신·정지 변화가 실시간으로 오면 값이 증가한다. 전 농장 스냅샷(15초 폴링)을 쓰는
+  // 화면들이 이 값을 보고 즉시 다시 읽는다 — 안 그러면 상세 화면의 하드웨어 목록은
+  // 바로 바뀌는데 농장 점·헤더만 최대 15초 늦게 따라온다.
+  const [liveTick, setLiveTick] = useState(0);
+  // 직전에 받은 통신 상태 — 전 농장분을 스코프와 무관하게 기억한다.
+  // conns 를 쓰면 안 된다: 전체 스코프에서는 농장별 스냅샷을 받지 않아 늘 비어 있고,
+  // 그러면 「이전 값 없음 = 바뀜」이 되어 하트비트마다 틱이 올라간다.
+  const lastConnState = useRef<Record<string, string>>({});
+  /** 마지막 수신 시각 — 종류를 가리지 않고 무엇이든 받으면 갱신한다. 아래 감독자가
+   *  이 값 하나로 소켓의 생사를 판정한다 (effect 클로저에 갇히지 않게 ref). */
+  const rxAt = useRef(0);
+  // 소켓은 **스코프와 무관하게 하나만 유지한다.** 아래 WS effect 의 의존성에 scope 를
+  // 넣으면 화면을 옮길 때마다 연결을 닫고 새로 맺는다. 그러면
+  //   · 이동마다 실시간이 끊기고 (배너 깜빡임)
+  //   · 두 화면이 서로 다른 스코프를 선언하는 전환 구간에서 재연결이 반복되고
+  //   · 그 사이에 오는 push(정지·알림)를 놓친다
+  // 서버는 한 소켓에서 스코프를 바꿀 수 있다 (consumers.py 의 subscribe). 그래서
+  // 스코프 변경은 **연결 교체가 아니라 메시지**로 처리한다.
+  const scopeRef = useRef(scope);
   const wsRef = useRef<WebSocket | null>(null);
+  const loadStopsRef = useRef<() => Promise<void>>(async () => {});
+  const loadAlertsRef = useRef<() => Promise<void>>(async () => {});
+
+  // 이름은 이미 받아 둔 농장 목록에서 즉시 꺼낸다. 스냅샷 응답을 기다리면 농장을
+  // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
+  const farmName = farms.find((f) => f.farm_id === scope)?.name ?? "";
+
+  /**
+   * 아래 sensors·robots·conns 가 **어느 농장 것인지**. 값과 출처를 함께 들고 다닌다.
+   *
+   * 「받았다/못 받았다」 불리언으로는 부족했다. 스코프를 바꾸면 구독 교체는 렌더가
+   * 끝난 뒤에 돌고, 그 사이 한 프레임은 「이 농장을 보고 있고 + 받았음」이 동시에
+   * 참이 된다 — 값은 아직 이전 농장 것인데. 화면은 그 프레임에 이전 농장 센서로
+   * 개수와 색을 그리고, 다음 프레임에 되돌린다 (깜빡임).
+   *
+   * 농장 이름을 담아 두면 화면이 「내가 보는 농장과 같은가」를 그 프레임에서 바로
+   * 가를 수 있다. 갱신 시점이 값을 넣는 곳과 같아 어긋날 여지가 없다.
+   */
+  const [liveFarm, setLiveFarm] = useState<string | null>(null);
+
 
   // ── 초기 로드 (REST) ──
-  const loadSnapshot = useCallback(async (farmId: string) => {
-    const res = await fetch(`/api/farms/${farmId}/snapshot`);
-    if (!res.ok) return;
-    const snap = await res.json();
-    setFarmName(snap.farm.name);
-    setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
-    setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
-    setConns(Object.fromEntries(snap.connections.map((c: ConnState) => [c.device_id, c])));
+  const refreshFarms = useCallback(async () => {
+    const r = await apiFetch("/api/farms");
+    if (r.ok) setFarms(await r.json());
+  }, []);
+
+  /** 이미 씨를 뿌린 스코프 — 주기 갱신마다 다시 뿌리면 그 사이 받은 실시간 값이 지워진다 */
+  const seededFor = useRef<string | null>(null);
+
+  /**
+   * 실시간 맵의 출발점 — 전 농장 스냅샷에서 이 스코프 것을 꺼내 채운다.
+   *
+   * 예전에는 농장을 옮길 때마다 `/farms/{id}/snapshot` 을 따로 받았다. 전 농장
+   * 스냅샷(lib/fleet.useFleetSnapshots)이 **같은 페이로드**를 이미 담고 있어 요청
+   * 하나가 그대로 중복이었다. 부르는 곳은 조립 지점(FarmDataProvider)이다 —
+   * 여기서 fleet 을 직접 가져오면 monitor → fleet → deviceStatus → monitor 로
+   * 런타임 순환이 생긴다.
+   *
+   * 스코프당 한 번만 뿌린다. 전 농장 스냅샷은 15초마다 새 객체로 오는데, 그때마다
+   * 다시 뿌리면 그 사이 소켓으로 받은 값이 15초 낡은 값으로 되돌아간다.
+   */
+  const seedLive = useCallback((farmId: string, snap: {
+    sensors: SensorValue[]; robots: RobotValue[]; connections: ConnState[];
+  }) => {
+    if (seededFor.current === farmId) return;
+    seededFor.current = farmId;
+    setSensors(Object.fromEntries(snap.sensors.map((s) => [s.sensor_id, s])));
+    setRobots(Object.fromEntries(snap.robots.map((r) => [r.device_id, r])));
+    setConns(Object.fromEntries(snap.connections.map((c) => [c.device_id, c])));
+    // 값을 넣은 바로 뒤에 출처를 적는다 — 둘이 떨어지면 다시 어긋난다
+    setLiveFarm(farmId);
+  }, []);
+
+  // 정지는 전 스코프 표시 대상 — WS 이벤트는 발동 순간에만 오므로 초기 로드가 필요하다.
+  // 물리 비상정지는 농장별로 독립 성립해 서버가 목록으로 집계하므로, 변화 시에도
+  // 이 조회를 다시 쓴다 (WS 값으로 덮어쓰면 다른 농장 것이 사라진다)
+  const loadStops = useCallback(async () => {
+    const url = scope === "all" ? "/api/stop-state" : `/api/farms/${scope}/stop-state`;
+    const r = await apiFetch(url);
+    if (r.ok) setStops(await r.json());
+  }, [scope]);
+
+  // 알림은 스코프와 무관하게 전 농장분을 한 벌만 든다. 헤더 벨은 농장을 옮겨도 전체를
+  // 보여야 하고, 농장별 화면은 이 저장소를 farm_id 로 걸러 쓴다 (lib/farmData.tsx).
+  // 서버도 알림을 스코프 그룹이 아닌 전용 그룹으로 보낸다 (mqtt_bridge 의 ALERTS_GROUP).
+  const loadAlerts = useCallback(async () => {
+    const r = await apiFetch("/api/alerts?limit=100&counts=false");
+    if (!r.ok) return;
+    const page: AlertPageResponse = await r.json();
+    setAlerts(Object.fromEntries(page.items.map((a) => [a.id, a])));
   }, []);
 
   useEffect(() => {
-    fetch("/api/farms").then(async (r) => r.ok && setFarms(await r.json()));
-    if (scope === "all") {
-      // 전체 스코프 — 전 농장 알림 (fleet KPI·전역 벨·/alerts)
-      fetch("/api/alerts?limit=100").then(async (r) => {
-        if (!r.ok) return;
-        const list: AlertItem[] = await r.json();
-        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
-      });
-    }
+    void loadAlerts();
+  }, [loadAlerts]);
+
+  useEffect(() => {
+    let alive = true;
+    void refreshFarms();
+    void loadStops();
+    // 이전 농장 값을 지우지 않는다. 지우면 새 값이 올 때까지 화면이 비고, 그 빈
+    // 자리 때문에 카드 높이가 오간다. 대신 liveFarm 이 「이건 저 농장 것」이라고
+    // 말해 주므로, 화면은 그동안 스냅샷(농장별로 담긴 쪽)을 보면 된다.
+    // 장치별 값은 전 농장 스냅샷에서 꺼내 온다 (seedLive) — 여기서 따로 받지 않는다.
     if (scope !== "all") {
-      void loadSnapshot(scope);
-      fetch(`/api/farms/${scope}/commands`).then(async (r) => {
-        if (!r.ok) return;
-        const list: CommandState[] = await r.json();
-        setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
-      });
-      fetch(`/api/farms/${scope}/alerts?limit=50`).then(async (r) => {
-        if (!r.ok) return;
-        const list: AlertItem[] = await r.json();
-        setAlerts(Object.fromEntries(list.map((a) => [a.id, a])));
-      });
-      fetch(`/api/farms/${scope}/stop-state`).then(async (r) => r.ok && setStops(await r.json()));
+      void apiFetch(`/api/farms/${scope}/commands`)
+        .then(async (r) => {
+          if (!r.ok || !alive) return;
+          const list: CommandState[] = await r.json();
+          setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
+        })
+        // 제어 이력이 없으면 진행 중 표시만 비어 있다 — 다음 전환이나 WS 가 메운다.
+        // 처리하지 않으면 거부가 새어 개발 오버레이가 뜬다 (폴링과 같은 이유).
+        .catch(() => {});
     }
-  }, [scope, loadSnapshot]);
+    return () => { alive = false; };
+  }, [scope, loadStops, refreshFarms]);
+
+  // 스코프 변경 → 연결을 유지하고 구독만 갈아탄다 (소켓이 아직 없으면 onopen 이 보낸다)
+  useEffect(() => {
+    scopeRef.current = scope;
+    const sock = wsRef.current;
+    if (sock?.readyState === WebSocket.OPEN) {
+      sock.send(JSON.stringify({ action: "subscribe", scope }));
+    }
+  }, [scope]);
+
+  // 재연결 직후의 재조회에 쓴다 — effect 의존성으로 넣으면 스코프가 바뀔 때 소켓이
+  // 다시 만들어지므로 ref 로 든다.
+  useEffect(() => {
+    loadStopsRef.current = loadStops;
+    loadAlertsRef.current = loadAlerts;
+  }, [loadStops, loadAlerts]);
 
   // ── 실시간 (WebSocket) ──
   useEffect(() => {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${location.host}/ws/monitor`);
-    wsRef.current = ws;
-    ws.onopen = () => {
-      setWsOpen(true);
-      ws.send(JSON.stringify({ action: "subscribe", scope }));
-    };
-    ws.onclose = () => setWsOpen(false);
-    ws.onmessage = (ev) => {
+    let closed = false;
+    let retry = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let ws: WebSocket | null = null;
+    let pingAt = 0;   // 생존 확인 ping 을 보낸 시각 (0 = 보내지 않음)
+    let pongAt = 0;   // 그 응답이 도착한 시각 — 감독자가 소켓 생존을 판정한다
+    let openAt = 0;   // 소켓을 만든 시각 — CONNECTING 에서 멈추는 것도 감독 대상이다
+    // 예약된 재연결 시각 (0 = 예약 없음). 타이머 핸들이 아니라 시각으로 든다 —
+    // 핸들의 존재만 보면 그 타이머가 사라졌을 때 영영 기다리게 된다 (아래 check).
+    let reconnectAt = 0;
+
+    const onMessage = (ev: MessageEvent) => {
+      rxAt.current = Date.now();   // 무엇이든 받았다 = 소켓은 살아 있다
       const msg = JSON.parse(ev.data);
+      if (msg.type === "pong") {   // 감독자의 생존 확인 응답
+        pongAt = Date.now();
+        return;
+      }
       if (msg.type !== "update") return;
       const d = msg.data;
+      if (msg.stream === "health") {
+        const at = Date.now();
+        // 맥박이 왔다 = 붙었고 서버도 살아 있다. 이때가 「안정」이므로 백오프를 되돌린다.
+        // 시간으로 재지 않는 이유: 맥박 없이 열려만 있는 소켓(미들웨어 정지 등)을
+        // 안정으로 세면 재연결이 영원히 1초 간격으로 반복된다.
+        retry = 0;
+        setServerBeat({ at, up: d.state === "up" });
+        return;
+      }
       if (msg.stream === "environment") {
         setSensors((prev) => ({
           ...prev,
@@ -158,20 +412,31 @@ export function useMonitor(scope: string) {
           [d.device_id]: { device_id: d.device_id, state: "online", last_received_at: msg.timestamp },
         }));
       } else if (msg.stream === "stop") {
+          setLiveTick((n) => n + 1);
         // 원격/물리 정지는 독립 표시 — 동시 성립 가능 (non-functional §2.4)
-        setStops((prev) => ({
-          ...prev,
-          [d.stop_kind as "remote" | "physical_estop"]: d.active
-            ? { scope: d.scope, engaged_at: d.engaged_at, by: d.by, reason: d.reason }
-            : null,
-        }));
+        if (d.stop_kind === "physical_estop") {
+          // 농장별로 독립 성립하므로 단일 값으로 덮어쓸 수 없다 — 한 농장이 해제되면
+          // 다른 농장 것까지 사라진다. 서버가 집계한 목록을 다시 읽는다
+          void loadStopsRef.current();
+        } else {
+          setStops((prev) => ({
+            ...prev,
+            remote: d.active
+              ? { scope: d.scope, engaged_at: d.engaged_at, by: d.by, reason: d.reason }
+              : null,
+          }));
+        }
       } else if (msg.stream === "alert") {
         setAlerts((prev) => {
           if (d.ack_all) {
+            // 저장소가 전 농장분이므로 발행 농장 것만 처리한다 — 거르지 않으면 한 농장의
+            // 일괄 읽음이 다른 농장 알림까지 읽음으로 바꾼다.
             const next: typeof prev = {};
             for (const k of Object.keys(prev)) {
               const id = Number(k);
-              next[id] = { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at };
+              next[id] = prev[id].farm_id === msg.farm_id
+                ? { ...prev[id], acked_at: prev[id].acked_at ?? d.acked_at }
+                : prev[id];
             }
             return next;
           }
@@ -184,6 +449,14 @@ export function useMonitor(scope: string) {
           [d.command_id]: { issued_at: msg.timestamp, ...prev[d.command_id], ...d },
         }));
       } else if (msg.stream === "connection") {
+        // 하트비트는 상태가 그대로여도 매 주기 온다. 그때마다 틱을 올리면 전 농장
+        // 스냅샷을 10초마다 다시 읽어, 줄이려던 폴링보다 되레 늘어난다.
+        // 값이 바뀐 순간과, 처음 본 장치가 정상이 아닌 경우에만 올린다.
+        const before = lastConnState.current[d.device_id];
+        lastConnState.current[d.device_id] = d.state;
+        if (d.cascade || (before === undefined ? d.state !== "online" : before !== d.state)) {
+          setLiveTick((n) => n + 1);
+        }
         setConns((prev) => {
           if (d.cascade) {
             // 엣지 단절 — 농장 전체 오프라인 (페일세이프 ②의 화면 반영)
@@ -195,41 +468,199 @@ export function useMonitor(scope: string) {
         });
       }
     };
-    return () => ws.close();
-  }, [scope]);
 
-  return { farms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen };
+    // 소켓을 만들기만 한다. 수명 관리는 아래 감독자가 진다.
+    const connect = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      reconnectAt = 0;
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const sock = new WebSocket(`${proto}//${location.host}/ws/monitor`);
+      ws = sock;
+      wsRef.current = sock;
+      openAt = Date.now();
+      pingAt = 0;
+      pongAt = 0;
+      sock.onopen = () => {
+        const reconnected = retry > 0;   // 첫 연결은 아래 초기 로드가 담당한다
+        setWsOpen(true);
+        sock.send(JSON.stringify({ action: "subscribe", scope: scopeRef.current }));
+        // 여는 시점을 수신으로 친다 — 맥박은 retained 라 곧 실제로 온다
+        rxAt.current = Date.now();
+        // 끊긴 동안의 이벤트는 재전송되지 않는다. 서버도 가입 시 백로그를 주지 않으므로
+        // 재연결 때 현재 상태를 다시 읽는다 (둘 다 이벤트가 드물어 비용이 없다).
+        //   정지 — 안전 표시라 어긋난 채로 남으면 안 된다
+        //   알림 — 폴링을 걷어낸 뒤로 이 저장소를 채우는 경로가 여기뿐이다.
+        //          빠뜨리면 끊긴 동안의 알림이 새로고침 전까지 영영 누락된다.
+        if (reconnected) {
+          void loadStopsRef.current();
+          void loadAlertsRef.current();
+        }
+      };
+      sock.onclose = async (ev) => {
+        if (ws !== sock) return;   // 감독자가 이미 버린 소켓의 뒤늦은 통보
+        setWsOpen(false);
+        if (closed) return;
+        // 핸드셰이크 인증은 쿠키 — 만료로 거부된 경우(consumers.py 의 4401)에만 갱신한다.
+        // 네트워크 끊김·서버 종료에는 갱신이 무의미하고, await 만큼 재연결만 늦어진다.
+        if (ev.code === WS_UNAUTHORIZED) await refreshToken();
+        if (closed || ws !== sock) return;   // await 사이에 감독자가 소켓을 바꿀 수 있다
+        reconnect();
+      };
+      sock.onmessage = onMessage;
+    };
+
+    /**
+     * 소켓을 버린다 — close() 가 끝나기를 **기다리지 않는** 것이 핵심이다.
+     *
+     * 상대가 통보 없이 사라지면 close() 는 닫기 핸드셰이크를 끝내지 못하고 소켓이
+     * CLOSING 에 갇힌다. 그러면 onclose 가 오지 않아 재연결도 시작되지 않는다.
+     * 참조를 먼저 끊어 세대를 바꾸므로, 뒤늦게 onclose 가 와도 위에서 걸러진다.
+     */
+    const abandon = () => {
+      const dead = ws;
+      ws = null;
+      wsRef.current = null;
+      setWsOpen(false);
+      if (!dead) return;
+      dead.onopen = dead.onclose = dead.onmessage = dead.onerror = null;
+      try { dead.close(); } catch { /* 이미 죽은 소켓 — 성패는 상관없다 */ }
+    };
+
+    // 지수 백오프 + 지터. 지터가 없으면 배포 후 모든 브라우저가 같은 박자로 몰려
+    // 파드가 뜨는 순간 동시에 밀려든다 (thundering herd).
+    const reconnect = () => {
+      clearTimeout(timer);
+      const wait = Math.min(WS_RETRY_MAX_MS, 1000 * 2 ** retry++) * (0.75 + Math.random() * 0.5);
+      reconnectAt = Date.now() + wait;
+      timer = setTimeout(connect, wait);
+    };
+
+    /**
+     * 감독자 — 소켓의 콜백에 기대지 않고 「마지막 수신 시각」만으로 판정한다.
+     *
+     * 이전 구조는 회복이 전부 onclose 에 매달려 있었다. close() 에는 타임아웃이 없어
+     * 상대가 증발하면 onclose 가 영영 오지 않는데, 감시 타이머마저 소켓 안에서 만들어져
+     * 함께 멈췄다. 그 상태에서는 새로고침 말고 빠져나올 길이 없었다.
+     *
+     * 여기서는 소켓이 무엇이라 주장하든(CONNECTING·OPEN·CLOSING) 데이터가 오지 않으면
+     * 버리고 다시 연다. half-open, CLOSING 정체, NAT 의 조용한 유실, 탭 정지가 전부
+     * 「N초간 수신 없음」이라는 하나의 관측으로 환원된다.
+     */
+    const check = () => {
+      if (closed || document.visibilityState !== "visible") return;
+      // 재연결 예약은 핸들이 아니라 시각으로 판단한다.
+      //
+      // 예약 시각 전이면 기다린다 — 백오프를 여기서 덮어쓰면 서버가 내려간 동안 간격이
+      // 늘지 않아 5초마다 두드리게 된다.
+      //
+      // 예약 시각이 지났는데도 connect 가 돌지 않았다면 그 타이머는 사라진 것이다. 탭이
+      // 정지·폐기되면 브라우저가 대기 중인 일회성 setTimeout 을 버린다 (setInterval 인
+      // 이 감독자는 깨어나면 다시 돈다). 「예약이 있으니 기다린다」로 두면 그 순간부터
+      // 영영 재연결하지 않는다 — 감독자를 둔 이유가 사라진다.
+      if (reconnectAt) {
+        if (Date.now() < reconnectAt) return;
+        connect();
+        return;
+      }
+
+      // 연결 중인 소켓도 감독한다 — CONNECTING 에서 멈추면 콜백이 오지 않는다
+      if (ws?.readyState === WebSocket.CONNECTING) {
+        if (Date.now() - openAt > WS_CONNECT_DEADLINE_MS) {
+          abandon();
+          reconnect();
+        }
+        return;
+      }
+      if (ws === null) {
+        connect();
+        return;
+      }
+      if ((Date.now() - rxAt.current) / 1000 <= SERVER_SILENT_SEC) {
+        pingAt = 0;   // 데이터가 오는 동안에는 확인할 것이 없다
+        return;
+      }
+      // 수신이 끊겼다 — 원인이 둘이라 버리기 전에 소켓을 실제로 시험한다.
+      //   소켓이 죽음    → 버리고 다시 연다
+      //   서버 쪽이 끊김 → 버려도 그대로다. 버리면 무한 재연결이 된다
+      if (ws.readyState === WebSocket.OPEN) {
+        if (pingAt === 0) {
+          ws.send(JSON.stringify({ action: "ping" }));
+          pingAt = Date.now();
+          return;
+        }
+        if (Date.now() - pingAt < WS_PONG_WAIT_MS) return;   // 응답 대기 중
+        if (pongAt > pingAt) {
+          pingAt = 0;   // 소켓은 살아 있다 = 서버 정지 — 배너에 맡긴다
+          return;
+        }
+      }
+      abandon();
+      reconnect();
+    };
+
+    connect();
+    const supervisor = setInterval(check, WS_WATCH_MS);
+
+    // 탭이 다시 보이는 순간 감독을 앞당긴다. 브라우저는 배경 탭의 타이머를 늦추거나 탭을
+    // 정지시키므로(화면 잠금 등) 그동안 판정이 밀린다. 회복 자체는 감독자가 책임지므로
+    // 여기서는 「빨리 깨우는」 역할만 한다 — 이 이벤트가 오지 않아도 다음 주기에 회복된다.
+    const onVisible = () => check();
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      closed = true;
+      clearTimeout(timer);
+      clearInterval(supervisor);
+      document.removeEventListener("visibilitychange", onVisible);
+      abandon();
+    };
+    // 의존성이 비어 있는 것이 이 수정의 핵심 — 소켓은 앱이 살아 있는 동안 하나다.
+  }, []);
+
+  return {
+    farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
+    liveTick, liveFarm, seedLive, serverBeat,
+  };
 }
 
-export async function engageStop(reason?: string) {
-  const r = await fetch("/api/stop", {
+/** 실패 문구를 돌려준다 (성공 null) — 정지는 조용히 실패하면 안 되는 조작이다 */
+function stopError(status: number, action: string): string {
+  if (status === 403) return `${action} 권한이 없습니다`;
+  if (status === 409) return "이미 원격 전체 정지가 발동 중입니다";
+  if (status === 404) return "발동 중인 원격 전체 정지가 없습니다";
+  return `${action} 실패 — 잠시 후 다시 시도해 주세요 (${status})`;
+}
+
+export async function engageStop(reason?: string): Promise<string | null> {
+  const r = await apiFetch("/api/stop", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all", reason }),
   });
-  return r.ok;
+  return r.ok ? null : stopError(r.status, "원격 전체 정지");
 }
 
-export async function releaseStop() {
-  const r = await fetch("/api/stop/release", {
+export async function releaseStop(): Promise<string | null> {
+  const r = await apiFetch("/api/stop/release", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope: "all" }),
   });
-  return r.ok;
+  return r.ok ? null : stopError(r.status, "정지 해제");
 }
 
 export async function ackAlert(id: number) {
-  await fetch(`/api/alerts/${id}/ack`, { method: "POST" });
+  await apiFetch(`/api/alerts/${id}/ack`, { method: "POST" });
 }
 
 export async function ackAllAlerts(farmId: string) {
-  await fetch(`/api/farms/${farmId}/alerts/ack-all`, { method: "POST" });
+  await apiFetch(`/api/farms/${farmId}/alerts/ack-all`, { method: "POST" });
 }
 
 /** 제어 명령 발행 (FR-10) — command_id 를 반환한다. */
 export async function postControl(
   farmId: string, deviceId: string, command: string, target: number,
 ): Promise<string | null> {
-  const res = await fetch(`/api/farms/${farmId}/devices/${deviceId}/control`, {
+  const res = await apiFetch(`/api/farms/${farmId}/devices/${deviceId}/control`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ command, params: { target } }),
@@ -238,11 +669,113 @@ export async function postControl(
   return (await res.json()).command_id;
 }
 
-export function timeAgo(iso: string | null): string {
+/** 이동 조작 (개정 0.3-robot-jog). 반복 주기 < 데드맨 — 그래야 끊김 없이 이어진다 (§3.1). */
+export const JOG_REPEAT_MS = 400;
+export const JOG_DURATION_MS = 800;
+export type JogDirection = "forward" | "backward" | "left" | "right" | "stop";
+
+export async function postJog(
+  farmId: string, deviceId: string, direction: JogDirection, speed = 0.5,
+): Promise<boolean> {
+  const res = await apiFetch(`/api/farms/${farmId}/robots/${deviceId}/jog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ direction, speed, duration_ms: JOG_DURATION_MS }),
+  });
+  return res.ok;
+}
+
+/**
+ * 서버까지의 데이터 길이 살아 있는가.
+ *
+ * 소켓이 붙어 있다고 데이터가 오는 것은 아니다 — 미들웨어나 브리지가 멈추면
+ * 소켓은 그대로인 채 값만 조용히 낡는다. 서버 맥박의 나이로 그것을 가른다.
+ */
+export const SERVER_BEAT_SEC = 10;
+export const SERVER_SILENT_SEC = SERVER_BEAT_SEC * 3;
+
+/** 재연결 간격 상한 — 사람이 보고 있는 화면이라 짧게 둔다 (Phoenix·reconnecting-websocket
+ *  기본값과 같다). 배포 시 파드가 뜨는 동안 배너가 보이는 시간이 이 값 안으로 묶인다. */
+const WS_RETRY_MAX_MS = 10_000;
+/** 미인증 종료 — 서버가 핸드셰이크를 거부할 때 쓰는 코드 (api/apps/core/consumers.py) */
+const WS_UNAUTHORIZED = 4401;
+/** 죽은 소켓 감시 주기 — 맥박 주기의 절반. 판정 자체는 SERVER_SILENT_SEC 이 하므로
+ *  이 값은 "얼마나 촘촘히 들여다볼지"만 정한다. */
+const WS_WATCH_MS = (SERVER_BEAT_SEC / 2) * 1000;
+/** 연결 시도 제한 — CONNECTING 에서 멈춘 소켓도 콜백이 오지 않으므로 감독 대상이다. */
+const WS_CONNECT_DEADLINE_MS = 15_000;
+/** ping 응답 대기 — 이 안에 pong 이 없으면 소켓이 죽은 것으로 본다.
+ *  같은 소켓의 왕복이라 네트워크 지연만 감당하면 되므로 짧게 둔다. */
+const WS_PONG_WAIT_MS = 3_000;
+
+export type LinkState = "ok" | "socket-down" | "server-down" | "silent" | "unknown";
+
+export function useServerLink(
+  wsOpen: boolean, beat: { at: number; up: boolean } | null,
+): LinkState {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  // 소켓 상태가 바뀐 직후에는 맥박과 같은 유예를 준다 (SERVER_SILENT_SEC = 주기 × 3).
+  // 재연결은 백오프 상한(WS_RETRY_MAX_MS) 안에 끝나고 첫 맥박은 retained 라 곧 오므로,
+  // 유예가 없으면 곧 복구되는 상황마다 배너가 깜빡인다 — 그건 장애가 아니다.
+  // 판정 배수(×3)는 장치 쪽 지연 판정과 같은 규칙이다 (ingest.py DEGRADED_FACTOR).
+  const changedAt = useRef<number>(Date.now());
+  useEffect(() => {
+    changedAt.current = Date.now();
+  }, [wsOpen]);
+  const graceOver = (Date.now() - changedAt.current) / 1000 > SERVER_SILENT_SEC;
+
+  if (!wsOpen) {
+    // 유예는 「곧 복구될 재연결」에만 준다. 감독자는 수신이 SERVER_SILENT_SEC 넘게
+    // 끊긴 것을 확인한 뒤에야 소켓을 버리므로, 그 경우는 blip 이 아니다. 여기에
+    // 또 유예를 주면 이미 끊긴 것을 아는 채로 30초간 배너를 숨기게 된다.
+    const beatStale = beat !== null && (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC;
+    return graceOver || beatStale ? "socket-down" : "unknown";   // unknown = 배너 없음
+  }
+  // 맥박을 한 번도 못 받은 채 유예가 지났다 = 공급이 끊긴 것. 접속 시점에 이미 브리지나
+  // 미들웨어가 멈춰 있으면 맥박이 영영 오지 않는데, 그동안 화면은 REST 로 받은 값을
+  // 아무 표시 없이 보여 준다.
+  if (beat === null) return graceOver ? "silent" : "unknown";
+  if (!beat.up) return "server-down";       // LWT — 브로커가 대신 알린 죽음
+  return (Date.now() - beat.at) / 1000 > SERVER_SILENT_SEC ? "silent" : "ok";
+}
+
+/** 상대 표기를 유지하는 상한. 넘으면 날짜로 적는다 — 「230시간 전」·「180일 전」은
+ *  읽어도 언제인지 감이 오지 않는다. 알림은 정리 정책이 없어 계속 쌓인다. */
+const RELATIVE_DAYS_MAX = 7;
+
+/**
+ * 경과 시간을 사람이 읽는 문구로.
+ *
+ * withTime 은 날짜로 넘어간 구간에만 시:분을 붙인다. 이력을 되짚는 화면(알림 목록,
+ * 제어 이력, 정지 발동 시각)은 「8월 13일」만으로는 언제였는지 좁혀지지 않는다.
+ * 반대로 지금 값이 신선한지 훑는 화면(대시보드·상태)은 짧아야 하므로 붙이지 않는다.
+ */
+export function timeAgo(iso: string | null, opts?: { withTime?: boolean }): string {
   if (!iso) return "—";
-  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const then = new Date(iso);
+  const at = then.getTime();
+  if (Number.isNaN(at)) return "—";   // 날짜 분기가 「Invalid Date」를 그대로 내보내지 않게
+  const now = Date.now();
+  const sec = Math.max(0, (now - at) / 1000);
   if (sec < 10) return "방금";
   if (sec < 60) return `${Math.floor(sec)}초 전`;
   if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
-  return `${Math.floor(sec / 3600)}시간 전`;
+  if (sec < 86_400) return `${Math.floor(sec / 3600)}시간 전`;
+  const days = Math.floor(sec / 86_400);
+  if (days <= RELATIVE_DAYS_MAX) return `${days}일 전`;
+  // 해가 같으면 연도를 빼서 짧게 — 목록에서 한 줄에 들어가야 한다
+  const date: Intl.DateTimeFormatOptions =
+    then.getFullYear() === new Date(now).getFullYear()
+      ? { month: "long", day: "numeric" }
+      : { year: "numeric", month: "long", day: "numeric" };
+  if (!opts?.withTime) return then.toLocaleDateString("ko-KR", date);
+  // hourCycle 을 h23 으로 못 박는다. hour12:false 는 ko-KR 에서 h24 로 풀려
+  // 자정 7분이 「24:07」로 나온다.
+  return then.toLocaleString("ko-KR",
+    { ...date, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }

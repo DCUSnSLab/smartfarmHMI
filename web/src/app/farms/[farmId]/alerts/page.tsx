@@ -7,24 +7,26 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertList } from "@/components/AlertPanel";
-import { SectionTitle } from "@/components/ui";
+import { GO_LINK, SectionTitle } from "@/components/ui";
+import { useAlertPage } from "@/lib/alerts";
 import { useFarmData } from "@/lib/farmData";
 
 export default function FarmAlertsTab() {
   const { farmId } = useParams<{ farmId: string }>();
-  const { alerts, farmName } = useFarmData();
+  const { farmName } = useFarmData();
+  const page = useAlertPage(farmId);
 
   return (
     <>
       <SectionTitle
         title="알림" sub={farmName || farmId}
         right={
-          <Link href="/settings" className="text-[12.5px] font-bold text-primary-dark">
-            알림 규칙 설정 →
+          <Link href={`/settings?farm=${farmId}&section=rules`} scroll={false} className={GO_LINK}>
+            알림 규칙 설정
           </Link>
         }
       />
-      <AlertList alerts={Object.values(alerts)} farmId={farmId} />
+      <AlertList page={page} farmId={farmId} />
     </>
   );
 }

@@ -7,10 +7,15 @@
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
 
-VERSION = "0.2"  # §4 스키마 버전
+VERSION = "0.3"  # §4 스키마 버전
 PREFIX = "farmon/v1"  # §2.1 토픽 네임스페이스
+
+# §4.9 birth.instance_id — 발행자 프로세스 식별자. 프로세스가 뜰 때 한 번 만들고
+# 사는 동안 바꾸지 않는다. 재접속마다 새로 내면 미들웨어가 매번 중복 발행자로 본다.
+INSTANCE_ID = uuid.uuid4().hex[:8]
 
 
 def now_iso() -> str:
@@ -48,18 +53,38 @@ def sensor_reading(farm_id: str, device_id: str, *, sensor_id: str, sensor_type:
 
 def robot_status(farm_id: str, device_id: str, *, x: float, y: float, frame: str,
                  speed: float, battery_pct: int, charging: bool,
-                 mission_state: str) -> dict:
+                 phase: str, error: dict | None = None) -> dict:
     """§4.2 — 엣지 → 미들웨어: 로봇 상태.
 
-    mission_state: idle | moving | working | charging | error
-    charging·mission_state 는 화면의 "자동 충전 중", "작업 중" 표시 근거.
+    phase: idle | moving | working | charging — 임무가 어디까지 갔나(상태)
+    error: null 또는 {code, message, severity, since} — 무엇이 틀어졌나(사건)
+
+    0.3 에서 두 축이 갈렸다. 0.2 의 mission_state 는 한 칸에 둘을 담아 오류가
+    진행 단계를 덮었다. 이제 phase="moving" 과 error={...} 가 동시에 성립한다.
     """
     return {
         "type": "robot_status", "version": VERSION,
         "farm_id": farm_id, "device_id": device_id,
         "position": {"x": x, "y": y, "frame": frame},
         "speed": speed, "battery_pct": battery_pct, "charging": charging,
-        "mission_state": mission_state, "error": None,
+        "phase": phase, "error": error,
+        "timestamp": now_iso(),
+    }
+
+
+def estop_state(farm_id: str, device_id: str, *, estop: str,
+                reason: str | None = None, source: str = "field_device") -> dict:
+    """§4.7 — 엣지 → 미들웨어: 물리 비상정지 상태. 표시 전용, retained.
+
+    estop 은 세 값이다: engaged | released | unknown.
+    **released 는 장치를 실제로 읽어 확인했을 때만 보낸다.** 못 읽었으면
+    unknown 이고, 수신 측은 이를 engaged 와 같이(정지로) 취급한다 — 0.2 는
+    둘을 같은 false 로 보내 엣지 재시작마다 안전이 조용히 열렸다.
+    """
+    return {
+        "type": "estop_state", "version": VERSION,
+        "farm_id": farm_id, "device_id": device_id,
+        "estop": estop, "reason": reason, "source": source,
         "timestamp": now_iso(),
     }
 
@@ -71,11 +96,15 @@ def birth(farm_id: str, device_id: str, device_type: str, *,
     관찰 포인트: 규격의 publish_interval_sec 는 장치 단위 단일 값인데
     본 구현은 센서별 주기가 다르다 → 최소 주기를 선언하고, 확장 필드로
     metrics[].interval_sec 를 함께 실어 보낸다 (§4 서두: payload 확장 허용).
+
+    한 프로세스가 엣지·생육기·로봇의 birth 를 함께 내므로 instance_id 도 같다.
+    중복 판정은 (farm, device) 단위지만 실제로 겹치는 단위는 프로세스다.
     """
     return {
         "type": "birth", "version": VERSION,
         "farm_id": farm_id, "device_id": device_id, "device_type": device_type,
         "metrics": metrics, "publish_interval_sec": publish_interval_sec,
+        "instance_id": INSTANCE_ID,
         "timestamp": now_iso(),
     }
 

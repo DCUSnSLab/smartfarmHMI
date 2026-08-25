@@ -1,4 +1,4 @@
-# 단일 진입점 — 외부 노출은 overlay 의 Service 패치로 결정 (dev: NodePort)
+# 단일 진입점 — 외부 노출은 overlay 의 Service 패치로 결정 (main: LoadBalancer, dev: NodePort)
 apiVersion: apps/v1
 kind: Deployment
 metadata:

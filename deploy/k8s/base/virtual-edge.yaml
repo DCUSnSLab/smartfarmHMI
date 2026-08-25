@@ -1,5 +1,7 @@
-# 가상 엣지 (기본 데이터원, seongju) — 실제 엣지 전환(OPN-02) 시 이 Deployment 를 제거한다.
-# config 는 smartfarmhmi-vedge-config ConfigMap (원본: virtual-edge/configs/seongju.yaml 사본)
+# 가상 엣지 (기본 데이터원) — 실제 엣지 전환(OPN-02) 시 이 파일을 통째로 제거한다.
+# 컨테이너 1개 = 팜 1개. compose 기본 스택과 동일하게 성주·진주 2팜을 띄운다
+# (멀티팜 화면 — 팜 스위처·탭 바 — 을 dev 에서 확인하려면 2팜이 필요).
+# config 는 smartfarmhmi-vedge-config ConfigMap (원본: virtual-edge/configs/*.yaml 사본)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +23,37 @@ spec:
             - { name: VEDGE_CONFIG, value: /configs/seongju.yaml }
           volumeMounts:
             - { name: config, mountPath: /configs, readOnly: true }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 256Mi }
+      volumes:
+        - name: config
+          configMap: { name: smartfarmhmi-vedge-config }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartfarmhmi-virtual-edge-jinju
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: smartfarmhmi-virtual-edge-jinju }
+  template:
+    metadata:
+      labels: { app: smartfarmhmi-virtual-edge-jinju }
+    spec:
+      containers:
+        - name: virtual-edge
+          image: harbor.cu.ac.kr/smartfarmhmi-dev/virtual-edge
+          env:
+            - { name: MQTT_HOST, value: mosquitto }
+            - { name: MQTT_PORT, value: "1883" }
+            - { name: VEDGE_CONFIG, value: /configs/jinju.yaml }
+          volumeMounts:
+            - { name: config, mountPath: /configs, readOnly: true }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 256Mi }
       volumes:
         - name: config
           configMap: { name: smartfarmhmi-vedge-config }

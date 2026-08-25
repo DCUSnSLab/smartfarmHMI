@@ -39,37 +39,37 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center px-6">
       <form onSubmit={submit} className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-sm">
         <h1 className="mb-1 text-2xl font-extrabold text-primary">팜온 스마트팜 HMI</h1>
-        <p className="mb-6 text-[13.5px] font-semibold text-muted">
+        <p className="mb-6 text-13.5 font-semibold text-muted">
           웹앱 기반 원격 접근 — 계정으로 로그인하세요
         </p>
 
         <label className="mb-3 block">
-          <span className="mb-1 block text-[13px] font-bold text-gray-600">이메일</span>
+          <span className="mb-1 block text-13 font-bold text-gray-600">이메일</span>
           <input
             type="email" required value={email} autoComplete="username"
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-[15px] font-semibold outline-none focus:border-primary"
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-15 font-semibold outline-none focus:border-primary"
             placeholder="you@example.com"
           />
         </label>
         <label className="mb-4 block">
-          <span className="mb-1 block text-[13px] font-bold text-gray-600">비밀번호</span>
+          <span className="mb-1 block text-13 font-bold text-gray-600">비밀번호</span>
           <input
             type="password" required value={password} autoComplete="current-password"
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-[15px] font-semibold outline-none focus:border-primary"
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-15 font-semibold outline-none focus:border-primary"
           />
         </label>
 
         {error && (
-          <p role="alert" className="mb-4 rounded-xl bg-status-warning/10 px-4 py-3 text-[13px] font-bold text-status-warningDark">
+          <p role="alert" className="mb-4 rounded-xl bg-status-warning/10 px-4 py-3 text-13 font-bold text-status-warningDark">
             {error}
           </p>
         )}
 
         <button
           type="submit" disabled={busy}
-          className="w-full rounded-xl bg-primary py-3.5 text-[15px] font-extrabold text-white disabled:opacity-60"
+          className="w-full rounded-xl bg-primary py-3.5 text-15 font-extrabold text-white disabled:opacity-60"
         >
           {busy ? "확인 중…" : "로그인"}
         </button>

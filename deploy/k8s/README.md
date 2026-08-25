@@ -2,9 +2,9 @@
 
 사내 온프레미스 Kubernetes 클러스터 배포용 매니페스트 (AIBootcamp `deploy/k8s` 패턴 미러).
 
-> **상태: dev 운영 중** (2026-08-06 개통, GEN-1264). `http://203.250.33.77`
-> develop 머지 후 Jenkins로 배포된다.
-> main(운영) overlay 는 아직 미개통.
+> **상태: dev·main 운영 중.** dev 2026-08-06 개통(GEN-1264), main 2026-08-25 개통(GEN-1389).
+> 운영은 고정 IP `203.250.33.77` 의 80, dev 는 NodePort `30480` 으로 노출한다.
+> 각 브랜치 머지 후 Jenkins로 배포된다. 환경을 새로 세울 때는 아래 신규 구축 체크리스트 참고.
 
 - 매니페스트 도구: **Kustomize** (kubectl 내장)
 - 배포 흐름: Jenkins → Harbor(`harbor.cu.ac.kr`) push → `kubectl apply -k`
@@ -30,8 +30,8 @@ deploy/k8s/
 │   ├── nginx.yaml + nginx.conf # 단일 진입점
 │   └── kustomization.yaml
 └── overlays/
-    ├── dev/                    # namespace smartfarmhmi-dev · LoadBalancer 203.250.33.77:80
-    └── main/                   # namespace smartfarmhmi · NodePort 30481 (TLS·HPA TODO)
+    ├── dev/                    # namespace smartfarmhmi-dev · NodePort 30480
+    └── main/                   # namespace smartfarmhmi · LoadBalancer 203.250.33.77:80 (TLS·HPA TODO)
 ```
 
 ## 최초 1회 사전 작업
@@ -50,15 +50,18 @@ NS=smartfarmhmi-dev   # main 은 NS=smartfarmhmi 로 반복
 
 # Django SECRET_KEY
 kubectl create secret generic django-secret -n $NS \
-  --from-literal=SECRET_KEY="$(openssl rand -base64 50 | tr -d '\n')"
+  --from-literal=SECRET_KEY="$(openssl rand -hex 32)"
 
 # PostgreSQL — 슈퍼계정 + 서비스별 계정 비밀번호 (db-schema.md §1)
+# base64 가 아니라 hex 로 뽑는다 — MW_DB_PASSWORD 는 middleware 가
+# DSN 문자열에 그대로 이어붙인다(`app/config.py` database_url).
+# base64 의 `/` 가 섞이면 URL 이 깨져 DB 접속이 실패한다.
 kubectl create secret generic postgres-credentials -n $NS \
   --from-literal=POSTGRES_DB=smartfarm \
   --from-literal=POSTGRES_USER=smartfarm \
-  --from-literal=POSTGRES_PASSWORD="$(openssl rand -base64 24)" \
-  --from-literal=APP_DB_PASSWORD="$(openssl rand -base64 24)" \
-  --from-literal=MW_DB_PASSWORD="$(openssl rand -base64 24)"
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=APP_DB_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=MW_DB_PASSWORD="$(openssl rand -hex 24)"
 
 # MinIO
 kubectl create secret generic minio-credentials -n $NS \
@@ -115,7 +118,7 @@ kubectl rollout status deploy/smartfarmhmi-middleware -n $NS --timeout=5m
 kubectl rollout status deploy/smartfarmhmi-web        -n $NS --timeout=5m
 kubectl rollout status deploy/smartfarmhmi-nginx      -n $NS --timeout=5m
 
-# dev 는 LoadBalancer(203.250.33.77 의 80), main 은 아직 NodePort — 둘 다 대응
+# main 은 LoadBalancer(203.250.33.77 의 80), dev 는 NodePort — 둘 다 대응
 GW_IP=$(kubectl get svc smartfarmhmi-nginx -n $NS -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 if [ -n "$GW_IP" ]; then
   echo "접속: http://$GW_IP"
@@ -130,6 +133,25 @@ fi
 kubectl exec -n $NS deploy/smartfarmhmi-middleware -- python -m middleware.scripts.seed
 kubectl exec -n $NS deploy/smartfarmhmi-api        -- python manage.py seed_users
 ```
+
+## 환경 신규 구축 체크리스트
+
+환경을 처음 세울 때는 네임스페이스·Secret·Harbor 프로젝트가 전부 비어 있다.
+아래를 **Jenkins 잡을 돌리기 전에** 끝내 둘 것 — 하나라도 빠지면 파이프라인이 중간에 죽는다.
+(아래는 운영 `smartfarmhmi` 기준 — 다른 환경은 이름만 바꿔 쓴다.)
+
+1. **Harbor 프로젝트 `smartfarmhmi` 생성** (`harbor.cu.ac.kr`)
+   — 없으면 Build & Push 단계에서 `unauthorized: project not found` 로 실패한다.
+   dev 용 `smartfarmhmi-dev` 와 별개 프로젝트다.
+
+2. **네임스페이스·Secret** — 위 "최초 1회 사전 작업" 을 `NS=smartfarmhmi` 로 그대로 반복한다.
+   Secret 값은 dev 와 **공유하지 말고 새로 생성**한다 (외부 API 키만 같은 값을 재사용).
+
+3. **Jenkins 멀티브랜치 잡에 `main` 브랜치 인덱싱** — Jenkins 가 내부망이라 webhook 이 없다.
+   주기 스캔을 기다리거나 잡에서 수동 실행한다.
+
+4. **배포 후 시드** — main 은 빈 DB 로 뜬다. dev 데이터는 넘어오지 않으므로
+   위 "4. 배포 후 1회성 — 시드 데이터" 를 `NS=smartfarmhmi` 로 실행한다.
 
 ## 주의
 

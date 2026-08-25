@@ -148,13 +148,14 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 
 | 브랜치 | 네임스페이스 | 환경 | 노출 | 상태 |
 |---|---|---|---|---|
-| `develop` | `smartfarmhmi-dev` | dev | LoadBalancer 203.250.33.77:80 | **운영 중** |
-| `main` | `smartfarmhmi` | 운영 | NodePort 30481 | 미개통 (TLS·도메인·Harbor 프로젝트 TODO) |
+| `develop` | `smartfarmhmi-dev` | dev | NodePort 30480 | **운영 중** |
+| `main` | `smartfarmhmi` | 운영 | LoadBalancer 203.250.33.77:80 | **운영 중** (TLS·도메인 TODO) |
 
 - 매니페스트: `deploy/k8s/` (base + overlays/{dev,main}) — 렌더 확인: `kubectl kustomize deploy/k8s/overlays/dev`
-- **최초 1회 사전 작업**(네임스페이스·Secret 5종·시드): [deploy/k8s/README.md](./deploy/k8s/README.md)
+- **최초 1회 사전 작업**(네임스페이스·Secret 4종·시드): [deploy/k8s/README.md](./deploy/k8s/README.md)
 - 파이프라인: `Jenkinsfile` — 브랜치별 환경 결정 → 이미지 빌드(`BUILD_NUMBER-GIT_SHA` 불변 태그) → Harbor push → 인프라·마이그레이션 Job·워크로드 순차 적용. develop 머지 후 Jenkins 주기 스캔으로 배포된다 (Jenkins 가 내부망이라 webhook 불가 — 즉시 배포하려면 잡에서 수동 실행)
 - 설정값 배치: 비밀값은 Secret, 환경별 값은 ConfigMap(`overlays/*/config.env` — **git 커밋됨**). 기준은 [deploy/k8s/README.md](./deploy/k8s/README.md) 참고
+- 고정 IP(`203.250.33.77`)는 풀에 하나뿐이다 — 두 환경이 동시에 요구하면 뒤쪽이 `<pending>` 으로 멈춘다. 노출 방식을 바꿀 땐 쥐고 있던 쪽을 먼저 놓게 할 것
 - 운영 전 필수: Mosquitto 인증·TLS·ACL (OPN-22), 쿠키 `secure` 전환, main overlay TLS·도메인
 
 ---
@@ -251,3 +252,4 @@ api·middleware·web은 볼륨 마운트 + 핫리로드라 **소스 수정이 �
 - 2026-07-30 · 증분 0~7 구현 완료 반영 — 프로젝트 소개·Getting Started 튜토리얼·배포 안내로 README 개편, 개발 현황 표 신설(dev-increments.md), 증분 8 보류·검토 논점 기록
 - 2026-08-06 · **dev 서버 개통** (GEN-1264) — k8s 매니페스트 누락분 보강, Jenkins Harbor push·배포 연결. 배포 절이 스켈레톤 안내에서 실제 접속 정보·시드 계정으로 바뀜
 - 2026-08-24 · dev 게이트웨이 노출 전환 (GEN-1383) — NodePort 30480 → **LoadBalancer 203.250.33.77:80**
+- 2026-08-25 · **main(운영) 서버 개통** (GEN-1389) — 고정 IP `203.250.33.77` 를 dev 에서 운영으로 이관, dev 는 NodePort 30480 으로 환원. develop 의 첫 운영 릴리스

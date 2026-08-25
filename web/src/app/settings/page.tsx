@@ -333,7 +333,7 @@ function FarmModal({
                 key={value}
                 className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-12.5 font-bold ${
                   locationMode === value
-                    ? "border-primary bg-primary-pale text-primary-dark"
+                    ? "border-primary bg-primary-bg text-primary-dark"
                     : "border-gray-200 text-gray-600"
                 }`}
               >
@@ -408,7 +408,9 @@ function FarmModal({
                   onClick={() => selectAddressCandidate(candidate)}
                   disabled={locating}
                   className={`grid w-full grid-cols-[64px_1fr_1fr] gap-2 border-t border-gray-100 px-2 py-2 text-left text-11.5 hover:bg-primary-bg disabled:opacity-60 ${
-                    selectedRoadAddress === candidate.roadAddr ? "bg-primary-pale" : "bg-white"
+                    selectedRoadAddress === candidate.roadAddr
+                      ? "bg-primary-bg font-bold text-primary-dark"
+                      : "bg-white"
                   }`}
                 >
                   <span>{candidate.zipNo || "-"}</span>

@@ -25,6 +25,10 @@ spec:
               valueFrom: { secretKeyRef: { name: django-secret, key: SECRET_KEY } }
             - name: APP_DB_PASSWORD
               valueFrom: { secretKeyRef: { name: postgres-credentials, key: APP_DB_PASSWORD } }
+            - name: MINIO_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: MINIO_ACCESS_KEY } }
+            - name: MINIO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: minio-credentials, key: MINIO_SECRET_KEY } }
           readinessProbe:
             httpGet: { path: /health, port: 8000 }
             initialDelaySeconds: 10

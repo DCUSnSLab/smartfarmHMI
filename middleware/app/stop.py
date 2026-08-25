@@ -17,6 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.alerts import create_alert
 from shared.schemas import EstopState, RemoteStop, RemoteStopRelease, RemoteStopState
 from shared.schemas.topics import topic
 
@@ -180,7 +181,6 @@ async def engage_remote_stop(req: StopRequest):
     _publish_stop_state(publisher, edges, engaged=True, scope=req.scope,
                         reason=req.reason, now=now)
 
-    from middleware.app.alerts import create_alert
     async with engine.begin() as conn:
         for farm_id in farms:
             publisher.publish(farm_id, "stop", _stream_payload(
@@ -242,7 +242,6 @@ async def release_remote_stop(req: StopRequest):
     _publish_outbox(publisher, outbox)  # 커밋 이후 — 해제 실패 시 상태 불일치 방지
     _publish_stop_state(publisher, edges, engaged=False, scope=req.scope, reason=None, now=now)
 
-    from middleware.app.alerts import create_alert
     async with engine.begin() as conn:
         for farm_id in farms:
             publisher.publish(farm_id, "stop", _stream_payload(
@@ -371,7 +370,6 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
             publisher.publish(msg.farm_id, "stop", _stream_payload(
                 "physical_estop", True, scope="farm", reason=_estop_reason(msg, reason),
                 engaged_at=msg.timestamp.isoformat(), detail=detail))
-        from middleware.app.alerts import create_alert
         await create_alert(
             conn, publisher, farm_id=msg.farm_id, severity="warning", alert_kind="stop",
             title="현장 비상정지 상태 확인 필요" if unknown else "현장 비상정지 작동됨",
@@ -407,7 +405,6 @@ async def handle_estop_state(conn, msg: EstopState, received_at: datetime,
                 released_at=msg.timestamp.isoformat(), detail=detail))
         # 해제도 알림으로 남긴다 — 원격 정지와 동작을 맞춘다(발동 1건·해제 1건).
         # 없으면 벨에 「작동됨」만 쌓여, 지금 걸려 있는 것인지 지난 일인지 알 수 없다.
-        from middleware.app.alerts import create_alert
         await create_alert(conn, publisher, farm_id=msg.farm_id, severity="info",
                            alert_kind="stop", title="현장 비상정지 해제됨",
                            body="현장에서 직접 해제했습니다",

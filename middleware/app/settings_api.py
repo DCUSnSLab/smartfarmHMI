@@ -19,6 +19,7 @@ from sqlalchemy import delete, func as sa_func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.schemas import FarmProfile
 from middleware.app.location import (
     LocationResolutionError,
     resolve_current_location,
@@ -48,16 +49,11 @@ def _now() -> datetime:
 
 # ── 스키마 ────────────────────────────────────────────────────
 
-class FarmUpdate(BaseModel):
+class FarmUpdate(FarmProfile):
+    """농장 부분 수정 — 보낸 칸만 바꾼다. 그래서 이름·종류까지 선택이다."""
+
     name: str | None = None
     farm_type: str | None = None
-    crop: str | None = None
-    region_code: str | None = None
-    address: str | None = None
-    zipcode: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    accuracy_m: float | None = None
 
 
 class DeviceUpsert(BaseModel):
@@ -103,16 +99,11 @@ class DevicePatch(BaseModel):
     power_kw: float | None = None
 
 
-class DiscoveryRegister(BaseModel):
+class DiscoveryRegister(FarmProfile):
+    """발견한 엣지를 농장으로 등록 — 이름만 필수 (현장에서 급히 붙일 수 있어야 한다)."""
+
     name: str
     farm_type: str = "greenhouse"
-    crop: str | None = None
-    region_code: str | None = None
-    address: str | None = None
-    zipcode: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    accuracy_m: float | None = None
 
 
 class AddressSearch(BaseModel):

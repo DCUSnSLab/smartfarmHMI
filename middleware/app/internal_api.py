@@ -6,27 +6,22 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.schemas import FarmProfile
 from middleware.app.weather import collect_farm_weather, validate_coordinates
 
 router = APIRouter(prefix="/internal")
 
 
-class FarmUpsert(BaseModel):
+class FarmUpsert(FarmProfile):
+    """농장 생성 — 식별자와 이름만 필수. 나머지는 FarmProfile 이 갖는다."""
+
     farm_id: str
     name: str
     farm_type: str = "greenhouse"
-    crop: str | None = None
-    region_code: str | None = None
-    address: str | None = None
-    zipcode: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    accuracy_m: float | None = None
 
 
 @router.post("/farms")

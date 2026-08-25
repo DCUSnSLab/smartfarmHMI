@@ -20,6 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from middleware.app import conformance
 from middleware.app import models as m
 from middleware.app.config import settings
+from middleware.app.alerts import (
+    alert_connection_change,
+    alert_robot_error,
+    check_sensor_thresholds,
+)
+from middleware.app.commands import handle_ack
+from middleware.app.stop import handle_estop_state
 from shared.schemas import (
     Ack,
     Birth,
@@ -426,7 +433,6 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
             await _handle_sensor_reading(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
             if not hidden:
-                from middleware.app.alerts import check_sensor_thresholds
                 await check_sensor_thresholds(conn, msg, publisher)  # FR-32 threshold
             if live:
                 live.publish(msg.farm_id, "environment", {
@@ -438,7 +444,6 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
             await _handle_robot_status(conn, msg, received_at)
             await _touch_connection(conn, msg.farm_id, msg.device_id, received_at)
             if msg.error and not hidden:
-                from middleware.app.alerts import alert_robot_error
                 await alert_robot_error(conn, publisher, msg.farm_id, msg.device_id,
                                         msg.error.model_dump(mode="json"))
             if live:
@@ -474,7 +479,6 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
         elif isinstance(msg, Death):
             await _handle_death(conn, msg, parsed.device_type, received_at)
             if not hidden:
-                from middleware.app.alerts import alert_connection_change
                 await alert_connection_change(conn, publisher, msg.farm_id, msg.device_id, "offline")
             if live:
                 # 엣지 death 는 농장 전체 cascade — 화면은 farm 단위 오프라인 표시
@@ -491,10 +495,8 @@ async def _dispatch(engine, parsed, msg, received_at, publisher, retained=False)
                     "last_received_at": received_at.isoformat(),
                 })
         elif isinstance(msg, Ack):
-            from middleware.app.commands import handle_ack  # 순환 import 회피
             await handle_ack(conn, msg, received_at, publisher)
         elif isinstance(msg, EstopState):
-            from middleware.app.stop import handle_estop_state
             await handle_estop_state(conn, msg, received_at, publisher)
 
     # 발행자 추적은 커밋 이후에 갱신한다 — 롤백되는 birth(미등록 농장의 FK 위반 등)
@@ -572,7 +574,6 @@ async def connection_monitor(engine: AsyncEngine, publisher=None) -> None:
                         )
                         log.info("connection: %s/%s %s → %s (gap=%.0fs)",
                                  row["farm_id"], row["device_id"], row["state"], new_state, gap)
-                        from middleware.app.alerts import alert_connection_change
                         await alert_connection_change(
                             conn, publisher, row["farm_id"], row["device_id"], new_state
                         )

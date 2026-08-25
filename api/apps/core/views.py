@@ -200,13 +200,6 @@ async def alert_rules_bulk(request):
     return await _proxy_middleware(f"/internal/alert-rules?{qs}")
 
 
-async def farm_snapshot(request, farm_id: str):
-    """대시보드 초기 로드 스냅샷 (FR-04·08). 인증 필수."""
-    if request_user(request) is None:
-        return unauthorized()
-    return await _proxy_middleware(f"/internal/farms/{farm_id}/snapshot")
-
-
 async def farm_layout(request, farm_id: str):
     """농장 배치도 (FR-41). 엣지 자기기술을 DB 에서 읽으므로 엣지 오프라인에도 응답한다."""
     if request_user(request) is None:

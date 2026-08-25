@@ -134,6 +134,21 @@ export function sensorLiveness(ts: string | null): "online" | "degraded" | "offl
   return "online";
 }
 
+/**
+ * 이 농장의 엣지 컨트롤러 연결 상태 — 「농장이 붙어 있나」의 근거.
+ *
+ * device_type 을 먼저 보고 없으면 id 접두사로 찾는다. 실시간 스트림의 연결 기록은
+ * 수신 때마다 새로 만들어져 device_type 이 남지 않기 때문이다 (스냅샷 쪽에는 있다).
+ * 화면마다 따로 찾으면 한쪽은 접두사만 보고 다른 쪽은 종류만 보게 된다.
+ */
+export function edgeConn(
+  conns: Record<string, ConnState & { device_type?: string | null }>,
+): ConnState | undefined {
+  const list = Object.values(conns);
+  return list.find((c) => c.device_type === "edge")
+    ?? list.find((c) => c.device_id.startsWith("edge"));
+}
+
 export function deviceLiveness(
   deviceId: string,
   deviceType: string,
@@ -261,13 +276,29 @@ export function useMonitor(scope: string) {
     if (r.ok) setFarms(await r.json());
   }, []);
 
-  const loadSnapshot = useCallback(async (farmId: string) => {
-    const res = await apiFetch(`/api/farms/${farmId}/snapshot`);
-    if (!res.ok) return;
-    const snap = await res.json();
-    setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
-    setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
-    setConns(Object.fromEntries(snap.connections.map((c: ConnState) => [c.device_id, c])));
+  /** 이미 씨를 뿌린 스코프 — 주기 갱신마다 다시 뿌리면 그 사이 받은 실시간 값이 지워진다 */
+  const seededFor = useRef<string | null>(null);
+
+  /**
+   * 실시간 맵의 출발점 — 전 농장 스냅샷에서 이 스코프 것을 꺼내 채운다.
+   *
+   * 예전에는 농장을 옮길 때마다 `/farms/{id}/snapshot` 을 따로 받았다. 전 농장
+   * 스냅샷(lib/fleet.useFleetSnapshots)이 **같은 페이로드**를 이미 담고 있어 요청
+   * 하나가 그대로 중복이었다. 부르는 곳은 조립 지점(FarmDataProvider)이다 —
+   * 여기서 fleet 을 직접 가져오면 monitor → fleet → deviceStatus → monitor 로
+   * 런타임 순환이 생긴다.
+   *
+   * 스코프당 한 번만 뿌린다. 전 농장 스냅샷은 15초마다 새 객체로 오는데, 그때마다
+   * 다시 뿌리면 그 사이 소켓으로 받은 값이 15초 낡은 값으로 되돌아간다.
+   */
+  const seedLive = useCallback((farmId: string, snap: {
+    sensors: SensorValue[]; robots: RobotValue[]; connections: ConnState[];
+  }) => {
+    if (seededFor.current === farmId) return;
+    seededFor.current = farmId;
+    setSensors(Object.fromEntries(snap.sensors.map((s) => [s.sensor_id, s])));
+    setRobots(Object.fromEntries(snap.robots.map((r) => [r.device_id, r])));
+    setConns(Object.fromEntries(snap.connections.map((c) => [c.device_id, c])));
     // 값을 넣은 바로 뒤에 출처를 적는다 — 둘이 떨어지면 다시 어긋난다
     setLiveFarm(farmId);
   }, []);
@@ -296,22 +327,26 @@ export function useMonitor(scope: string) {
   }, [loadAlerts]);
 
   useEffect(() => {
+    let alive = true;
     void refreshFarms();
     void loadStops();
     // 이전 농장 값을 지우지 않는다. 지우면 새 값이 올 때까지 화면이 비고, 그 빈
     // 자리 때문에 카드 높이가 오간다. 대신 liveFarm 이 「이건 저 농장 것」이라고
     // 말해 주므로, 화면은 그동안 스냅샷(농장별로 담긴 쪽)을 보면 된다.
+    // 장치별 값은 전 농장 스냅샷에서 꺼내 온다 (seedLive) — 여기서 따로 받지 않는다.
     if (scope !== "all") {
-      // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
-      // showsFleetNav 화면에서만 돌고 카드용 형태로 담는다. 여기서는 장치별 값이 필요하다.
-      void loadSnapshot(scope);
-      apiFetch(`/api/farms/${scope}/commands`).then(async (r) => {
-        if (!r.ok) return;
-        const list: CommandState[] = await r.json();
-        setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
-      });
+      void apiFetch(`/api/farms/${scope}/commands`)
+        .then(async (r) => {
+          if (!r.ok || !alive) return;
+          const list: CommandState[] = await r.json();
+          setCommands(Object.fromEntries(list.map((c) => [c.command_id, c])));
+        })
+        // 제어 이력이 없으면 진행 중 표시만 비어 있다 — 다음 전환이나 WS 가 메운다.
+        // 처리하지 않으면 거부가 새어 개발 오버레이가 뜬다 (폴링과 같은 이유).
+        .catch(() => {});
     }
-  }, [scope, loadSnapshot, loadStops, refreshFarms]);
+    return () => { alive = false; };
+  }, [scope, loadStops, refreshFarms]);
 
   // 스코프 변경 → 연결을 유지하고 구독만 갈아탄다 (소켓이 아직 없으면 onopen 이 보낸다)
   useEffect(() => {
@@ -585,7 +620,7 @@ export function useMonitor(scope: string) {
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
-    liveTick, liveFarm, serverBeat,
+    liveTick, liveFarm, seedLive, serverBeat,
   };
 }
 

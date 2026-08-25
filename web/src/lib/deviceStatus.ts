@@ -20,7 +20,7 @@
  */
 
 import {
-  CONN_STYLE, SENSOR_META, SEV_RANK, STATION_STATE, TANK_LABEL, tankBadge,
+  CONN_STYLE, rangeSide, SENSOR_META, SEV_RANK, STATION_STATE, TANK_LABEL, tankBadge,
 } from "@/lib/severity";
 import {
   deviceLiveness, sensorLiveness, timeAgo,
@@ -162,12 +162,13 @@ function valueAxis(s: SensorValue, range?: { min: number | null; max: number | n
   const unit = meta?.unit ?? s.unit ?? "";
   if (s.value == null) return { axis: "값", sev: "idle", text: "값 없음" };
   const shown = `${s.value.toFixed(unit === "ppm" ? 0 : 1)}${unit}`;
-  const lo = range?.min ?? null;
-  const hi = range?.max ?? null;
-  if (hi != null && s.value > hi) return { axis: "값", sev: "warning", text: `${shown} 적정 초과` };
-  if (lo != null && s.value < lo) return { axis: "값", sev: "warning", text: `${shown} 적정 미달` };
+  const side = rangeSide(s.value, range);
+  if (side) {
+    return { axis: "값", sev: "warning", text: `${shown} 적정 ${side === "over" ? "초과" : "미달"}` };
+  }
   // 규칙이 없으면 적정 여부를 말하지 않는다 — 없는 기준을 통과했다고 적으면 거짓이다
-  return { axis: "값", sev: "ok", text: lo == null && hi == null ? shown : `${shown} 적정` };
+  const hasRange = range?.min != null || range?.max != null;
+  return { axis: "값", sev: "ok", text: hasRange ? `${shown} 적정` : shown };
 }
 
 /**

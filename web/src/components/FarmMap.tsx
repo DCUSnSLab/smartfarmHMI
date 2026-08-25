@@ -103,6 +103,15 @@ interface Marker {
  */
 const VIEW_ASPECT = 744 / 300;
 
+/**
+ * 농장별 도면 기억 — 배치도는 서버 DB 에서 오고 거의 바뀌지 않는다.
+ *
+ * 농장을 옮길 때마다 회색 상자를 한 번씩 보여 주면 되돌아왔을 때도 또 보여 준다.
+ * 이미 받아 둔 것을 먼저 그리고 뒤에서 다시 받아 갱신한다 — 받는 동안 화면이 비지
+ * 않는다. 모듈 수준이라 화면을 떠나도 남는다.
+ */
+const layoutCache = new Map<string, Layout>();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 예시 배치
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,6 +317,46 @@ function MarkerTip({ m, flip }: { m: Marker; flip: boolean }) {
   );
 }
 
+/**
+ * 범례 — 종류는 실루엣, 상태는 색. 도면 데이터와 무관한 고정 내용이라 도면을 받는
+ * 동안에도 그대로 둔다. 로딩 중에만 감추면 그만큼 카드가 낮아져 화면 전체가 밀린다.
+ */
+function Legend() {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-11.5 font-semibold text-muted">
+      {KINDS.map((kind) => {
+        const sh = SHAPE[kind];
+        return (
+          <span key={kind} className="flex items-center gap-1.5">
+            <span
+              className="inline-flex flex-none items-center justify-center bg-[#4E5968]"
+              style={{ width: sh.w * 0.92, height: sh.h * 0.92, borderRadius: sh.radius }}
+            >
+              {sh.glyph && (
+                <svg viewBox="0 0 24 24" className="h-[76%] w-[76%]" aria-hidden="true">
+                  <path
+                    d={sh.glyph} fill="none" stroke="#fff" strokeWidth={2}
+                    strokeLinecap="round" strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </span>
+            {KIND_LABEL[kind]}
+          </span>
+        );
+      })}
+      <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        {["ok", "busy", "idle", "caution", "warning"].map((sev) => (
+          <span key={sev} className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: sevHex(sev) }} />
+            {SEV_STYLE[sev].label}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 export function FarmMap({
   farmId, robots, statuses, active, onHover, onSelect,
 }: {
@@ -320,21 +369,26 @@ export function FarmMap({
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
 }) {
-  const [layout, setLayout] = useState<Layout | null>(null);
+  // 기억해 둔 도면이 있으면 그것으로 시작한다 — 첫 프레임부터 그릴 것이 있다
+  const [layout, setLayout] = useState<Layout | null>(() => layoutCache.get(farmId) ?? null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    setLayout(null);
+    // 농장이 바뀌면 이전 농장 도면을 버린다. 기억해 둔 것이 있으면 곧바로 그것으로
+    // 갈아탄다 — 비워 두면 회색 상자가 한 번 스친다.
+    setLayout(layoutCache.get(farmId) ?? null);
     setFailed(false);
     void (async () => {
       try {
         const res = await apiFetch(`/api/farms/${farmId}/layout`);
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as Layout;
+        layoutCache.set(farmId, data);
         if (alive) setLayout(data);
       } catch {
-        if (alive) setFailed(true);
+        // 기억해 둔 도면이 있으면 계속 그린다 — 한 번의 실패로 지울 이유가 없다
+        if (alive && !layoutCache.has(farmId)) setFailed(true);
       }
     })();
     return () => { alive = false; };
@@ -347,30 +401,34 @@ export function FarmMap({
   const demo = layout != null && layout.zones.length === 0 ? demoLayout(devices) : null;
   const shown = demo ?? layout;
 
-  const title = (right?: React.ReactNode) => (
-    <SectionTitle
-      title="실시간 배치도"
-      sub={demo ? "예시 배치 · 실제 위치 아님" : `${layout?.frame ?? "?"} 좌표계 · m 단위`}
-      right={right}
-    />
+  /**
+   * 카드 틀 — 제목 · 그림 자리 · 범례. **어떤 상태에서도 같은 높이다.**
+   *
+   * 예전에는 도면을 받는 동안 다른 크기의 회색 상자를 그렸다. 그 카드가 줄었다
+   * 늘어나면 같은 줄의 하드웨어 카드와 아래 줄 전체가 위아래로 밀려, 카드가
+   * 사라졌다 나타나는 것처럼 보인다. 그림 자리를 미리 잡아 두면 안에 무엇이
+   * 들어가든 바깥이 흔들리지 않는다.
+   *
+   * 범례는 도면과 무관한 고정 내용이라 받는 동안에도 그대로 둔다 (그래야 높이가 같다).
+   */
+  const frame = (inner: React.ReactNode, right?: React.ReactNode) => (
+    <Card>
+      <SectionTitle
+        title="실시간 배치도"
+        sub={demo ? "예시 배치 · 실제 위치 아님" : `${layout?.frame ?? "?"} 좌표계 · m 단위`}
+        right={right}
+      />
+      <div className="relative w-full" style={{ aspectRatio: VIEW_ASPECT }}>{inner}</div>
+      <Legend />
+    </Card>
   );
 
-  if (failed) {
-    return (
-      <Card>
-        {title()}
-        <p className="py-8 text-center text-13 text-muted">배치도를 불러오지 못했습니다.</p>
-      </Card>
-    );
-  }
-  if (!shown) {
-    return (
-      <Card>
-        {title()}
-        <div className="h-72 animate-pulse rounded-xl bg-surface" />
-      </Card>
-    );
-  }
+  const notice = (text: string) => (
+    <p className="absolute inset-0 flex items-center justify-center text-13 text-muted">{text}</p>
+  );
+
+  if (failed) return frame(notice("배치도를 불러오지 못했습니다."));
+  if (!shown) return frame(<div className="absolute inset-0 animate-pulse rounded-xl bg-surface" />);
 
   // 로봇은 자기가 보내는 위치, 나머지는 도면의 지점. 지점은 장치와 이어져 있을
   // 때만 표식이 된다 (ref_device_id) — 자리 이름만으로는 무엇이 놓였는지 모른다.
@@ -398,16 +456,7 @@ export function FarmMap({
 
   const box = bounds(shown.zones, shown.gates ?? [], placed);
 
-  if (!box) {
-    return (
-      <Card>
-        {title()}
-        <p className="py-8 text-center text-13 text-muted">
-          엣지가 아직 배치도를 보내지 않았습니다.
-        </p>
-      </Card>
-    );
-  }
+  if (!box) return frame(notice("엣지가 아직 배치도를 보내지 않았습니다."));
 
   const markers: Marker[] = placed.map((p) => ({
     device: p.device,
@@ -422,28 +471,10 @@ export function FarmMap({
   const tipFlip = hit != null && hit.left > 50;
   const labelSize = box.h / 26;
 
-  return (
-    <Card>
-      {title(
-        <span className="flex items-center gap-2">
-          {demo && (
-            <span
-              title="엣지가 배치도(§4.9.1)를 보내면 실제 좌표로 바뀝니다"
-              className="rounded-lg bg-status-caution/10 px-2 py-0.5 text-11 font-extrabold text-status-cautionDark"
-            >
-              예시 배치
-            </span>
-          )}
-          <span className="text-12.5 font-semibold text-muted">
-            {markers.length ? `장치 ${markers.length}개 표시 중` : "표시할 장치 위치 없음"}
-          </span>
-        </span>,
-      )}
-
-      {/* 비율이 고정이라 카드 높이가 도면·로봇 위치에 흔들리지 않는다. viewBox 쪽을
-          같은 비율로 맞춰 두었으므로 HTML 표식의 % 위치가 그림과 정확히 겹친다. */}
-      <div className="relative w-full" style={{ aspectRatio: VIEW_ASPECT }}>
-        <svg
+  // 로딩·오류 상태와 **같은 틀**을 쓴다 — 카드 높이가 상태에 따라 달라지지 않는다
+  return frame(
+    <>
+      <svg
           viewBox={`${box.minX} ${box.minY} ${box.w} ${box.h}`}
           className="absolute inset-0 h-full w-full"
           role="img"
@@ -545,40 +576,20 @@ export function FarmMap({
           );
         })}
 
-        {hit && <MarkerTip m={hit} flip={tipFlip} />}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-11.5 font-semibold text-muted">
-        {KINDS.map((kind) => {
-          const sh = SHAPE[kind];
-          return (
-            <span key={kind} className="flex items-center gap-1.5">
-              <span
-                className="inline-flex flex-none items-center justify-center bg-[#4E5968]"
-                style={{ width: sh.w * 0.92, height: sh.h * 0.92, borderRadius: sh.radius }}
-              >
-                {sh.glyph && (
-                  <svg viewBox="0 0 24 24" className="h-[76%] w-[76%]" aria-hidden="true">
-                    <path
-                      d={sh.glyph} fill="none" stroke="#fff" strokeWidth={2}
-                      strokeLinecap="round" strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </span>
-              {KIND_LABEL[kind]}
-            </span>
-          );
-        })}
-        <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {["ok", "busy", "idle", "caution", "warning"].map((sev) => (
-            <span key={sev} className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: sevHex(sev) }} />
-              {SEV_STYLE[sev].label}
-            </span>
-          ))}
+      {hit && <MarkerTip m={hit} flip={tipFlip} />}
+    </>,
+    <span className="flex items-center gap-2">
+      {demo && (
+        <span
+          title="엣지가 배치도(§4.9.1)를 보내면 실제 좌표로 바뀝니다"
+          className="rounded-lg bg-status-caution/10 px-2 py-0.5 text-11 font-extrabold text-status-cautionDark"
+        >
+          예시 배치
         </span>
-      </div>
-    </Card>
+      )}
+      <span className="text-12.5 font-semibold text-muted">
+        {markers.length ? `장치 ${markers.length}개 표시 중` : "표시할 장치 위치 없음"}
+      </span>
+    </span>,
   );
 }

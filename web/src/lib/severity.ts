@@ -30,6 +30,25 @@ export const SEV_RANK: Record<string, number> = {
 /** SVG 는 Tailwind 클래스를 못 받는다 — 같은 색을 hex 로 꺼내 쓴다 */
 export const sevHex = (sev: string) => (SEV_STYLE[sev] ?? SEV_STYLE.info).hex;
 
+/**
+ * 값이 적정 범위를 벗어났나, 벗어났으면 어느 쪽인가.
+ *
+ * 상태 화면의 센서 등급과 생육기·센서 화면의 「범위 밖」 표시가 같은 판정을 써야 한다.
+ * 각자 적어 두면 경계 처리(이상/초과)나 한쪽만 설정된 범위를 다르게 다루게 되고,
+ * 같은 센서를 한 화면은 경고로 다른 화면은 정상으로 부른다.
+ *
+ * 범위가 없으면 벗어났다고 말하지 않는다 — 없는 기준을 어겼다고 할 수는 없다.
+ */
+export function rangeSide(
+  value: number | null | undefined,
+  range?: { min: number | null; max: number | null },
+): "over" | "under" | null {
+  if (value == null || !range) return null;
+  if (range.max != null && value > range.max) return "over";
+  if (range.min != null && value < range.min) return "under";
+  return null;
+}
+
 export const CONN_STYLE: Record<string, { label: string; sev: string }> = {
   online: { label: "정상", sev: "ok" },
   degraded: { label: "응답 지연", sev: "caution" },

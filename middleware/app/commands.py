@@ -14,6 +14,8 @@ from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from middleware.app import models as m
+from middleware.app.alerts import alert_command_failure
+from middleware.app.stop import is_estopped, is_remote_stopped
 from shared.schemas import Ack, ControlCommand, RobotJog
 from shared.schemas.topics import topic
 
@@ -56,7 +58,6 @@ async def issue_control(farm_id: str, device_id: str, req: ControlRequest):
         raise HTTPException(400, f"허용되지 않는 명령: {req.command}")
     engine, publisher = _deps()
 
-    from middleware.app.stop import is_remote_stopped
     async with engine.connect() as conn:
         if await is_remote_stopped(conn, farm_id):
             raise HTTPException(423, "원격 전체 정지 발동 중 — 제어가 차단되었습니다 (FR-35)")
@@ -137,7 +138,6 @@ async def issue_jog(farm_id: str, device_id: str, req: JogRequest):
 
     # 정지 명령은 막지 않는다 — 정지 방향은 언제나 안전측이다.
     if req.direction != "stop":
-        from middleware.app.stop import is_estopped, is_remote_stopped
         async with engine.connect() as conn:
             if await is_remote_stopped(conn, farm_id):
                 raise HTTPException(423, "원격 전체 정지 발동 중 — 조작이 차단되었습니다 (FR-35)")
@@ -207,7 +207,6 @@ async def handle_ack(conn, msg: Ack, received_at: datetime, publisher=None) -> N
         })
         log.info("ack: %s → %s", msg.command_id, msg.result)
     if result and msg.result in ("failed", "rejected"):
-        from middleware.app.alerts import alert_command_failure
         await alert_command_failure(conn, publisher, msg.farm_id, msg.device_id,
                                     msg.command_id, msg.result)
 
@@ -234,7 +233,6 @@ async def timeout_watcher(engine, publisher=None, interval_sec: int = 5) -> None
                     publisher.publish(farm_id, "command", {
                         "command_id": command_id, "device_id": device_id, "status": "timeout",
                     })
-                from middleware.app.alerts import alert_command_failure
                 async with engine.begin() as conn:
                     await alert_command_failure(conn, publisher, farm_id, device_id,
                                                 command_id, "timeout")

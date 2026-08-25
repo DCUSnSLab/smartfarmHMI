@@ -60,6 +60,16 @@ export function FarmDataProvider({ children }: { children: React.ReactNode }) {
     data.liveTick,
   );
 
+  // 실시간 맵의 출발점을 전 농장 스냅샷에서 꺼낸다. 예전에는 useMonitor 가 농장을
+  // 옮길 때마다 `/farms/{id}/snapshot` 을 따로 받았는데, 위 폴링이 **같은 페이로드**를
+  // 이미 담고 있어 요청 하나가 그대로 중복이었다. 스코프당 한 번만 뿌린다 (seedLive).
+  const { seedLive } = data;
+  useEffect(() => {
+    if (scope === "all") return;
+    const snap = snaps[scope];
+    if (snap) seedLive(scope, snap);
+  }, [scope, snaps, seedLive]);
+
   const { rows: weather, loading: weatherLoading, reload: reloadWeather } = useWeather();
 
   return (

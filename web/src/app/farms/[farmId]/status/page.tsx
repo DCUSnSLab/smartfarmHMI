@@ -23,12 +23,14 @@ import { SENSOR_META, SEV_STYLE, TANK_LABEL } from "@/lib/severity";
 import { FarmMap } from "@/components/FarmMap";
 import { useFarmData } from "@/lib/farmData";
 import {
-  deviceGroups, RING_ORDER,
+  deviceGroups, inputFromSnapshot, RING_ORDER,
   type DeviceStatus, type Ranges, type StatusInput,
 } from "@/lib/deviceStatus";
-import { fetchHistory, useDevices, useFarmSnapshot } from "@/lib/farmDetail";
+import { fetchHistory, useFarmSnapshot } from "@/lib/farmDetail";
 import { farmStatus } from "@/lib/fleet";
-import { controlBlocked, sensorLiveness, timeAgo, type SensorValue } from "@/lib/monitor";
+import {
+  controlBlocked, sensorLiveness, timeAgo, type SensorValue, type StopState,
+} from "@/lib/monitor";
 import {
   isKoreaDaytime, isValidWeatherLocation, parseWeatherCondition, refreshWeather,
   uvIndexLabel, weatherConditionLabel, weatherIcon,
@@ -44,36 +46,35 @@ const ENV_SLOTS = ENV_TYPES.length;
 /**
  * 규칙 기반 상태 요약 — LLM 미연동(FR-30)이므로 서술형 문구를 규칙으로 만든다.
  * "자동 생성" 라벨을 붙여 사람이 쓴 문장과 구분한다 (FR-30 비고).
+ *
+ * 화면이 이미 고른 값(input)으로 문장을 만든다. 예전에는 이 함수가 컨텍스트에서
+ * 직접 실시간 값을 읽어, 농장을 옮긴 직후 **이전 농장 수치**로 문장을 만들었다.
  */
-function useSummary(farmId: string): { text: string; ready: boolean } {
-  const { sensors, conns, robots, stops, snapshotReady } = useFarmData();
-
+function summaryLine(farmId: string, input: StatusInput, stops: StopState): string {
   // 값과 상태는 살아 있는 장치의 것만 말한다. 마지막으로 받은 값을 그대로 읽으면
   // 통신이 끊긴 뒤에도 「25.0℃ · 로봇 1대 작업 중」이 현재형으로 남는다 —
   // 하드웨어 목록은 전부 오프라인인데 요약만 정상인 것처럼 보인다.
-  const fresh = (s: SensorValue | undefined) =>
-    s && s.value != null && sensorLiveness(s.ts) === "online" ? s : undefined;
-  const temp = fresh(Object.values(sensors).find((s) => s.sensor_type === "temperature"));
-  const hum = fresh(Object.values(sensors).find((s) => s.sensor_type === "humidity"));
+  const fresh = (v: SensorValue | undefined) =>
+    v && v.value != null && sensorLiveness(v.ts) === "online" ? v : undefined;
+  const temp = fresh(input.sensors.find((v) => v.sensor_type === "temperature"));
+  const hum = fresh(input.sensors.find((v) => v.sensor_type === "humidity"));
   const envPart =
     temp?.value != null && hum?.value != null
       ? `내부 ${temp.value.toFixed(1)}℃ · 습도 ${hum.value.toFixed(0)}%`
       : "환경 데이터 수신 중단";
 
-  const all = Object.values(robots);
-  const live = all.filter((r) => conns[r.device_id]?.state === "online");
+  // 등록 여부는 대장으로, 살아 있는지는 값으로 본다 — 등록만 되고 한 번도 발행하지
+  // 않은 로봇을 「없는 로봇」으로 말하면 안 된다
+  const registered = input.robotIds?.length ? input.robotIds : input.robots.map((r) => r.device_id);
+  const live = input.robots.filter((r) => input.conns[r.device_id]?.state === "online");
   const working = live.filter((r) => r.phase === "working").length;
   const robotPart = controlBlocked(stops, farmId)
     ? "로봇 정지 중"
-    : all.length === 0 ? "등록된 로봇 없음"
+    : registered.length === 0 ? "등록된 로봇 없음"
     : live.length === 0 ? "로봇 상태 확인 불가"
     : working ? `로봇 ${working}대 작업 중` : "로봇 대기 중";
 
-  return {
-    text: `${envPart} · ${robotPart}`,
-    // 전체 스코프에서는 농장별 센서를 받지 않아, 상세 진입 직후 sensors 가 비어 있다
-    ready: snapshotReady,
-  };
+  return `${envPart} · ${robotPart}`;
 }
 
 /**
@@ -271,7 +272,7 @@ function SevCount({ sev, n }: { sev: string; n: number }) {
 
 export default function StatusTab() {
   const { farmId } = useParams<{ farmId: string }>();
-  const { sensors, conns, robots, stops } = useFarmData();
+  const { sensors, conns, robots, stops, liveFarm } = useFarmData();
   const snap = useFarmSnapshot(farmId);
   const status = snap ? farmStatus(snap, stops) : null;
   // 적정 범위는 **스냅샷에서** 받는다. 따로 알림 규칙을 부르면 요청이 하나 늘고,
@@ -279,8 +280,6 @@ export default function StatusTab() {
   // 게이지는 다른 응답의 범위로 색을 칠하면 같은 센서가 카드마다 다르게 보인다.
   // (스냅샷은 enabled 인 규칙만 싣는다 — 꺼 둔 규칙으로 경고를 내지 않으려고)
   const ranges: Ranges = snap?.ranges ?? {};
-  const devices = useDevices(farmId);
-  const summary = useSummary(farmId);
 
   // 배치도·하드웨어가 함께 쓰는 지목 상태. hover 는 스쳐 지나가는 것, pin 은 눌러
   // 고정한 것 — 손을 떼도 남아야 다른 카드에서 대조할 수 있다.
@@ -310,21 +309,39 @@ export default function StatusTab() {
     };
   }, [pin]);
 
-  // 판정은 실시간 값으로 한다 — 스냅샷(15초 주기)보다 앞선다. 탱크·워크스테이션은
-  // WS 가 커버하지 않아 스냅샷에서 받는다 (그쪽은 원래 주기 갱신이다).
-  const input: StatusInput = {
-    sensors: Object.values(sensors),
-    conns,
-    robots: Object.values(robots),
-    robotIds: devices.filter((d) => d.device_type === "robot").map((d) => d.device_id),
-    tanks: snap?.tanks ?? [],
-    stations: snap?.stations ?? [],
-    ranges,
-    names: Object.fromEntries(devices.map((d) => [d.device_id, d.name])),
-    parents: Object.fromEntries(devices.map((d) => [d.device_id, d.detail?.parent_device_id ?? null])),
-  };
-  const groups = deviceGroups(input);
+  /**
+   * 이 화면이 보는 값은 **모두 지금 보고 있는 농장 것**이어야 한다.
+   *
+   * 값이 두 통로로 들어온다. 실시간 통로(WS)는 한 농장만 구독하고, 스냅샷 통로는
+   * 모든 농장을 15초마다 한 벌씩 받아 둔다. 농장을 옮기면 실시간 통로는 구독을
+   * 갈아타야 해서 한 왕복 동안 **이전 농장 값을 그대로 들고 있다**. 그 값으로 세면
+   * 이전 농장 센서와 새 농장 탱크가 섞여 개수와 고리 색이 요동친다.
+   *
+   * 스냅샷은 농장별로 담겨 있어 옮긴 즉시 새 농장 것이 있다. 그래서 스냅샷으로
+   * 먼저 그리고, 실시간 값이 **같은 농장 것임이 확인되면** 그때 갈아탄다. 기다릴
+   * 것이 없으니 회색 자리표시도 필요 없다.
+   *
+   * 판단은 실시간 값에 붙어 오는 출처(liveFarm)로 한다. 「받았음」 불리언과 지금
+   * 스코프를 견주는 방식은 한 프레임 새는 구멍이 있었다 — 구독 교체가 렌더 뒤에
+   * 돌아서, 스코프는 이미 새 농장인데 값은 아직 이전 농장인 순간이 그려진다.
+   */
+  const liveIsThisFarm = liveFarm === farmId;
+  const base = snap ? inputFromSnapshot(snap) : null;
+  const input: StatusInput | null = liveIsThisFarm
+    ? {
+        ...base,
+        sensors: Object.values(sensors),
+        conns,
+        robots: Object.values(robots),
+        tanks: base?.tanks ?? [],
+        stations: base?.stations ?? [],
+        ranges,
+      }
+    : base;
+
+  const groups = input ? deviceGroups(input) : [];
   const all = groups.flatMap((g) => g.items);
+  const summary = input ? summaryLine(farmId, input, stops) : null;
   const byId: Record<string, DeviceStatus> = Object.fromEntries(all.map((d) => [d.id, d]));
   const warnCount = all.filter((d) => d.sev === "warning").length;
   const cautionCount = all.filter((d) => d.sev === "caution").length;
@@ -340,7 +357,7 @@ export default function StatusTab() {
   // ── 환경 상태에 세울 여섯 칸 ──
   // 주요 항목을 순서대로 채우고, 없는 항목이 있으면 남은 센서로 메운다. 빈 칸을
   // 두면 「센서가 없다」와 「자리가 비었다」가 구분되지 않는다.
-  const pool = Object.values(sensors).filter((s) => s.sensor_type !== "water_level");
+  const pool = (input?.sensors ?? []).filter((s) => s.sensor_type !== "water_level");
   const envSensors: SensorValue[] = [];
   for (const t of ENV_TYPES) {
     const found = pool.find((s) => s.sensor_type === t);
@@ -370,15 +387,16 @@ export default function StatusTab() {
               </span>
             }
           />
-          {/* 스냅샷 도착 전에는 자리만 잡는다 (확정 문구를 냈다가 바꾸면 깜빡인다) */}
-          {summary.ready ? (
-            <p className="text-14 font-semibold leading-relaxed text-gray-700">{summary.text}</p>
+          {/* 농장을 옮겨도 스냅샷에 새 농장 값이 이미 있으므로 곧바로 적는다.
+              자리표시로 바꿨다 되돌리면 카드 높이가 오가며 아래 카드까지 밀린다 */}
+          {summary ? (
+            <p className="text-14 font-semibold leading-relaxed text-gray-700">{summary}</p>
           ) : (
             <p aria-hidden="true" className="h-6 w-3/4 animate-pulse rounded bg-gray-100" />
           )}
           {/* 심각도별로 한 줄씩 — 지금 걸린 이슈를 등급별로 모아 보여준다.
               정지·엣지 문제가 센서 문제를 가리면 안 된다 (고치는 사람도 시점도 다르다) */}
-          {summary.ready && (
+          {input && (
             <div className="mt-3 space-y-1.5">
               {(["warning", "caution"] as const).map((sev) => {
                 const hit = status?.reasons.filter((r) => r.sev === sev) ?? [];
@@ -491,7 +509,15 @@ export default function StatusTab() {
               </Link>
             }
           />
-          <div className="flex flex-1 flex-col justify-between gap-4">
+          {/*
+            그룹을 위로 붙인다. 남는 공간을 그룹 사이에 나눠 넣으면(justify-between)
+            농장마다 그 몫이 달라져 같은 그룹이 위아래로 크게 움직인다 — 왼쪽 칸
+            높이는 고정인데 장치 수는 농장마다 다르므로, 장치가 적은 농장일수록
+            틈이 넓어지고 틈 수도 적어 더 벌어진다 (탱크 그룹이 160px 이동).
+            위로 붙이면 남는 공간이 카드 아래 한 곳에 모이고, 그룹 위치 차이는
+            위쪽 내용의 실제 차이(센서 타일 줄 수)만 남는다.
+          */}
+          <div className="flex flex-1 flex-col justify-start gap-4">
             {groups.map((g) => (
               <div key={g.kind}>
                 {/* 대수 바로 옆에 등급 요약을 붙인다 — 「센서 9」와 「경고 1」이 한 문장으로

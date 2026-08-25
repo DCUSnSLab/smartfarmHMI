@@ -12,9 +12,7 @@ import { Card, Modal, SectionTitle, StatusDot } from "@/components/ui";
 import { CONN_STYLE, PHASE_LABEL } from "@/lib/severity";
 import { canControl, useUser } from "@/lib/auth";
 import { useFarmData } from "@/lib/farmData";
-import {
-  JOG_REPEAT_MS, JogDirection, RobotValue, controlBlocked, postJog, timeAgo,
-} from "@/lib/monitor";
+import { controlBlocked, edgeConn, JOG_REPEAT_MS, JogDirection, postJog, RobotValue, timeAgo } from "@/lib/monitor";
 
 /** 완충 예상 — 충전 중일 때만 (디자인 "완충 예상 42분"). 단순 선형 추정 */
 function chargeEta(r: RobotValue): string | null {
@@ -193,7 +191,7 @@ export default function RobotTab() {
 
   const list = Object.values(robots);
   const stopped = controlBlocked(stops, farmId);
-  const edge = Object.values(conns).find((c) => c.device_id.startsWith("edge"));
+  const edge = edgeConn(conns);
   const farmOnline = edge?.state === "online";
   const canOperate = canControl(user) && farmOnline && !stopped;
 

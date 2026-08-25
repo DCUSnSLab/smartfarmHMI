@@ -241,8 +241,18 @@ export function useMonitor(scope: string) {
   // 옮긴 뒤에도 왕복이 끝날 때까지 **이전 농장 이름**이 제목에 남는다.
   const farmName = farms.find((f) => f.farm_id === scope)?.name ?? "";
 
-  // 이 스코프의 스냅샷이 도착했는가 — 「아직 안 받음」과 「데이터 없음」을 구분한다
-  const [snapshotReady, setSnapshotReady] = useState(false);
+  /**
+   * 아래 sensors·robots·conns 가 **어느 농장 것인지**. 값과 출처를 함께 들고 다닌다.
+   *
+   * 「받았다/못 받았다」 불리언으로는 부족했다. 스코프를 바꾸면 구독 교체는 렌더가
+   * 끝난 뒤에 돌고, 그 사이 한 프레임은 「이 농장을 보고 있고 + 받았음」이 동시에
+   * 참이 된다 — 값은 아직 이전 농장 것인데. 화면은 그 프레임에 이전 농장 센서로
+   * 개수와 색을 그리고, 다음 프레임에 되돌린다 (깜빡임).
+   *
+   * 농장 이름을 담아 두면 화면이 「내가 보는 농장과 같은가」를 그 프레임에서 바로
+   * 가를 수 있다. 갱신 시점이 값을 넣는 곳과 같아 어긋날 여지가 없다.
+   */
+  const [liveFarm, setLiveFarm] = useState<string | null>(null);
 
 
   // ── 초기 로드 (REST) ──
@@ -255,10 +265,11 @@ export function useMonitor(scope: string) {
     const res = await apiFetch(`/api/farms/${farmId}/snapshot`);
     if (!res.ok) return;
     const snap = await res.json();
-    setSnapshotReady(true);
     setSensors(Object.fromEntries(snap.sensors.map((s: SensorValue) => [s.sensor_id, s])));
     setRobots(Object.fromEntries(snap.robots.map((r: RobotValue) => [r.device_id, r])));
     setConns(Object.fromEntries(snap.connections.map((c: ConnState) => [c.device_id, c])));
+    // 값을 넣은 바로 뒤에 출처를 적는다 — 둘이 떨어지면 다시 어긋난다
+    setLiveFarm(farmId);
   }, []);
 
   // 정지는 전 스코프 표시 대상 — WS 이벤트는 발동 순간에만 오므로 초기 로드가 필요하다.
@@ -287,7 +298,9 @@ export function useMonitor(scope: string) {
   useEffect(() => {
     void refreshFarms();
     void loadStops();
-    setSnapshotReady(false);   // 스코프가 바뀌면 이전 농장 값은 이 농장 것이 아니다
+    // 이전 농장 값을 지우지 않는다. 지우면 새 값이 올 때까지 화면이 비고, 그 빈
+    // 자리 때문에 카드 높이가 오간다. 대신 liveFarm 이 「이건 저 농장 것」이라고
+    // 말해 주므로, 화면은 그동안 스냅샷(농장별로 담긴 쪽)을 보면 된다.
     if (scope !== "all") {
       // useFleetSnapshots 도 같은 URL 을 부르지만(lib/fleet.ts) 지우면 안 된다 — 저쪽은
       // showsFleetNav 화면에서만 돌고 카드용 형태로 담는다. 여기서는 장치별 값이 필요하다.
@@ -572,7 +585,7 @@ export function useMonitor(scope: string) {
 
   return {
     farms, refreshFarms, farmName, sensors, robots, conns, commands, alerts, stops, wsOpen,
-    liveTick, snapshotReady, serverBeat,
+    liveTick, liveFarm, serverBeat,
   };
 }
 

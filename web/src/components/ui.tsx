@@ -406,7 +406,16 @@ export function StatusRing({ slices, total, caption }: {
 }) {
   const [hover, setHover] = useState<string | null>(null);
   const [pin, setPin] = useState<string | null>(null);
-  const active = pin ?? hover;
+  // hover 가 pin 보다 앞선다 — 고정해 둔 채로도 다른 등급을 훑어볼 수 있고, 손을
+  // 떼면 고정한 것으로 돌아온다 (배치도·하드웨어 타일과 같은 규칙)
+  const active = hover ?? pin;
+  // 고리 밖 아무 곳이나 누르면 고정이 풀린다. Esc 도 같다. 지목은 「지금 보고 있는
+  // 것」이지 화면의 설정이 아니다 — 배치도·하드웨어와 같은 규칙인데, 저쪽은 고를
+  // 것이 여러 카드에 흩어져 있어 표를 달아 판정하고 여기는 상자 하나라 ref 로 된다.
+  const box = useRef<HTMLDivElement>(null);
+  const unpin = useCallback(() => setPin(null), []);
+  useLightDismiss(pin != null, box, unpin);
+
   const shown = slices.filter((sl) => sl.names.length > 0);
   const hit = shown.find((sl) => sl.key === active);
 
@@ -419,7 +428,7 @@ export function StatusRing({ slices, total, caption }: {
   });
 
   return (
-    <div className="relative h-[168px] w-[168px] flex-none">
+    <div ref={box} className="relative h-[168px] w-[168px] flex-none">
       <svg
         viewBox="0 0 42 42" className="h-full w-full -rotate-90" role="img"
         aria-label={`${caption} ${total} — ${shown.map((sl) => `${sl.label} ${sl.names.length}`).join(", ")}`}

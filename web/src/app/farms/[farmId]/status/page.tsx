@@ -509,7 +509,15 @@ export default function StatusTab() {
               </Link>
             }
           />
-          <div className="flex flex-1 flex-col justify-between gap-4">
+          {/*
+            그룹을 위로 붙인다. 남는 공간을 그룹 사이에 나눠 넣으면(justify-between)
+            농장마다 그 몫이 달라져 같은 그룹이 위아래로 크게 움직인다 — 왼쪽 칸
+            높이는 고정인데 장치 수는 농장마다 다르므로, 장치가 적은 농장일수록
+            틈이 넓어지고 틈 수도 적어 더 벌어진다 (탱크 그룹이 160px 이동).
+            위로 붙이면 남는 공간이 카드 아래 한 곳에 모이고, 그룹 위치 차이는
+            위쪽 내용의 실제 차이(센서 타일 줄 수)만 남는다.
+          */}
+          <div className="flex flex-1 flex-col justify-start gap-4">
             {groups.map((g) => (
               <div key={g.kind}>
                 {/* 대수 바로 옆에 등급 요약을 붙인다 — 「센서 9」와 「경고 1」이 한 문장으로

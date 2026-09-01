@@ -172,18 +172,22 @@ function demoLayout(devices: DeviceStatus[]): Layout {
     points.push({ id: `demo-${d.id}`, point_type: type, x, y, ref_device_id: d.id });
   };
 
-  // 센서는 각 랙의 중심선에 둔다. 여섯 번째 센서까지 겹치지 않게 E에는 두 자리를 둔다.
-  const rackSlots = [
-    { x: 8.0, y: 19.0 },  // A 중앙
-    { x: 2.2, y: 10.0 },  // B 중앙
-    { x: 8.5, y: 10.0 },  // C 중앙
-    { x: 13.8, y: 10.0 }, // D 중앙
-    { x: 5.0, y: 1.0 },   // E 중앙선 왼쪽
-    { x: 11.0, y: 1.0 },  // E 중앙선 오른쪽
-  ];
-  sensors.forEach((d, i) => {
-    const slot = rackSlots[i % rackSlots.length];
-    put(d, slot.x, slot.y, "sensor");
+  // 센서는 다섯 랙에 고르게 나눈 뒤 각 랙의 중심선을 따라 등간격으로 배치한다.
+  // 센서가 늘어나도 처음 자리로 되돌아가지 않으므로 표식이 완전히 겹치지 않는다.
+  const rackLines = [
+    { axis: "x", at: 19.0, from: 3.0, to: 13.0 }, // A 가로 중심선
+    { axis: "y", at: 2.2, from: 5.0, to: 15.0 },  // B 세로 중심선
+    { axis: "y", at: 8.5, from: 5.0, to: 15.0 },  // C 세로 중심선
+    { axis: "y", at: 13.8, from: 5.0, to: 15.0 }, // D 세로 중심선
+    { axis: "x", at: 1.0, from: 3.0, to: 13.0 },  // E 가로 중심선
+  ] as const;
+  const sensorsByRack = rackLines.map(() => [] as DeviceStatus[]);
+  sensors.forEach((d, i) => sensorsByRack[i % rackLines.length].push(d));
+  sensorsByRack.forEach((rackSensors, rackIndex) => {
+    const line = rackLines[rackIndex];
+    spread(rackSensors.length, line.from, line.to).forEach((v, i) => {
+      put(rackSensors[i], line.axis === "x" ? v : line.at, line.axis === "y" ? v : line.at, "sensor");
+    });
   });
 
   // 워크스테이션 — 현재 구역 안의 가로 중심선에 한 줄로 배치한다.
@@ -437,7 +441,7 @@ export function FarmMap({
         sub={demo ? "예시 배치 · 로봇 위치 실시간" : `${layout?.frame ?? "?"} 좌표계 · m 단위`}
         right={right}
       />
-      <div className="relative w-full overflow-hidden" style={{ aspectRatio: VIEW_ASPECT }}>{inner}</div>
+      <div className="relative w-full" style={{ aspectRatio: VIEW_ASPECT }}>{inner}</div>
       <Legend />
     </Card>
   );
@@ -496,6 +500,9 @@ export function FarmMap({
   // 로딩·오류 상태와 **같은 틀**을 쓴다 — 카드 높이가 상태에 따라 달라지지 않는다
   return frame(
     <>
+      {/* 도면과 표식만 배치도 영역에서 자른다. 상세 정보는 바깥 레이어에 두어
+          가장자리 센서를 선택해도 내용이 잘리지 않게 한다. */}
+      <div className="absolute inset-0 overflow-hidden">
       <svg
           viewBox={`${box.minX} ${box.minY} ${box.w} ${box.h}`}
           className="absolute inset-0 h-full w-full"
@@ -508,6 +515,13 @@ export function FarmMap({
             const s = zoneStyle(z.zone_type);
             const xs = z.polygon.map(([x]) => x);
             const ys = z.polygon.map(([, y]) => flipY(y));
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const rackName = z.id.match(/^재배 랙\s+(.+)$/);
+            const splitRackName = rackName != null && maxX - minX < labelSize * 5;
+            const textX = splitRackName ? (minX + maxX) / 2 : minX + labelSize * 0.5;
+            const textY = minY + labelSize * (splitRackName ? 0.9 : 1.2);
             return (
               <g key={z.id}>
                 <polygon
@@ -517,11 +531,18 @@ export function FarmMap({
                 {/* 구역 이름을 도면 안에 적는다 — 범례로 빼면 색을 눈으로 맞춰야 한다 */}
                 {xs.length > 0 && (
                   <text
-                    x={Math.min(...xs) + labelSize * 0.5}
-                    y={Math.min(...ys) + labelSize * 1.2}
-                    fontSize={labelSize} fontWeight={700} fill={s.stroke}
+                    x={textX}
+                    y={textY}
+                    textAnchor={splitRackName ? "middle" : "start"}
+                    fontSize={splitRackName ? labelSize * 0.72 : labelSize}
+                    fontWeight={700} fill={s.stroke}
                   >
-                    {z.id}
+                    {splitRackName ? (
+                      <>
+                        <tspan x={textX}>재배 랙</tspan>
+                        <tspan x={textX} dy={labelSize * 0.85}>{rackName[1]}</tspan>
+                      </>
+                    ) : z.id}
                   </text>
                 )}
               </g>
@@ -597,6 +618,7 @@ export function FarmMap({
             </span>
           );
         })}
+      </div>
 
       {hit && <MarkerTip m={hit} flip={tipFlip} />}
     </>,

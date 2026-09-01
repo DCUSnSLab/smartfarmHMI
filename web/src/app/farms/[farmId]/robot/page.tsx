@@ -186,12 +186,19 @@ function ManualControlModal({
 export default function RobotTab() {
   const { farmId } = useParams<{ farmId: string }>();
   const user = useUser();
-  const { robots, conns, stops } = useFarmData();
+  const { robots, conns, stops, liveFarm, snaps } = useFarmData();
   const [selected, setSelected] = useState<RobotValue | null>(null);
 
-  const list = Object.values(robots);
+  // 농장 전환 중에는 공용 실시간 저장소에 이전 농장 값이 남아 있다. 출처가 현재
+  // 농장과 일치할 때만 실시간 값을 쓰고, 그 전에는 농장별 스냅샷으로 표시한다.
+  const liveIsThisFarm = liveFarm === farmId;
+  const snap = snaps[farmId];
+  const list = liveIsThisFarm ? Object.values(robots) : (snap?.robots ?? []);
+  const scopedConns = liveIsThisFarm
+    ? conns
+    : Object.fromEntries((snap?.connections ?? []).map((c) => [c.device_id, c]));
   const stopped = controlBlocked(stops, farmId);
-  const edge = edgeConn(conns);
+  const edge = edgeConn(scopedConns);
   const farmOnline = edge?.state === "online";
   const canOperate = canControl(user) && farmOnline && !stopped;
 
@@ -203,7 +210,7 @@ export default function RobotTab() {
         />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {list.map((r) => {
-            const c = conns[r.device_id];
+            const c = scopedConns[r.device_id];
             const eta = chargeEta(r);
             const low = (r.battery_pct ?? 100) < 30;
             return (

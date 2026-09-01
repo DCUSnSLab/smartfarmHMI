@@ -490,7 +490,7 @@ export default function StatusTab() {
 
           <FarmMap
             farmId={farmId}
-            robots={Object.values(robots)}
+            robots={input?.robots ?? []}
             statuses={byId}
             active={active}
             onHover={setHover}

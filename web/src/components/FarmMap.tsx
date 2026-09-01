@@ -144,51 +144,67 @@ function demoLayout(devices: DeviceStatus[]): Layout {
   // 미터 수를 넉넉히 두는 것도 같은 이유다. 여백은 미터 고정값이라, 도면이 작으면
   // 그 여백이 차지하는 비율이 커져 그림만 쪼그라든다.
   const zones: Zone[] = [
-    { id: "재배 랙 A", zone_type: "work", polygon: rect(1.5, 11.5, 24.5, 15.5) },
-    { id: "재배 랙 B", zone_type: "work", polygon: rect(1.5, 6.0, 24.5, 10.0) },
-    { id: "재배 랙 C", zone_type: "work", polygon: rect(1.5, 0.5, 24.5, 4.5) },
-    // 통로는 그리지 않는다 — 빈 자리가 곧 통로다. 칸을 하나 더 칠하면 「거기서 뭘
-    // 봐야 하나」가 생기는데, 정작 볼 것은 그 위에 선 로봇이다.
-    { id: "워크스테이션", zone_type: "station", polygon: rect(27.5, 9.0, 38.5, 15.5) },
-    { id: "탱크 · 충전", zone_type: "storage", polygon: rect(27.5, 0.5, 38.5, 7.5) },
+    { id: "재배 랙 A", zone_type: "work", polygon: rect(1.0, 18.0, 15.0, 20.0) },
+    { id: "재배 랙 B", zone_type: "work", polygon: rect(1.0, 2.2, 3.4, 17.8) },
+    { id: "재배 랙 C", zone_type: "work", polygon: rect(7.3, 2.2, 9.7, 17.8) },
+    { id: "재배 랙 D", zone_type: "work", polygon: rect(12.6, 2.2, 15.0, 17.8) },
+    { id: "재배 랙 E", zone_type: "work", polygon: rect(1.0, 0.0, 15.0, 2.0) },
+    { id: "워크스테이션", zone_type: "station", polygon: rect(15.3, 10.5, 18.2, 12.8) },
+  ];
+
+  // 점선 통로 — 위·아래 가로 랙과 세로 랙의 접점, D 랙과 워크스테이션의 접점.
+  const gates: Gate[] = [
+    { id: "상단 통로 B", between: ["재배 랙 A", "재배 랙 B"], segment: [[1.0, 17.9], [3.4, 17.9]] },
+    { id: "상단 통로 C", between: ["재배 랙 A", "재배 랙 C"], segment: [[7.3, 17.9], [9.7, 17.9]] },
+    { id: "상단 통로 D", between: ["재배 랙 A", "재배 랙 D"], segment: [[12.6, 17.9], [15.0, 17.9]] },
+    { id: "하단 통로 B", between: ["재배 랙 E", "재배 랙 B"], segment: [[1.0, 2.1], [3.4, 2.1]] },
+    { id: "하단 통로 C", between: ["재배 랙 E", "재배 랙 C"], segment: [[7.3, 2.1], [9.7, 2.1]] },
+    { id: "하단 통로 D", between: ["재배 랙 E", "재배 랙 D"], segment: [[12.6, 2.1], [15.0, 2.1]] },
+    { id: "워크스테이션 통로", between: ["재배 랙 D", "워크스테이션"], segment: [[15.15, 10.5], [15.15, 12.8]] },
   ];
 
   const of = (kind: DeviceKind) => devices.filter((d) => d.kind === kind);
-  // 수위계는 탱크 옆에 세운다 — 값의 출처가 탱크라 재배 랙에 두면 짝이 안 보인다
-  const levelers = of("sensor").filter((d) => d.id.endsWith("-lv"));
-  const envs = of("sensor").filter((d) => !d.id.endsWith("-lv"));
+  // 탱크 구역을 제외했으므로 수위 센서를 포함한 모든 센서를 랙에 배치한다.
+  const sensors = of("sensor");
 
   const points: Point[] = [];
   const put = (d: DeviceStatus, x: number, y: number, type: string) => {
     points.push({ id: `demo-${d.id}`, point_type: type, x, y, ref_device_id: d.id });
   };
 
-  // 환경 센서 — 재배 랙 세 줄에 나눠 세운다. 대수가 늘면 칸을 늘려 랙 안에서 받는다
-  // (밖으로 한 줄 빼면 그 줄 때문에 도면이 세로로 늘어나 전체가 작아진다)
-  const rackY = [13.5, 8.0, 2.5];
-  const cols = Math.max(2, Math.ceil(envs.length / rackY.length));
-  const rackSlots = rackY.flatMap((y) => spread(cols, 5.0, 21.0).map((x) => ({ x, y })));
-  envs.forEach((d, i) => {
-    const slot = rackSlots[i] ?? rackSlots[rackSlots.length - 1];
+  // 센서는 각 랙의 중심선에 둔다. 여섯 번째 센서까지 겹치지 않게 E에는 두 자리를 둔다.
+  const rackSlots = [
+    { x: 8.0, y: 19.0 },  // A 중앙
+    { x: 2.2, y: 10.0 },  // B 중앙
+    { x: 8.5, y: 10.0 },  // C 중앙
+    { x: 13.8, y: 10.0 }, // D 중앙
+    { x: 5.0, y: 1.0 },   // E 중앙선 왼쪽
+    { x: 11.0, y: 1.0 },  // E 중앙선 오른쪽
+  ];
+  sensors.forEach((d, i) => {
+    const slot = rackSlots[i % rackSlots.length];
     put(d, slot.x, slot.y, "sensor");
   });
 
-  // 탱크와 수위계 — 같은 x 에 위아래로. 수위계가 어느 탱크의 것인지를 자리로 말한다
-  const tanks = of("tank");
-  const tankXs = spread(Math.max(tanks.length, levelers.length), 29.0, 37.0);
-  tanks.forEach((d, i) => put(d, tankXs[i] ?? 33.0, 3.0, "tank"));
-  levelers.forEach((d, i) => put(d, tankXs[i] ?? 33.0, 5.5, "sensor"));
-
-  // 워크스테이션 — 위쪽 구역에 한 줄
+  // 워크스테이션 — 현재 구역 안의 가로 중심선에 한 줄로 배치한다.
   const stations = of("station");
-  spread(stations.length, 29.0, 37.0).forEach((x, i) => put(stations[i], x, 12.0, "station"));
+  spread(stations.length, 15.8, 17.7).forEach((x, i) => put(stations[i], x, 11.65, "station"));
 
-  // 로봇 — 랙과 오른쪽 구역 사이의 빈 통로에 세운다 (예시이므로 「주행 중」을 뜻하지 않는다)
+  // 로봇 — 하단 점선 통로의 오른쪽부터 배치한다 (예시이므로 주행 중을 뜻하지 않는다).
   const robots = of("robot");
-  spread(robots.length, 2.0, 14.0).forEach((y, i) => put(robots[i], 26.0, y, "robot"));
+  const robotSlots = [
+    { x: 13.8, y: 2.1 },
+    { x: 8.5, y: 2.1 },
+    { x: 2.2, y: 2.1 },
+  ];
+  robots.forEach((d, i) => {
+    const slot = robotSlots[i % robotSlots.length];
+    put(d, slot.x, slot.y, "robot");
+  });
 
-  return { frame: null, zones, gates: [], points, source: "placeholder", updated_at: null };
+  return { frame: null, zones, gates, points, source: "placeholder", updated_at: null };
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -206,9 +222,12 @@ function bounds(zones: Zone[], gates: Gate[], pts: { x: number; y: number }[]) {
   const ys: number[] = [];
   for (const z of zones) for (const [x, y] of z.polygon) { xs.push(x); ys.push(flipY(y)); }
   for (const g of gates) for (const [x, y] of g.segment) { xs.push(x); ys.push(flipY(y)); }
-  // 장치가 도면 밖에 있어도 잘리지 않게 함께 계산한다. 도면이 아직 없으면
-  // 장치 위치만으로 창을 잡는다 — 로봇이라도 어디 있는지는 보여야 한다.
-  for (const p of pts) { xs.push(p.x); ys.push(flipY(p.y)); }
+  // 구역이나 통로가 있으면 그것만으로 창을 고정한다. 실시간 로봇 좌표를 창 계산에
+  // 넣으면 로봇이 움직일 때마다 랙 전체가 확대·축소되거나 좌우로 흔들린다.
+  // 도면이 완전히 비었을 때만 장치 위치로 창을 잡는다.
+  if (!xs.length) {
+    for (const p of pts) { xs.push(p.x); ys.push(flipY(p.y)); }
+  }
   if (!xs.length) return null;
   // 여백은 표식이 카드 경계에 걸리지 않을 만큼 (표식 반지름 ≈ 13px ≈ 0.5m)
   const pad = 0.5;   // m
@@ -415,10 +434,10 @@ export function FarmMap({
     <Card>
       <SectionTitle
         title="실시간 배치도"
-        sub={demo ? "예시 배치 · 실제 위치 아님" : `${layout?.frame ?? "?"} 좌표계 · m 단위`}
+        sub={demo ? "예시 배치 · 로봇 위치 실시간" : `${layout?.frame ?? "?"} 좌표계 · m 단위`}
         right={right}
       />
-      <div className="relative w-full" style={{ aspectRatio: VIEW_ASPECT }}>{inner}</div>
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: VIEW_ASPECT }}>{inner}</div>
       <Legend />
     </Card>
   );
@@ -430,26 +449,23 @@ export function FarmMap({
   if (failed) return frame(notice("배치도를 불러오지 못했습니다."));
   if (!shown) return frame(<div className="absolute inset-0 animate-pulse rounded-xl bg-surface" />);
 
-  // 로봇은 자기가 보내는 위치, 나머지는 도면의 지점. 지점은 장치와 이어져 있을
-  // 때만 표식이 된다 (ref_device_id) — 자리 이름만으로는 무엇이 놓였는지 모른다.
-  //
-  // 예시 배치에서는 실좌표를 쓰지 않는다. 엣지 좌표계와 예시 격자는 아무 관계가
-  // 없어, 그대로 얹으면 로봇이 도면 밖이나 엉뚱한 구역에 찍힌다.
-  const placed = (demo
-    ? []
-    : robots
-        .filter((r) => r.pos_x != null && r.pos_y != null && statuses[r.device_id])
-        .map((r) => ({
-          device: statuses[r.device_id], x: r.pos_x as number, y: r.pos_y as number,
-          // heading 은 ROS 기준 반시계 양수인데 y 를 뒤집었으므로 회전도 뒤집는다.
-          headingDeg: r.heading_rad == null ? null : (-r.heading_rad * 180) / Math.PI,
-        }))
-  ).concat(
+  // 실제·예시 배치 모두 로봇이 보내는 실시간 위치를 우선 사용한다.
+  // 위치가 아직 없는 로봇만 layout.points 또는 demoLayout 의 임시 지점으로 대체한다.
+  const liveRobots = robots
+    .filter((r) => r.pos_x != null && r.pos_y != null && statuses[r.device_id])
+    .map((r) => ({
+      device: statuses[r.device_id], x: r.pos_x as number, y: r.pos_y as number,
+      // heading 은 ROS 기준 반시계 양수인데 y 를 뒤집었으므로 회전도 뒤집는다.
+      headingDeg: r.heading_rad == null ? null : (-r.heading_rad * 180) / Math.PI,
+    }));
+  const liveRobotIds = new Set(liveRobots.map((p) => p.device.id));
+  const placed = liveRobots.concat(
     (shown.points ?? [])
       .filter((p) => p.x != null && p.y != null)
       .flatMap((p) => {
         const id = p.ref_device_id ?? null;
         const device = id ? statuses[id] : undefined;
+        if (device?.kind === "robot" && liveRobotIds.has(device.id)) return [];
         return device ? [{ device, x: p.x as number, y: p.y as number, headingDeg: null }] : [];
       }),
   );
@@ -458,12 +474,18 @@ export function FarmMap({
 
   if (!box) return frame(notice("엣지가 아직 배치도를 보내지 않았습니다."));
 
-  const markers: Marker[] = placed.map((p) => ({
+  const markerCandidates: Marker[] = placed.map((p) => ({
     device: p.device,
     left: ((p.x - box.minX) / box.w) * 100,
     top: ((flipY(p.y) - box.minY) / box.h) * 100,
     headingDeg: p.headingDeg,
   }));
+  // 로봇은 제목과 범례 사이의 실제 배치도 영역 안에서만 표시한다. % 좌표를
+  // 사용하므로 브라우저 폭에 따라 도면의 픽셀 크기가 바뀌어도 같은 기준이 유지된다.
+  const markers = markerCandidates.filter((m) =>
+    m.device.kind !== "robot" ||
+    (m.left >= 0 && m.left <= 100 && m.top >= 0 && m.top <= 100),
+  );
   const hit = markers.find((m) => m.device.id === active) ?? null;
   // 도면 오른쪽 절반의 표식은 설명을 왼쪽으로 뒤집는다 (안 그러면 카드를 넘어간다).
   // 기준이 절반인 이유: 설명 폭이 고정이므로, 가장 좁은 「옆에 붙이는」 도면 폭에서
